@@ -141,7 +141,7 @@ Ledgeling 的技术思路可以借鉴（§10），**它的流程与产品约束�
 
 | 步骤 | 代价 |
 |---|---|
-| `timestamp()` 内 `DateFormatter()` 新建 + 设 `dateFormat` | 极慢，每次调用都重建 |
+| `timestamp()` 内 `DateFormatter()` 新建 + 设 `dateFormat` | 极慢，每次调用都重建（**仅 `write(_:)` 走这条**；`PlatformRide` 走的 `writeEvent(_:)` **不调** `timestamp()`） |
 | `DiagnosticsPrivacy.field` → `message` → `flatten` + **2 次 `NSRegularExpression(pattern:)` 即时编译** | `PlatformRide` 有 5 个字段 → **每帧编译 10 次正则** |
 | `createDirectory(withIntermediateDirectories: true)` | 每次写一次 mkdir |
 | `rotateIfNeeded` → `attributesOfItem(atPath:)` | 每次写一次 stat |
@@ -154,6 +154,29 @@ Ledgeling 的技术思路可以借鉴（§10），**它的流程与产品约束�
 > **⚠️ 链条上每一环都是读码确认的事实，但「量级足以造成用户看到的延迟」仍是假设。**
 > Phase 0 的验证**必须**包含改前 / 改后的实测对比。**没有这份对比就不能宣布修好了。**
 
+**Phase 0 实测（2026-10-12，本机，debug 构建，10 000 次取均值）**
+
+| 调用（热路径上的每一步） | 改前 | 改后 |
+|---|---|---|
+| `DiagnosticsLog.writeEvent`（5 字段，含写文件） | 112.7 µs | 40.8 µs |
+| 同上，不配文件（纯格式化） | 61.9 µs | 19.5 µs |
+| `WindowSurfaceProvider.liveBounds`（窗口服务器查询） | 86.9 µs | 83.5 µs（未改） |
+| `SurfaceProvider.support`（图扫描） | 0.6 µs | 0.6 µs（未改） |
+
+**结论：「量级足以造成用户看到的延迟」不成立。** 拖窗时每帧的热路径约
+改前 200 µs / 改后 125 µs，即一帧（16.67 ms）的 **1.2% → 0.75%**。
+这个量级不可能产生用户可见的跟手延迟。热路径修复本身值得做（2.8×），
+但**它不能解释**「拖窗有可见延迟」。
+
+第二梯队候选（macOS 对非活动进程 `.floating` 面板的移动合并、`Timer` 漂移、
+App Nap 定时器节流）**均未实测**。追加一个候选：`liveSurface` 在拖拽期间
+若从窗口服务器读不到该窗口，会退回**最多 0.5 s 陈旧**的图条目（§3.3 已记录
+该窗口会「短暂缺失」）—— 这**才是**一个可能的可见延迟来源，属 Phase B/C 范围。
+
+> 附注：本次实现**没有**为每行日志加 `FileHandle.synchronize()`（fsync）。
+> 旧代码从未 fsync（`close()` 不等于 fsync），逐行 fsync 会在主线程引入
+> 阻塞式磁盘 I/O，恰好制造它要消除的卡顿；写直达内核已满足「应用崩溃不丢日志」。
+
 ### 3.3 现有「骑乘」机制的全部状态（Phase C 要删的东西）
 
 | 成员 | 位置 | 作用 |
@@ -164,7 +187,7 @@ Ledgeling 的技术思路可以借鉴（§10），**它的流程与产品约束�
 | `supportMotionInitialized` | `PetController` | 速度基线是否有效 |
 | `supportUnavailableSeconds` / `isInSupportGrace` | `PetController` | 支撑短暂消失的宽限 |
 | `airborneSourceID` / `lastAirbornePlatformTop` | `PetController` | 空中时记下出发窗口，让上升的边再接住她 |
-| `PlatformRidePhysics.evaluate` | `Physics/PlatformRidePhysics.swift:45` | 速度匹配：follow / launchUpward / releaseDownward |
+| `PlatformRidePhysics.evaluate` | `Physics/PlatformRidePhysics.swift:49` | 速度匹配：follow / launchUpward / releaseDownward |
 | `PlatformRidePhysics.resolveAirborneContact` | 同文件 | 空中被上升的边顶起 |
 | `WindowExpansionPhysics.evaluate` | 同文件:126 | 最大化顶飞 |
 
@@ -414,7 +437,9 @@ public enum SurfaceChange: Sendable, Equatable {
 |---|---|---|
 | **原样保留** | 11 | `TransientPlatformSupportTests` 的 2 个宽限测试 + `PlatformRideIntegrationTests` 中 9 个（slowDragIsRidden / slowDownwardIsFollowed / lostWindowGrace / rideWorksWhileWalking / leavingGroundStopsTracking / hopStopsTracking / landingAdoptsNewWindow / landingAdoptsWindow / landingOnFloorTracksNothing） |
 | **重写为显式释放规则** | 2 | `fastUpwardLaunch` / `fastDownwardRelease` → 「快速甩动释放棲位并抛出」（D1） |
-| **删除** | 17 | `PlatformRidePhysicsTests` 的 10 个阈值测试（`evaluate` 被删）+ `AirbornePlatformContactTests` 4 个（`resolveAirborneContact` 被删）+ `WindowExpansionBounceTests` 3 个（D2） |
+| **删除** | 17 | `PlatformRidePhysicsTests` 的 10 个阈值测试（`evaluate` 被删）+ `AirbornePlatformContactTests` 4 个（`resolveAirborneContact` 被删）+ `WindowExpansionBounceTests` 2 个（D2）+ `ControllerPlatformRideTests` 1 个（`downwardDragReleases` 直接调 `evaluate`，随之失效） |
+
+> **核对修正（2026-10-12，以代码为准）**：原表把 `WindowExpansionBounceTests` 记成 3 个，实际是 **2** 个；漏记的 `ControllerPlatformRideTests.downwardDragReleases` 才是第 17 个。总数 30 不变。
 
 > **不得静默删除。** 每一条删除都要在提交信息里说明「为什么这个行为不再存在」。
 
@@ -525,7 +550,7 @@ d=3 role=AXImage desc=sing-box       pos=(1513,32)  size=(56,56)
 | 多显示器语义变化 | 见 §3.4，Phase C **保持现状**并用 mock 钉住 |
 | 竖边是**新能力** | 原版没有「沿竖边走」，D3 把它推迟是对的 |
 | `WindowSurfaceProvider.liveBounds` | **唯一值得保留的旧代码** —— 它已经是「每帧查单个窗口」的正确做法，只是位置该挪到 `Platform` 后面 |
-| 测试数量基线 | `repo` memory 说 127 个，会话计划说 157 个 —— **以你自己 `make test` 的实际输出为准** |
+| 测试数量基线 | **已实测（2026-10-12）：157 个测试，0 失败。** 旧笔记的 127 / 157 说法以本次输出为准 |
 | 素材依赖 | 测试需要 `make assets`，否则 `TestSkip.missingAssets` 会让测试**失败**（不是跳过） |
 
 ---

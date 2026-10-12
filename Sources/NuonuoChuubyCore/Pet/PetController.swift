@@ -120,6 +120,8 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var supportUnavailableSeconds: Double = 0
 	/// Set while the grace is being held, so it is logged once not per frame.
 	private var isInSupportGrace = false
+	/// Collapses a run of identical ride responses into one log line.
+	private var rideLogGate = ChangeGate<PlatformMotionResponse>()
 	// The window she was launched from, so a rising edge can catch her again.
 	private var airborneSourceID: UInt32?
 	private var lastAirbornePlatformTop: Double = 0
@@ -744,14 +746,17 @@ public final class PetController: SpriteAnimatorDelegate {
 
 		let decision = PlatformRidePhysics.evaluate(
 			displacementY: displacementY, velocityY: rawVelocityY, displayScale: displayScale)
-		// Only logged when the platform actually moved, so this cannot spam.
-		DiagnosticsLog.shared.writeEvent("PlatformRide", [
-			("Response", "\(decision.response)"),
-			("DisplacementY", String(format: "%.1f", displacementY)),
-			("VelocityY", String(format: "%.0f", rawVelocityY)),
-			("Top", String(format: "%.1f", surface.top)),
-			("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
-		])
+		// A dragged window moves on every frame, so log the response once per change
+		// rather than once per frame.
+		if rideLogGate.emits(decision.response) {
+			DiagnosticsLog.shared.writeEvent("PlatformRide", [
+				("Response", "\(decision.response)"),
+				("DisplacementY", String(format: "%.1f", displacementY)),
+				("VelocityY", String(format: "%.0f", rawVelocityY)),
+				("Top", String(format: "%.1f", surface.top)),
+				("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
+			])
+		}
 
 		switch decision.response {
 		case .launchUpward:
@@ -790,6 +795,7 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	private func beginTrackingSupport(_ surface: SupportSurface) {
 		supportSourceID = surface.sourceID
+		rideLogGate.reset()
 		// Seed from the live reading, not the map's. The map can be half a second
 		// old, and mixing a stale baseline with the live sample on the next frame
 		// reads as one enormous jump, which would launch her the instant she
@@ -807,6 +813,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	private func stopTrackingSupport() {
 		supportSourceID = nil
 		supportMotionInitialized = false
+		rideLogGate.reset()
 	}
 
 	/// Her support is gone. A window being dragged can vanish from the map for a

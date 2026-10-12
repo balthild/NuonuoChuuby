@@ -11,19 +11,40 @@ public final class DiagnosticsLog: @unchecked Sendable {
 	public static let shared = DiagnosticsLog()
 
 	private static let maximumLogBytes = 8 * 1024 * 1024
+
+	/// Built once. A write can arrive once per frame, and constructing a
+	/// `DateFormatter` on every line is expensive (refactor-plan §3.2).
+	private static let timestampFormatter: DateFormatter = {
+		let formatter = DateFormatter()
+		formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+		return formatter
+	}()
+
 	private let lock = NSLock()
 	private let sessionID: String
 	private let hmacKey = SymmetricKey(size: .bits256)
 	private var fileURL: URL?
+	/// Kept open between writes, so a hot path does not pay an
+	/// open/seek/write/close per line. Nil until the first write, and on rotation.
+	private var handle: FileHandle?
+	/// The log directory only needs creating once per configured file.
+	private var hasCreatedDirectory = false
 
 	public init() {
 		let stamp = ISO8601DateFormatter()
 		sessionID = stamp.string(from: Date())
 	}
 
+	deinit {
+		try? handle?.close()
+	}
+
 	public func configure(fileURL: URL) {
 		lock.lock()
 		defer { lock.unlock() }
+		try? handle?.close()
+		handle = nil
+		hasCreatedDirectory = false
 		self.fileURL = fileURL
 	}
 
@@ -50,30 +71,44 @@ public final class DiagnosticsLog: @unchecked Sendable {
 	}
 
 	private func timestamp() -> String {
-		let formatter = DateFormatter()
-		formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
-		return formatter.string(from: Date())
+		Self.timestampFormatter.string(from: Date())
 	}
 
 	private func append(_ line: String) {
-		guard let fileURL else { return }
 		lock.lock()
 		defer { lock.unlock() }
+		guard let fileURL else { return }
 		do {
-			try FileManager.default.createDirectory(
-				at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-			rotateIfNeeded(fileURL)
-			let data = Data((line + "\n").utf8)
-			if let handle = try? FileHandle(forWritingTo: fileURL) {
-				defer { try? handle.close() }
-				try handle.seekToEnd()
-				try handle.write(contentsOf: data)
-			} else {
-				try data.write(to: fileURL)
+			let manager = FileManager.default
+			if !hasCreatedDirectory {
+				try manager.createDirectory(
+					at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+				hasCreatedDirectory = true
 			}
+			rotateIfNeeded(fileURL)
+			let handle = try openHandle(for: fileURL, manager: manager)
+			try handle.seekToEnd()
+			try handle.write(contentsOf: Data((line + "\n").utf8))
+			// The line reaches the kernel on every write, so an app crash cannot
+			// lose it. Deliberately no `synchronize()` (fsync): the old code never
+			// called it, and forcing a disk write on the main thread once per frame
+			// would add exactly the stall this change removes.
 		} catch {
-			// Diagnostics must never interrupt the pet.
+			// A failed write must never interrupt the pet. Drop the handle so the
+			// next write reopens cleanly.
+			try? handle?.close()
+			handle = nil
 		}
+	}
+
+	private func openHandle(for fileURL: URL, manager: FileManager) throws -> FileHandle {
+		if let handle { return handle }
+		if !manager.fileExists(atPath: fileURL.path) {
+			manager.createFile(atPath: fileURL.path, contents: nil)
+		}
+		let opened = try FileHandle(forWritingTo: fileURL)
+		handle = opened
+		return opened
 	}
 
 	private func rotateIfNeeded(_ fileURL: URL) {
@@ -81,6 +116,10 @@ public final class DiagnosticsLog: @unchecked Sendable {
 		guard let attributes = try? manager.attributesOfItem(atPath: fileURL.path),
 			let size = attributes[.size] as? Int, size >= Self.maximumLogBytes
 		else { return }
+		// The cached handle points at the file being moved, so drop it first; the
+		// next write opens the fresh file.
+		try? handle?.close()
+		handle = nil
 		let previous = fileURL.deletingPathExtension().appendingPathExtension("previous.log")
 		try? manager.removeItem(at: previous)
 		try? manager.moveItem(at: fileURL, to: previous)
@@ -88,11 +127,12 @@ public final class DiagnosticsLog: @unchecked Sendable {
 }
 
 enum DiagnosticsPrivacy {
-	/// Absolute POSIX paths (any slash-led token) and e-mail addresses.
-	private static let redactions = [
+	/// Absolute POSIX paths (any slash-led token) and e-mail addresses. Compiled
+	/// once: compiling them per field on the drag hot path was measurable.
+	private static let redactions: [NSRegularExpression] = [
 		"/[^\\s\"']+",
 		"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}",
-	]
+	].compactMap { try? NSRegularExpression(pattern: $0) }
 
 	/// Flattens newlines; used where the text is already known to be free of
 	/// user content.
@@ -103,8 +143,8 @@ enum DiagnosticsPrivacy {
 	/// Flattens and then scrubs anything path- or identity-shaped.
 	static func message(_ value: String, reference: (String) -> String) -> String {
 		var text = flatten(value)
-		for pattern in redactions {
-			text = redact(pattern, in: text, reference: reference)
+		for regex in redactions {
+			text = redact(regex, in: text, reference: reference)
 		}
 		return text
 	}
@@ -122,8 +162,9 @@ enum DiagnosticsPrivacy {
 		value.replacingOccurrences(of: "\r", with: " ").replacingOccurrences(of: "\n", with: " ")
 	}
 
-	private static func redact(_ pattern: String, in text: String, reference: (String) -> String) -> String {
-		guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
+	private static func redact(_ regex: NSRegularExpression, in text: String, reference: (String) -> String)
+		-> String
+	{
 		var result = text
 		// Walk matches backwards so the earlier ranges stay valid.
 		let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
