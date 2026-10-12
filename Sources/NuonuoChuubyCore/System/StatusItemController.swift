@@ -1,7 +1,22 @@
 import AppKit
 
 /// A menu that can carry a slider inline (used for the size control).
+///
+/// A custom menu-item view replaces the standard item rendering, so it has to be
+/// built to match one: the menu's own font and text colour, the same leading inset
+/// as the item titles, and the standard row height. A default-sized `NSSlider`
+/// would otherwise make the row taller than every other item.
 final class SliderMenuItemView: NSView {
+	/// The standard menu item height, so this row is not taller than its neighbours.
+	static let rowHeight: Double = 22
+	/// Where a standard menu item's title begins. Tweak this to line the label up
+	/// with the item titles above and below it.
+	static let titleInset: Double = 22
+	/// Menu item titles are drawn by the menu in its vibrant context, which a plain
+	/// custom view does not share, so `.labelColor` came out lighter than the titles
+	/// around it. `.controlTextColor` is what matches.
+	static let titleColor: NSColor = .controlTextColor
+
 	let slider: NSSlider
 	let label: NSTextField
 
@@ -10,13 +25,17 @@ final class SliderMenuItemView: NSView {
 			value: value, minValue: range.lowerBound, maxValue: range.upperBound,
 			target: target, action: action)
 		slider.isContinuous = true
+		slider.controlSize = .small
 		label = NSTextField(labelWithString: title)
 		label.font = NSFont.menuFont(ofSize: 0)
+		label.textColor = Self.titleColor
 
-		super.init(frame: NSRect(x: 0, y: 0, width: 240, height: 30))
+		super.init(frame: NSRect(x: 0, y: 0, width: 240, height: Self.rowHeight))
 
-		label.frame = NSRect(x: 14, y: 6, width: 116, height: 18)
-		slider.frame = NSRect(x: 132, y: 4, width: 96, height: 22)
+		let textHeight: Double = 16
+		let textY = (Self.rowHeight - textHeight) / 2
+		label.frame = NSRect(x: Self.titleInset, y: textY, width: 116, height: textHeight)
+		slider.frame = NSRect(x: 136, y: textY, width: 92, height: textHeight)
 		addSubview(label)
 		addSubview(slider)
 	}
