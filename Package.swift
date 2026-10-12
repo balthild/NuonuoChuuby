@@ -15,7 +15,10 @@ let package = Package(
         .target(
             name: "NuonuoChuubyCore",
             resources: [
-                .copy("Resources/Assets")
+                // The seeded artwork (not committed) and the pinned file list that
+                // a release build downloads from.
+                .copy("Resources/Assets"),
+                .copy("Resources/asset-manifest.json"),
             ]
         ),
         .executableTarget(

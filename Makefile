@@ -51,6 +51,7 @@ BIN_DIR := $(BUILD_DIR)/$(CONFIG)
 RESOURCE_BUNDLE := $(BIN_DIR)/$(APP_NAME)_$(CORE_TARGET).bundle
 
 ASSETS_DIR := Sources/$(CORE_TARGET)/Resources/Assets
+ASSET_MANIFEST := Sources/$(CORE_TARGET)/Resources/asset-manifest.json
 INFO_PLIST := App/Info.plist
 ICONSET_DIR := $(BUILD_DIR)/$(APP_NAME).iconset
 ICNS := $(BUILD_DIR)/$(APP_NAME).icns
@@ -60,7 +61,7 @@ PLIST_BUDDY := /usr/libexec/PlistBuddy
 
 .DEFAULT_GOAL := help
 
-.PHONY: help format assets build test app sign signing-cert package run rerun dev reset-data clean
+.PHONY: help format assets manifest build test app sign signing-cert package run rerun dev reset-data clean
 
 help: ## Show this help.
 	@printf '%s\n' "$(DISPLAY_NAME) $(VERSION) — available targets:"
@@ -68,6 +69,9 @@ help: ## Show this help.
 
 assets: ## Seed runtime assets from the upstream submodule.
 	Tools/seed-assets.sh "$(UPSTREAM_SUBMODULE)" "$(ASSETS_DIR)"
+
+manifest: assets ## Pin the upstream commit and list the assets a release fetches.
+	Tools/generate-asset-manifest.sh "$(UPSTREAM_SUBMODULE)" "$(ASSETS_DIR)" "$(ASSET_MANIFEST)"
 
 build: ## Build the executable and its resource bundle.
 	$(SWIFT) build -c $(CONFIG)

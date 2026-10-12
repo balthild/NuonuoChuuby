@@ -17,6 +17,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 	private var mouseMonitor: MouseMonitor?
 	private var deletionWatcher: FileDeletionWatcher?
 	private var ghostIcons: [Int: GhostIconWindow] = [:]
+	private var assetSetup: AssetSetupWindowController?
 
 	public func applicationDidFinishLaunching(_ notification: Notification) {
 		// Required when running the executable directly (no bundle to read
@@ -32,12 +33,55 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		self.settingsStore = settingsStore
 		settings = settingsStore.load()
 
-		guard let locator = resolveAssets(environment: environment) else {
-			presentMissingAssetsAlert()
-			NSApp.terminate(nil)
-			return
+		// A release build ships no artwork, so the first launch has to fetch it.
+		// Nothing else can start until the assets are there.
+		Task { @MainActor in
+			guard let locator = await resolveAssets(environment: environment) else {
+				NSApp.terminate(nil)
+				return
+			}
+			startPet(locator: locator, environment: environment)
+		}
+	}
+
+	/// Resolves the asset folder, downloading it when nothing is installed yet.
+	private func resolveAssets(environment: AppEnvironment) async -> AssetLocator? {
+		if let seeded = AssetLocator.bundled() { return seeded }
+
+		guard let store = try? AssetStore(environment: environment) else {
+			presentAlert(
+				title: "缺少素材清单",
+				message: "这个构建里没有素材清单，也没找到随包的素材。请先运行 `make assets`。")
+			return nil
+		}
+		if store.isComplete() {
+			return AssetLocator(root: store.installDirectory)
 		}
 
+		let setup = AssetSetupWindowController()
+		self.assetSetup = setup
+		setup.show()
+
+		while true {
+			do {
+				try await store.install { progress in
+					Task { @MainActor in
+						setup.showProgress(completed: progress.completed, total: progress.total)
+					}
+				}
+				setup.close()
+				self.assetSetup = nil
+				DiagnosticsLog.shared.writeEvent("AssetsReady", [("Commit", store.manifestCommit)])
+				return AssetLocator(root: store.installDirectory)
+			} catch {
+				DiagnosticsLog.shared.write("asset download failed", error: error)
+				setup.showFailure("素材下载失败，请检查网络后重试。")
+				await setup.waitForRetry()
+			}
+		}
+	}
+
+	private func startPet(locator: AssetLocator, environment: AppEnvironment) {
 		let displaySpace = DisplaySpace()
 		self.displaySpace = displaySpace
 
@@ -245,16 +289,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 
 	// MARK: - Assets
 
-	private func resolveAssets(environment: AppEnvironment) -> AssetLocator? {
-		// A development build seeds assets into the bundle; a release build has
-		// them downloaded into Application Support.
-		AssetLocator.bundled() ?? AssetLocator.installed(environment: environment)
-	}
-
-	private func presentMissingAssetsAlert() {
+	private func presentAlert(title: String, message: String) {
 		let alert = NSAlert()
-		alert.messageText = "缺少桌宠素材"
-		alert.informativeText = "找不到糯糯的序列帧与语音。请先运行 `make assets`，或等待首次启动下载完成。"
+		alert.messageText = title
+		alert.informativeText = message
 		alert.alertStyle = .critical
 		alert.addButton(withTitle: "好")
 		alert.runModal()

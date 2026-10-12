@@ -24,21 +24,30 @@ public struct AssetLocator: Sendable {
 	}
 
 	/// Assets bundled with the app, if `make assets` seeded them.
+	///
+	/// The seed folder always exists (it holds a tracked placeholder), so a
+	/// sentinel frame decides whether it actually carries artwork.
 	public static func bundled() -> AssetLocator? {
 		guard let url = Bundle.module.resourceURL?.appendingPathComponent("Assets") else { return nil }
-		return FileManager.default.fileExists(atPath: url.path) ? AssetLocator(root: url) : nil
+		let sentinel = url.appendingPathComponent("sprites/runtime/idle/frame_00.png")
+		return FileManager.default.fileExists(atPath: sentinel.path) ? AssetLocator(root: url) : nil
 	}
 
 	/// Assets previously downloaded into Application Support.
-	public static func installed(environment: AppEnvironment) -> AssetLocator? {
+	public static func installed(environment: AppEnvironment, commit: String?) -> AssetLocator? {
 		let root = environment.assetsRootDirectory
-		let manager = FileManager.default
-		guard let versions = try? manager.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else {
-			return nil
+		if let commit {
+			let exact = root.appendingPathComponent(commit)
+			guard FileManager.default.fileExists(atPath: exact.path) else { return nil }
+			return AssetLocator(root: exact)
 		}
 		// Newest revision wins; the folder name is the pinned commit id.
-		let newest = versions.filter { $0.hasDirectoryPath }.sorted { $0.lastPathComponent > $1.lastPathComponent }
-			.first
+		let manager = FileManager.default
+		guard let versions = try? manager.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+		else { return nil }
+		let newest = versions
+			.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+			.max { $0.lastPathComponent < $1.lastPathComponent }
 		guard let newest else { return nil }
 		return AssetLocator(root: newest)
 	}
