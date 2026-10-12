@@ -43,8 +43,8 @@ public final class PetSpeechCoordinator {
 
 	public func updatePetFrame(_ frame: PixelRect) {
 		petFrame = frame
-		guard bubble.isVisible, let topLeft = bubbleTopLeft() else { return }
-		bubble.reposition(to: topLeft, displaySpace: displaySpace)
+		guard bubble.isVisible, let placement = bubblePlacement(for: bubble.currentText) else { return }
+		bubble.reposition(to: placement, displaySpace: displaySpace)
 	}
 
 	@discardableResult
@@ -58,25 +58,28 @@ public final class PetSpeechCoordinator {
 		if let voiceCue {
 			spoke = voice.play(voiceCue, priority: priority)
 		}
-		if showBubbles, canShowBubble(priority: priority), let topLeft = bubbleTopLeft() {
+		if showBubbles, canShowBubble(priority: priority) {
 			let line = selector.choose(cue, itemName: itemName)
-			bubble.show(line, topLeft: topLeft, displaySpace: displaySpace)
-			lastBubbleAt = Date()
+			if let placement = bubblePlacement(for: line) {
+				bubble.show(line, placement: placement, displaySpace: displaySpace)
+				lastBubbleAt = Date()
+			}
 		}
 		return spoke
 	}
 
-	private func bubbleTopLeft() -> PixelPoint? {
+	private func bubblePlacement(for text: String) -> SpeechBubblePlacement? {
 		guard
 			let workArea = displaySpace.display(
 				containing: PixelPoint(x: petFrame.centerX, y: petFrame.centerY)
 			)?.visibleFrame
 		else { return nil }
-		let size = bubble.bubbleSize
-		return SpeechBubbleLayout.topLeft(
+		let body = bubble.bodySize(for: text)
+		return SpeechBubbleLayout.place(
 			petFrame: petFrame,
-			bubbleWidth: size.width,
-			bubbleHeight: size.height,
+			contentWidth: body.width,
+			contentHeight: body.height,
+			tailHeight: bubble.tailHeight,
 			workArea: workArea
 		)
 	}

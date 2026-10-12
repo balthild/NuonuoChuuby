@@ -25,7 +25,8 @@ public final class SpeechBubblePanel: NSPanel {
 	override public var canBecomeMain: Bool { false }
 }
 
-/// Draws a rounded caption with a small tail pointing down at the pet.
+/// Draws a rounded caption with a small tail pointing at the pet: the tail
+/// hangs off whichever edge the layout chose.
 final class SpeechBubbleView: NSView {
 	var text: String = "" {
 		didSet {
@@ -34,9 +35,18 @@ final class SpeechBubbleView: NSView {
 		}
 	}
 
+	var tail: SpeechBubbleTail = .down {
+		didSet {
+			guard tail != oldValue else { return }
+			needsDisplay = true
+			invalidateIntrinsicContentSize()
+		}
+	}
+
 	private let horizontalPadding: CGFloat = 12
 	private let verticalPadding: CGFloat = 7
-	private let tailHeight: CGFloat = 7
+	let tailHeight: CGFloat = 7
+	private let halfTailWidth: CGFloat = 5
 	private let maximumTextWidth: CGFloat = 240
 
 	override var isFlipped: Bool { true }
@@ -48,7 +58,7 @@ final class SpeechBubbleView: NSView {
 		]
 	}
 
-	private var textSize: NSSize {
+	private func measuredTextSize(_ text: String) -> NSSize {
 		let constraint = NSSize(width: maximumTextWidth, height: .greatestFiniteMagnitude)
 		let bounding = (text as NSString).boundingRect(
 			with: constraint,
@@ -58,31 +68,95 @@ final class SpeechBubbleView: NSView {
 		return NSSize(width: ceil(bounding.width), height: ceil(bounding.height))
 	}
 
-	var preferredSize: NSSize {
-		let size = textSize
+	/// The bubble body for `text`, tail excluded — what the layout sizes against,
+	/// since which way the tail points is decided after the fit is known.
+	func bodySize(for text: String) -> NSSize {
+		let size = measuredTextSize(text)
 		return NSSize(
 			width: size.width + horizontalPadding * 2,
-			height: size.height + verticalPadding * 2 + tailHeight
+			height: size.height + verticalPadding * 2
 		)
 	}
 
+	/// The whole bubble, tail included, in its current orientation.
+	var preferredSize: NSSize {
+		let body = bodySize(for: text)
+		switch tail {
+		case .down:
+			return NSSize(width: body.width, height: body.height + tailHeight)
+		case .left, .right:
+			return NSSize(width: body.width + tailHeight, height: body.height)
+		}
+	}
+
+	/// The rounded body, inset from the tail's edge.
+	private var bodyRect: NSRect {
+		switch tail {
+		case .down:
+			NSRect(x: 0, y: 0, width: bounds.width, height: max(0, bounds.height - tailHeight))
+		case .left:
+			NSRect(
+				x: tailHeight,
+				y: 0,
+				width: max(0, bounds.width - tailHeight),
+				height: bounds.height
+			)
+		case .right:
+			NSRect(
+				x: 0,
+				y: 0,
+				width: max(0, bounds.width - tailHeight),
+				height: bounds.height
+			)
+		}
+	}
+
+	/// The tail triangle, its base pulled just inside the body so the two shapes
+	/// overlap and their union has no sliver along the joint.
+	private func tailTriangle(in body: NSRect) -> CGPath {
+		let overlap: CGFloat = 1
+		let points: [NSPoint]
+		switch tail {
+		case .down:
+			points = [
+				NSPoint(x: body.midX - halfTailWidth, y: body.maxY - overlap),
+				NSPoint(x: body.midX + halfTailWidth, y: body.maxY - overlap),
+				NSPoint(x: body.midX, y: bounds.height),
+			]
+		case .left:
+			points = [
+				NSPoint(x: body.minX + overlap, y: body.midY - halfTailWidth),
+				NSPoint(x: body.minX + overlap, y: body.midY + halfTailWidth),
+				NSPoint(x: 0, y: body.midY),
+			]
+		case .right:
+			points = [
+				NSPoint(x: body.maxX - overlap, y: body.midY - halfTailWidth),
+				NSPoint(x: body.maxX - overlap, y: body.midY + halfTailWidth),
+				NSPoint(x: bounds.width, y: body.midY),
+			]
+		}
+
+		let path = CGMutablePath()
+		path.move(to: points[0])
+		path.addLine(to: points[1])
+		path.addLine(to: points[2])
+		path.closeSubpath()
+		return path
+	}
+
 	override func draw(_ dirtyRect: NSRect) {
-		let bubbleRect = NSRect(
-			x: 0,
-			y: 0,
-			width: bounds.width,
-			height: max(0, bounds.height - tailHeight)
+		let bubbleRect = bodyRect
+
+		// Stroking the body and the tail separately would outline their shared
+		// edge too, drawing a line across the tail's base; union them first.
+		let body = CGPath(
+			roundedRect: bubbleRect,
+			cornerWidth: 9,
+			cornerHeight: 9,
+			transform: nil
 		)
-
-		let path = NSBezierPath(roundedRect: bubbleRect, xRadius: 9, yRadius: 9)
-
-		let tailX = bubbleRect.midX
-		let tail = NSBezierPath()
-		tail.move(to: NSPoint(x: tailX - 5, y: bubbleRect.maxY))
-		tail.line(to: NSPoint(x: tailX + 5, y: bubbleRect.maxY))
-		tail.line(to: NSPoint(x: tailX, y: bounds.height))
-		tail.close()
-		path.append(tail)
+		let path = NSBezierPath(cgPath: body.union(tailTriangle(in: bubbleRect)))
 
 		NSColor.windowBackgroundColor.withAlphaComponent(0.92).setFill()
 		path.fill()
@@ -91,10 +165,10 @@ final class SpeechBubbleView: NSView {
 		path.stroke()
 
 		let inset = NSRect(
-			x: horizontalPadding,
-			y: verticalPadding,
-			width: bubbleRect.width - horizontalPadding * 2,
-			height: bubbleRect.height - verticalPadding * 2
+			x: bubbleRect.minX + horizontalPadding,
+			y: bubbleRect.minY + verticalPadding,
+			width: max(0, bubbleRect.width - horizontalPadding * 2),
+			height: max(0, bubbleRect.height - verticalPadding * 2)
 		)
 		(text as NSString).draw(
 			with: inset,
@@ -116,29 +190,27 @@ public final class SpeechBubbleWindowController {
 
 	public var isVisible: Bool { panel.isVisible }
 
-	public var bubbleSize: (width: Double, height: Double) {
-		(width: Double(currentSize.width), height: Double(currentSize.height))
+	public var currentText: String { view.text }
+
+	/// The body size the bubble needs for `text`, so the layout can pick a spot
+	/// before the bubble exists.
+	public func bodySize(for text: String) -> (width: Double, height: Double) {
+		let size = view.bodySize(for: text)
+		return (Double(size.width), Double(size.height))
 	}
 
-	private var currentSize: NSSize = .zero
+	public var tailHeight: Double { Double(view.tailHeight) }
 
-	/// Shows the bubble with its top-left at `topLeft` (global top-left
-	/// coordinates) and hides it after `duration`.
+	/// Shows the bubble at `placement` (global top-left coordinates) and hides it
+	/// after `duration`.
 	public func show(
 		_ text: String,
-		topLeft: PixelPoint,
+		placement: SpeechBubblePlacement,
 		displaySpace: DisplaySpace,
 		duration: Double = 3.2
 	) {
 		guard !text.isEmpty else { return }
-		view.text = text
-		let size = view.preferredSize
-		currentSize = size
-		panel.setContentSize(size)
-		view.frame = NSRect(origin: .zero, size: size)
-		view.needsDisplay = true
-
-		applyFrame(topLeft: topLeft, displaySpace: displaySpace)
+		apply(text: text, placement: placement, displaySpace: displaySpace)
 		panel.alphaValue = 1
 		panel.orderFrontRegardless()
 
@@ -148,18 +220,25 @@ public final class SpeechBubbleWindowController {
 		DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: work)
 	}
 
-	public func reposition(to topLeft: PixelPoint, displaySpace: DisplaySpace) {
+	public func reposition(to placement: SpeechBubblePlacement, displaySpace: DisplaySpace) {
 		guard panel.isVisible else { return }
-		applyFrame(topLeft: topLeft, displaySpace: displaySpace)
+		apply(text: view.text, placement: placement, displaySpace: displaySpace)
 	}
 
-	private func applyFrame(topLeft: PixelPoint, displaySpace: DisplaySpace) {
+	private func apply(text: String, placement: SpeechBubblePlacement, displaySpace: DisplaySpace) {
+		view.text = text
+		view.tail = placement.tail
+		let size = view.preferredSize
+		panel.setContentSize(size)
+		view.frame = NSRect(origin: .zero, size: size)
+		view.needsDisplay = true
+
 		let frame = DisplaySpace.toAppKit(
 			PixelRect(
-				x: topLeft.x,
-				y: topLeft.y,
-				width: Double(currentSize.width),
-				height: Double(currentSize.height)
+				x: placement.topLeft.x,
+				y: placement.topLeft.y,
+				width: Double(size.width),
+				height: Double(size.height)
 			),
 			primaryHeight: displaySpace.primaryHeight
 		)
