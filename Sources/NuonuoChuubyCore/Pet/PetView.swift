@@ -32,17 +32,20 @@ public final class PetView: NSView {
 	override public func draw(_ dirtyRect: NSRect) {
 		guard let image, let context = NSGraphicsContext.current?.cgContext else { return }
 		context.interpolationQuality = .high
+		// The view is flipped so its coordinates match the simulation's (top-left
+		// origin, Y down), but `CGContext.draw(_:in:)` assumes a bottom-left
+		// origin and would render the frame upside down. `NSImage.draw(in:)` would
+		// compensate for the flip by itself; the CGImage call does not, so the
+		// counter-flip has to be explicit.
+		context.saveGState()
+		context.translateBy(x: 0, y: bounds.height)
+		context.scaleBy(x: 1, y: -1)
 		if facing < 0 {
-			// The flip happens inside the view's own (flipped) space, so a Y-down
-			// translate mirrors correctly without also inverting the image.
-			context.saveGState()
 			context.translateBy(x: bounds.width, y: 0)
 			context.scaleBy(x: -1, y: 1)
-			context.draw(image, in: CGRect(origin: .zero, size: bounds.size))
-			context.restoreGState()
-		} else {
-			context.draw(image, in: bounds)
 		}
+		context.draw(image, in: CGRect(origin: .zero, size: bounds.size))
+		context.restoreGState()
 	}
 
 	override public func hitTest(_ point: NSPoint) -> NSView? {
