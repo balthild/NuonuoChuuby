@@ -15,6 +15,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 	private var voice: VoicePlaybackService?
 	private var statusItem: StatusItemController?
 	private var mouseMonitor: MouseMonitor?
+	private var desktopIcons: DesktopIconIndex?
 	private var deletionWatcher: FileDeletionWatcher?
 	private var ghostIcons: [Int: GhostIconWindow] = [:]
 	private var assetSetup: AssetSetupWindowController?
@@ -126,6 +127,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		}
 		self.petWindow = petWindow
 
+		// Real desktop icon positions, when Accessibility allows it. Soft: without
+		// the grant (or with Finder not running) the pet falls back to the
+		// Finder-default layout approximation. The index has to be kept warm
+		// because a deleted icon's element is gone by the time it is deleted.
+		let desktopIcons = DesktopIconIndex()
+		DesktopIconIndex.requestTrustIfNeeded(prompt: true)
+		desktopIcons.start()
+		self.desktopIcons = desktopIcons
+		controller.desktopIcons = desktopIcons
+
 		statusItem = makeStatusItem(character: character)
 
 		// The pet eats files the user deletes from a watched folder. The monitor
@@ -186,6 +197,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 	public func applicationWillTerminate(_ notification: Notification) {
 		controller?.persistLifeState()
 		controller?.stop()
+		desktopIcons?.stop()
 		deletionWatcher?.stop()
 		mouseMonitor?.stop()
 	}
@@ -193,10 +205,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 	// MARK: - PetMealDelegate
 
 	public func petController(_ controller: PetController, didBeginMeal item: DeletedItem) {
+		// The real icon position is better than the click/cursor guess when it is
+		// known, so the ghost appears where the icon actually was.
+		let anchor = desktopIcons?.position(of: item.displayName) ?? item.anchor
 		let ghost = GhostIconWindow()
 		ghost.show(
 			icon: ShellIconProvider.icon(forPath: item.originalPath),
-			at: item.anchor,
+			at: anchor,
 			size: controller.petSize * 0.34,
 			displaySpace: displaySpace ?? DisplaySpace())
 		ghostIcons[item.id] = ghost

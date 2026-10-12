@@ -554,6 +554,20 @@ d=3 role=AXImage desc=sing-box       pos=(1513,32)  size=(56,56)
 
 **建议**：做，**单独交付**，不进 Phase。
 
+> **已实施（2026-10-12，用户确认后独立提交）**
+> - `Meal/DesktopIconIndex.swift`：可注入的 `Reader`（测试用假数据，无 AX）、
+>   `icons: [String: DesktopIcon]`、`positions`、`start(interval: 2)`、`stop()`。
+> - 读取路径**不匹配语言**：不再去找 description 为「桌面」的元素，而是
+>   **广度优先找最浅一层「有 AXImage 子节点」的元素**，再读它的 AXImage 子节点。
+>   理由：写死中文「桌面」在别的系统语言下会失效。
+> - 位置取图标 **中心**（AX `position` + `size`/2），直接就是 `DisplaySpace` 的
+>   左上原点、Y 向下坐标，无需换算。
+> - `PetController.tryBeginIconLick` 优先用索引坐标，索引为空时退回 `DesktopIconGrid`；
+>   `AppDelegate` 的幽灵图标锚点也优先用 `index.position(of: item.displayName)`。
+> - 授权：启动时 `requestTrustIfNeeded(prompt: true)` 请求一次；未授权则索引为空、全程降级。
+> - ⚠️ **仍未验证**：负坐标（第二显示器在左侧）与多显示器情形 —— 实验环境没有这样的布局。
+> - 测试：`DesktopIconIndexTests` 4 个（注入 reader，不需要辅助功能）。总数 165 → 169。
+
 ---
 
 ## 7. 文档修正（已决定，待落盘）

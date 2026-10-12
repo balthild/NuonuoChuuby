@@ -52,6 +52,9 @@ public final class PetController: SpriteAnimatorDelegate {
 	public weak var mealDelegate: PetMealDelegate?
 	/// Optional speech; when absent the pet stays silent.
 	public weak var speech: PetSpeechCoordinator?
+	/// Real desktop icon positions, when Accessibility allows it. Falls back to
+	/// ``DesktopIconGrid``'s approximation when absent or empty.
+	public var desktopIcons: DesktopIconIndex?
 
 	public private(set) var state: PetState = .idle {
 		didSet {
@@ -448,7 +451,10 @@ public final class PetController: SpriteAnimatorDelegate {
 
 		let display = displaySpace.display(containing: foot) ?? displaySpace.displays.first
 		guard let workArea = display?.visibleFrame else { return false }
-		let candidates = DesktopIconGrid.positions(count: 12, in: workArea)
+		// The real Finder positions when Accessibility allows them; otherwise the
+		// Finder-default layout approximation, which is not where the icons are.
+		let realIcons = desktopIcons?.positions ?? []
+		let candidates = realIcons.isEmpty ? DesktopIconGrid.positions(count: 12, in: workArea) : realIcons
 		guard
 			let target = IconLickTargetSelector.choose(
 				candidates: candidates, origin: lickPoint, randomUnit: Double.random(in: 0..<1))
