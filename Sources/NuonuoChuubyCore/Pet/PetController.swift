@@ -90,6 +90,8 @@ public final class PetController: SpriteAnimatorDelegate {
 	private let displayScale: Double = 1
 	private var timer: Timer?
 	private var lastTick: CFAbsoluteTime = 0
+	private var lastNotifiedFoot: PixelPoint?
+	private var lastNotifiedSize: Double?
 
 	public init(
 		catalog: AssetCatalog,
@@ -154,7 +156,6 @@ public final class PetController: SpriteAnimatorDelegate {
 		let simulation = timing.simulationSeconds
 		guard simulation > 0 else { return }
 
-		let startingFoot = foot
 		life.advance(elapsedSeconds: simulation, sleeping: state == .sleeping)
 		stateElapsed += simulation
 
@@ -173,12 +174,17 @@ public final class PetController: SpriteAnimatorDelegate {
 		}
 
 		animator.tick(timing.animationSeconds)
+		notifyPlacementIfChanged()
+	}
 
-		// The simulation owns the foot position; the panel only follows. Notifying
-		// solely on change avoids moving the window 60 times a second while idle.
-		if foot != startingFoot {
-			delegate?.petControllerDidChangePlacement(self)
-		}
+	/// The panel follows the simulation, so every place that moves the foot or
+	/// changes the size must go through here — a drag updates the foot *between*
+	/// ticks, where a change made during `step()` would never be noticed.
+	private func notifyPlacementIfChanged() {
+		guard lastNotifiedFoot != foot || lastNotifiedSize != petSize else { return }
+		lastNotifiedFoot = foot
+		lastNotifiedSize = petSize
+		delegate?.petControllerDidChangePlacement(self)
 	}
 
 	// MARK: - Idle & autonomy
@@ -432,10 +438,14 @@ public final class PetController: SpriteAnimatorDelegate {
 		announce(.pickedUp, voice: .question, priority: .normal)
 	}
 
+	/// Exposed for tests: the offset between the foot and the grab point.
+	var dragOffsetForTesting: PixelPoint { dragOffset }
+
 	public func updateDrag(to cursor: PixelPoint) {
 		guard isDragging else { return }
 		foot = PixelPoint(x: cursor.x + dragOffset.x, y: cursor.y + dragOffset.y)
 		dragTracker.add(point: cursor, atSeconds: CFAbsoluteTimeGetCurrent())
+		notifyPlacementIfChanged()
 	}
 
 	public func endDrag(at cursor: PixelPoint) {
@@ -469,6 +479,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		remainderX = 0
 		remainderY = 0
 		returnToIdle()
+		notifyPlacementIfChanged()
 		announce(.home, voice: .affirmative, priority: .normal)
 	}
 
@@ -483,7 +494,7 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	public func setSize(_ size: Double) {
 		petSize = PetSizePolicy.clampPreferredSize(size)
-		delegate?.petControllerDidChangePlacement(self)
+		notifyPlacementIfChanged()
 	}
 
 	/// Rebuilds the coordinate space after a display change and re-clamps the pet
@@ -495,7 +506,7 @@ public final class PetController: SpriteAnimatorDelegate {
 			if clampedX != foot.x { foot.x = clampedX }
 			if foot.y > display.visibleFrame.bottom { foot.y = display.visibleFrame.bottom }
 		}
-		delegate?.petControllerDidChangePlacement(self)
+		notifyPlacementIfChanged()
 	}
 
 	public func persistLifeState() {
