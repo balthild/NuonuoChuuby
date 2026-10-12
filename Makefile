@@ -61,7 +61,7 @@ PLIST_BUDDY := /usr/libexec/PlistBuddy
 
 .DEFAULT_GOAL := help
 
-.PHONY: help format assets manifest build test app sign signing-cert package run rerun dev reset-data clean
+.PHONY: help format assets manifest strip-assets icon build test app sign signing-cert package run rerun dev reset-data clean release
 
 help: ## Show this help.
 	@printf '%s\n' "$(DISPLAY_NAME) $(VERSION) — available targets:"
@@ -70,8 +70,17 @@ help: ## Show this help.
 assets: ## Seed runtime assets from the upstream submodule.
 	Tools/seed-assets.sh "$(UPSTREAM_SUBMODULE)" "$(ASSETS_DIR)"
 
+strip-assets: ## Remove the seed, so a release fetches artwork from upstream.
+	@rm -rf "$(ASSETS_DIR)/sprites" "$(ASSETS_DIR)/audio"
+	@printf '%s\n' "Stripped seeded assets; the app will download them on first launch."
+
 manifest: assets ## Pin the upstream commit and list the assets a release fetches.
 	Tools/generate-asset-manifest.sh "$(UPSTREAM_SUBMODULE)" "$(ASSETS_DIR)" "$(ASSET_MANIFEST)"
+
+icon: ## Generate AppIcon.icns, drawing the artwork from source.
+	@mkdir -p "$(BUILD_DIR)"
+	$(SWIFT) Tools/GenerateAppIcon.swift "$(ICONSET_DIR)"
+	iconutil --convert icns --output "$(ICNS)" "$(ICONSET_DIR)"
 
 build: ## Build the executable and its resource bundle.
 	$(SWIFT) build -c $(CONFIG)
@@ -79,7 +88,7 @@ build: ## Build the executable and its resource bundle.
 test: ## Run the test suite.
 	$(SWIFT) test -c $(CONFIG)
 
-app: build ## Assemble $(APP_NAME).app.
+app: build icon ## Assemble the .app bundle.
 	@rm -rf "$(APP_BUNDLE)"
 	@mkdir -p "$(APP_BUNDLE)/Contents/MacOS" "$(APP_BUNDLE)/Contents/Resources"
 	@cp "$(BIN_DIR)/$(APP_NAME)" "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)"
@@ -125,3 +134,10 @@ reset-data: ## Forget the app's preferences and pet state.
 clean: ## Remove all build products.
 	rm -rf "$(BUILD_DIR)"
 	@find "$(ASSETS_DIR)" -mindepth 1 ! -name '.gitkeep' -exec rm -rf {} + 2>/dev/null || true
+
+release: ## Clean release build: tested, then packaged WITHOUT the seeded assets.
+	$(MAKE) clean
+	$(MAKE) assets
+	$(MAKE) CONFIG=release test
+	$(MAKE) CONFIG=release strip-assets
+	$(MAKE) CONFIG=release package

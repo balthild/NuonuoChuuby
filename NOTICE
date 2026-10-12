@@ -1,0 +1,50 @@
+NuonuoChuuby
+============
+
+A macOS rewrite of JiuNuoDesktopPet（啾糯桌宠）, originally a C#/WPF Windows
+desktop pet.
+
+
+Relationship to the upstream project
+------------------------------------
+
+This project is a **derivative work**: its behaviour, constants and asset layout
+are ported from the upstream application, and it consumes the upstream
+repository's assets.
+
+  Upstream:  https://github.com/nicedoctors/JiuNuoDesktopPet
+  Licence:   PolyForm Noncommercial License 1.0.0 (see LICENSE)
+  Pinned:    Vendor/JiuNuoDesktopPet (git submodule)
+
+The upstream licence permits non-commercial use, modification and
+redistribution, and prohibits commercial use. It is not an OSI-approved open
+source licence. **This project is therefore also non-commercial.**
+
+
+Character artwork and recordings
+--------------------------------
+
+The upstream project's `ASSET_RIGHTS.md` states that no separate permission to
+copy, modify or redistribute the character images, designs or audio has been
+granted, and that the characters derive from third-party works whose rights
+holders have not licensed this use.
+
+In deference to that:
+
+  * **This repository contains no asset bytes.** `.gitignore` excludes
+    `Sources/NuonuoChuubyCore/Resources/Assets/`.
+  * The committed `asset-manifest.json` lists only *paths* and a pinned commit id.
+  * A development build copies assets from the submodule locally.
+  * A release build downloads them from the upstream repository on first launch.
+
+Redistribution of the artwork is therefore not performed by this project; the
+underlying rights status is unchanged and remains unresolved. Anyone shipping a
+build carries that same status.
+
+
+Third-party code
+----------------
+
+No third-party Swift packages are used. The package has no external
+dependencies; everything is built on Apple's frameworks (AppKit, CoreGraphics,
+CoreServices, AVFoundation) plus the Swift standard library.
