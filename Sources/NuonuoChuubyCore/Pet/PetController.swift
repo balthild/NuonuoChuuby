@@ -698,11 +698,10 @@ public final class PetController: SpriteAnimatorDelegate {
 			return
 		}
 
-		// A missing, unreachable, or now-hidden surface is a lost perch. The grace
+		// A missing, unreachable, or now-covered spot is a lost perch. The grace
 		// covers a window that briefly vanishes from the window server's list.
-		guard let surface = currentSurface(for: perch),
-			surface.isReachable,
-			surface.isVisible(at: perch.position(in: surface))
+		guard let surface = currentSurface(for: perch), surface.isReachable,
+			isPerchSpotVisible(perch)
 		else {
 			handlePerchLost(delta: delta)
 			return
@@ -775,6 +774,9 @@ public final class PetController: SpriteAnimatorDelegate {
 		case .windowTop:
 			// The live read gives the drag its precision; the graph is the authority
 			// on whether the surface still exists at all.
+			if let debugLiveWindowSurfaceOverride {
+				return debugLiveWindowSurfaceOverride(perch.key.owner)
+			}
 			if let live = WindowSurfaceProvider.liveWindowSurface(
 				windowID: perch.key.owner, monitors: displaySpace.displays)
 			{
@@ -784,6 +786,21 @@ public final class PetController: SpriteAnimatorDelegate {
 		default:
 			return surfaceProvider.surfaces.first { $0.key == perch.key }
 		}
+	}
+
+	/// Whether the spot she is anchored to is not covered by another window.
+	///
+	/// Asked of the **graph**, never of the live read: the live read only reports the
+	/// window's rectangle, so it would call every spot visible and she would happily
+	/// keep standing on an edge another window had just covered.
+	private func isPerchSpotVisible(_ perch: Perch) -> Bool {
+		guard let graphSurface = surfaceProvider.surfaces.first(where: { $0.key == perch.key })
+		else {
+			// Not in the graph yet (a window that just appeared). Nothing says it is
+			// covered, so let her stand until the next rebuild decides.
+			return true
+		}
+		return graphSurface.isVisible(at: perch.position(in: graphSurface))
 	}
 
 	/// Picks up a perch for wherever her feet are, or starts a fall.
@@ -1314,6 +1331,13 @@ public final class PetController: SpriteAnimatorDelegate {
 	func debugBeginHop() {
 		beginHop()
 	}
+
+	/// Stands in for the per-frame live window read.
+	///
+	/// A test cannot make the window server describe a window, so this models the
+	/// case that matters: the live read succeeds and reports the whole edge, while
+	/// the graph already knows another window covers her spot.
+	var debugLiveWindowSurfaceOverride: ((UInt32) -> Surface?)?
 
 	/// Lands on a surface, as a completed fall would.
 	func debugLand(on surface: Surface) {

@@ -185,6 +185,47 @@ struct PlatformRideIntegrationTests {
 		#expect(rig.controller.debugState.state == .falling)
 	}
 
+	@Test("A window edge covered under her releases the perch")
+	func coveredSpotReleases() throws {
+		let rig = try makeRig(windowTop: 800)
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		// She is anchored at the centre of the edge, x = 800. Another window is now
+		// brought to the front over the middle of it, so the graph reports only the
+		// two ends as visible.
+		let covered = Surface(
+			key: SurfaceKey(owner: Self.windowID, kind: .windowTop),
+			span: Span(start: 200, end: 1400),
+			visible: [Span(start: 200, end: 500), Span(start: 1100, end: 1400)],
+			offset: 800,
+			ownerBounds: PixelRect(x: 200, y: 800, width: 1200, height: 400),
+			isReachable: true)
+		rig.provider.setSurfaces([covered, rig.floor])
+
+		// The window server still describes the window, so the live read succeeds
+		// and reports the whole edge. Only the graph knows her spot is covered — a
+		// visibility check made against the live surface would pass and she would
+		// stay put on an edge another window is covering.
+		rig.controller.debugLiveWindowSurfaceOverride = { _ in
+			Surface(
+				key: SurfaceKey(owner: Self.windowID, kind: .windowTop),
+				span: Span(start: 200, end: 1400), visible: [Span(start: 200, end: 1400)],
+				offset: 800,
+				ownerBounds: PixelRect(x: 200, y: 800, width: 1200, height: 400),
+				isReachable: true)
+		}
+
+		// Held through the grace, then dropped — she cannot stand on a covered edge.
+		rig.controller.debugMaintainGroundSupport(delta: Self.frame)
+		#expect(rig.controller.debugState.state != .falling)
+
+		for _ in 0..<30 {
+			rig.controller.debugMaintainGroundSupport(delta: Self.frame)
+		}
+		#expect(rig.controller.debugState.state == .falling)
+		#expect(rig.controller.debugState.perchKey == nil)
+	}
+
 	@Test("A window she stands on becoming unreachable drops her")
 	func unreachableDrops() throws {
 		let rig = try makeRig(windowTop: 800)
