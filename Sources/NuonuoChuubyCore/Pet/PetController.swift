@@ -108,6 +108,21 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var baseFrame: CGImage?
 	/// Where the pinch started, in view points, so the drag is measured from it.
 	private var pinchOrigin: CGPoint = .zero
+
+	// Support motion: a window under her can move, and she responds to it.
+	/// The window she is standing on, absent for a desktop floor.
+	private var supportSourceID: UInt32?
+	/// The surface she is currently standing on, refreshed every frame.
+	private var standSurface: SupportSurface?
+	private var lastSupportTop: Double = 0
+	private var supportMotionInitialized = false
+	/// How long her support has been missing, for the recovery grace.
+	private var supportUnavailableSeconds: Double = 0
+	/// Set while the grace is being held, so it is logged once not per frame.
+	private var isInSupportGrace = false
+	// The window she was launched from, so a rising edge can catch her again.
+	private var airborneSourceID: UInt32?
+	private var lastAirbornePlatformTop: Double = 0
 	private var pendingClimb: WindowClimbPlan?
 	private var activeClimb: WindowClimbPlan?
 	private var climbProgress: Double = 0
@@ -198,6 +213,10 @@ public final class PetController: SpriteAnimatorDelegate {
 		// Other apps move their windows underneath her, so the terrain map is
 		// re-read on an interval rather than only at startup.
 		surfaceProvider.refreshIfStale(displaySpace: displaySpace, delta: simulation)
+		// Standing, sleeping or walking, she rides the window under her. This runs
+		// for every grounded state, because a dragged window moves her whether or
+		// not she happens to be walking.
+		maintainGroundSupport(simulation)
 
 		switch state {
 		case .idle: updateIdle(simulation)
@@ -257,6 +276,13 @@ public final class PetController: SpriteAnimatorDelegate {
 			randomUnit: Double.random(in: 0..<1),
 			profile: profile
 		)
+		DiagnosticsLog.shared.writeEvent("AutonomousDecision", [
+			("Action", action.rawValue),
+			("Support", "\(hasSupport)"),
+			("Sleepiness", String(format: "%.0f", life.sleepiness)),
+			("Curiosity", String(format: "%.0f", life.curiosity)),
+			("Hunger", String(format: "%.0f", life.hunger)),
+		])
 
 		switch action {
 		case .sleep:
@@ -560,17 +586,13 @@ public final class PetController: SpriteAnimatorDelegate {
 			return
 		}
 
-		guard let surface = surfaceProvider.support(footX: foot.x, footY: foot.y) else {
+		guard let surface = standSurface else {
 			beginFall()
 			return
 		}
 
-		// Step up or down a small ledge to stay on the surface.
-		let verticalGap = surface.top - foot.y
-		if abs(verticalGap) >= 1 {
-			foot.y += verticalGap
-		}
-
+		// Her feet are already on the ledge: the ride snaps her to it every frame,
+		// so nothing further is needed here for vertical movement.
 		targetX = min(max(targetX, surface.left + 20), surface.right - 20)
 		let deltaX = targetX - foot.x
 		if abs(deltaX) <= Motion.arrivalTolerance || stateElapsed > Motion.movementTimeout {
@@ -591,6 +613,217 @@ public final class PetController: SpriteAnimatorDelegate {
 		}
 		foot.x += Double(movementX)
 		facing = deltaX < 0 ? -1 : 1
+	}
+
+	/// States in which the pet is on the ground and should therefore ride whatever
+	/// she is standing on.
+	///
+	/// Excluded on purpose: airborne and user-carried states; the scripted climb;
+	/// the free-standing walks to a meal or an icon, which leave the surface
+	/// behind and would otherwise be mistaken for a lost support; and the eating
+	/// poses, which happen wherever the food was.
+	private var ridesSupport: Bool {
+		if movementPurpose == .meal || movementPurpose == .iconLick { return false }
+		switch state {
+		case .falling, .climbing, .dragging, .pinching,
+			.chomping, .licking, .satisfied, .rolling, .waking:
+			return false
+		default:
+			return true
+		}
+	}
+
+	/// Keeps her attached to her support: follows it, is thrown by it, or falls
+	/// when it goes away.
+	private func maintainGroundSupport(_ delta: Double) {
+		guard ridesSupport else { return }
+
+		guard let surface = resolveStandingSurface() else {
+			// `standSurface` is deliberately left alone while the grace holds, so
+			// a window that briefly vanishes from the window server's list does
+			// not drop her mid-drag.
+			handleSupportLost(delta: delta)
+			return
+		}
+		adoptSurfaceIfChanged(surface)
+		supportUnavailableSeconds = 0
+		isInSupportGrace = false
+		standSurface = surface
+		_ = respondToSupportMotion(surface: surface, delta: delta)
+	}
+
+	private enum SupportMotionOutcome {
+		case keepStanding
+		/// The pet has left the ground; the caller must stop touching `foot.y`.
+		case stopped
+	}
+
+	/// The surface under her.
+	///
+	/// While she is standing on a window it is resolved **by identity**, never by
+	/// proximity: a dragged window's top leaves her feet behind within a frame,
+	/// and a proximity lookup would read that as losing her support instead of
+	/// riding it. The live read comes first because the periodic map lags by up
+	/// to half a second, which would make a dragged window feel jerky.
+	private func resolveStandingSurface() -> SupportSurface? {
+		guard let supportSourceID else {
+			// Not tracking a window: she is on a floor, or finding her footing.
+			return surfaceProvider.support(footX: foot.x, footY: foot.y)
+		}
+
+		if let live = WindowSurfaceProvider.liveSurface(
+			windowID: supportSourceID, displaySpace: displaySpace, footX: foot.x)
+		{
+			return live
+		}
+		// The window server had nothing to say about it this frame; the map's
+		// entry for the same window is still better than a proximity guess.
+		return surfaceProvider.surfaces.first { $0.sourceID == supportSourceID }
+	}
+
+	private func adoptSurfaceIfChanged(_ surface: SupportSurface?) {
+		guard let surface, let sourceID = surface.sourceID, sourceID != supportSourceID else { return }
+		// She has moved onto a different window; track it from here.
+		beginTrackingSupport(surface)
+	}
+
+	/// Applies the window's motion to the pet. Returns whether she is still
+	/// standing afterwards.
+	private func respondToSupportMotion(
+		surface: SupportSurface, delta: Double
+	) -> SupportMotionOutcome {
+		// A desktop floor never moves, but it is still where her feet belong.
+		guard let sourceID = surface.sourceID, !surface.isDesktopFloor else {
+			stopTrackingSupport()
+			followSurface(surface)
+			return .keepStanding
+		}
+
+		if !supportMotionInitialized || supportSourceID != sourceID {
+			beginTrackingSupport(surface)
+			followSurface(surface)
+			return .keepStanding
+		}
+
+		let displacementY = surface.top - lastSupportTop
+		let rawVelocityY = displacementY / max(delta, 1.0 / 240)
+		lastSupportTop = surface.top
+		guard abs(displacementY) >= 0.5 else {
+			followSurface(surface)
+			return .keepStanding
+		}
+
+		let decision = PlatformRidePhysics.evaluate(
+			displacementY: displacementY, velocityY: rawVelocityY, displayScale: displayScale)
+		// Only logged when the platform actually moved, so this cannot spam.
+		DiagnosticsLog.shared.writeEvent("PlatformRide", [
+			("Response", "\(decision.response)"),
+			("DisplacementY", String(format: "%.1f", displacementY)),
+			("VelocityY", String(format: "%.0f", rawVelocityY)),
+			("Top", String(format: "%.1f", surface.top)),
+			("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
+		])
+
+		switch decision.response {
+		case .launchUpward:
+			followSurface(surface)
+			DiagnosticsLog.shared.writeEvent("PlatformLaunch", [
+				("PetVelocityY", String(format: "%.0f", decision.initialPetVelocityY))
+			])
+			announce(.platformLaunch, voice: .scream, priority: .critical)
+			beginFall(reason: "PlatformLaunch", initialVelocityY: decision.initialPetVelocityY)
+			return .stopped
+
+		case .releaseDownward:
+			DiagnosticsLog.shared.writeEvent("PlatformDownwardRelease", [
+				("DisplacementY", String(format: "%.1f", displacementY))
+			])
+			// No initial velocity: she is left behind, not thrown, so she lands
+			// back on the ledge as it comes up to meet her.
+			beginFall(reason: "PlatformDownwardRelease")
+			return .stopped
+
+		case .follow:
+			// The ledge carries her, whether she is walking, standing or asleep.
+			followSurface(surface)
+			return .keepStanding
+		}
+	}
+
+	/// Puts her feet on the ledge she is standing on. The tolerance stops a
+	/// sub-pixel wobble from turning into visible jitter.
+	private func followSurface(_ surface: SupportSurface) {
+		let gap = surface.top - foot.y
+		if abs(gap) >= 0.5 {
+			foot.y = surface.top
+		}
+	}
+
+	private func beginTrackingSupport(_ surface: SupportSurface) {
+		supportSourceID = surface.sourceID
+		lastSupportTop = surface.top
+		supportMotionInitialized = surface.sourceID != nil
+	}
+
+	private func stopTrackingSupport() {
+		supportSourceID = nil
+		supportMotionInitialized = false
+	}
+
+	/// Her support is gone. A window being dragged can vanish from the map for a
+	/// moment, so she is only dropped once the grace expires; a window that
+	/// maximised instead throws her clear.
+	private func handleSupportLost(delta: Double) {
+		supportUnavailableSeconds += delta
+
+		if supportSourceID != nil {
+			// A dragged window can briefly drop out of the window server's list.
+			// Holding her for a moment avoids a spurious fall mid-drag.
+			if PlatformRidePhysics.shouldPreserveTransientSupport(
+				unavailableSeconds: supportUnavailableSeconds)
+			{
+				// Logged once per grace period rather than every frame.
+				if !isInSupportGrace {
+					isInSupportGrace = true
+					DiagnosticsLog.shared.writeEvent("PlatformSupportGrace", [
+						("Footnote", "\(Int(foot.x)),\(Int(foot.y))"),
+						("Top", String(format: "%.1f", lastSupportTop)),
+					])
+				}
+				return
+			}
+
+			if let supportSourceID, maximizedWindow(id: supportSourceID),
+				let bounce = WindowExpansionPhysics.evaluate(
+					supportUnavailable: true,
+					windowMaximized: true,
+					footX: foot.x,
+					monitorCenterX: displaySpace.display(containing: foot)?.visibleFrame.centerX ?? foot.x,
+					displayScale: displayScale)
+			{
+				DiagnosticsLog.shared.writeEvent("WindowMaximizeBounce", [
+					("VelocityX", String(format: "%.0f", bounce.velocityX)),
+					("VelocityY", String(format: "%.0f", bounce.velocityY)),
+				])
+				announce(.windowMaximized, voice: .scream, priority: .critical)
+				beginFall(
+					reason: "WindowMaximized", initialVelocityY: bounce.velocityY,
+					initialVelocityX: bounce.velocityX)
+				return
+			}
+		}
+
+		stopTrackingSupport()
+		beginFall()
+	}
+
+	/// Whether a window now fills its display, the macOS reading of "maximised".
+	private func maximizedWindow(id: UInt32) -> Bool {
+		guard let bounds = WindowSurfaceProvider.liveBounds(of: id),
+			let display = displaySpace.display(containing: PixelPoint(x: foot.x, y: bounds.top))
+		else { return false }
+		let area = display.visibleFrame
+		return bounds.width >= area.width * 0.92 && bounds.height >= area.height * 0.92
 	}
 
 	private func finishGroundMove() {
@@ -650,12 +883,29 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	// MARK: - Falling
 
-	private func beginFall(reason: String = "support-lost") {
+	private func beginFall(
+		reason: String = "support-lost",
+		initialVelocityY: Double = 0,
+		initialVelocityX: Double = 0
+	) {
 		state = .falling
 		stateElapsed = 0
 		fallReason = reason
 		fallStartFootY = foot.y
-		animator.play("fall")
+		velocity = PixelPoint(x: initialVelocityX, y: initialVelocityY)
+		remainderX = 0
+		remainderY = 0
+		// Remember which window she left, so a rising edge can catch her again.
+		airborneSourceID = supportSourceID
+		if let airborneSourceID,
+			let top = WindowSurfaceProvider.liveBounds(of: airborneSourceID)?.top
+		{
+			lastAirbornePlatformTop = top
+		} else {
+			airborneSourceID = nil
+		}
+		stopTrackingSupport()
+		animator.play(initialVelocityY < 0 ? "toss" : "fall")
 	}
 
 	private func beginHop() {
@@ -669,12 +919,45 @@ public final class PetController: SpriteAnimatorDelegate {
 		announce(.terrainHop, voice: .positive, priority: .ambient)
 	}
 
+	/// A window edge that rises through her feet catches her mid-air.
+	private func applyAirbornePlatformContact(delta: Double) {
+		guard let airborneSourceID,
+			let top = WindowSurfaceProvider.liveBounds(of: airborneSourceID)?.top
+		else { return }
+
+		let contact = PlatformRidePhysics.resolveAirborneContact(
+			footY: foot.y,
+			petVelocityY: velocity.y,
+			previousPlatformTop: lastAirbornePlatformTop,
+			currentPlatformTop: top,
+			deltaSeconds: delta,
+			displayScale: displayScale)
+
+		lastAirbornePlatformTop = top
+		guard contact.pushesPet else { return }
+
+		DiagnosticsLog.shared.writeEvent("AirbornePlatformPush", [
+			("PlatformTop", String(format: "%.1f", top)),
+			("PlatformVelocityY", String(format: "%.0f", contact.platformVelocityY)),
+			("PetVelocityY", String(format: "%.0f", contact.petVelocityY)),
+		])
+		foot.y = contact.correctedFootY
+		velocity.y = contact.petVelocityY
+		remainderY = 0
+		animator.play("toss")
+		announce(.platformLaunch, voice: .scream, priority: .important)
+	}
+
 	private func updateFalling(_ delta: Double) {
 		let scale = displayScale
 		velocity.x *= exp(-Motion.horizontalAirDrag * delta)
 		velocity.y = min(
 			Motion.terminalVelocity * scale,
 			velocity.y + Motion.gravity * scale * delta)
+
+		// A window edge rising under her feet pushes her up again, rather than
+		// letting her fall straight through the window she just left.
+		applyAirbornePlatformContact(delta: delta)
 
 		// The toss sheet covers the rising half; the fall sheet the rest.
 		if velocity.y >= 0, animator.currentClip == "toss" {
@@ -993,6 +1276,36 @@ public final class PetController: SpriteAnimatorDelegate {
 		let rendered = CheekPinchRenderer.render(base: baseFrame, geometry: geometry, dynamics: cheek)
 		guard let rendered else { return }
 		delegate?.petController(self, didProduceFrame: rendered)
+	}
+
+	// MARK: - Test seams
+
+	/// A window server cannot be driven on demand in a test, so the ride logic is
+	/// exercised through these three entry points instead. They are internal: no
+	/// part of the app reads them.
+	struct DebugState {
+		var state: PetState
+		var velocityY: Double
+		var foot: PixelPoint
+		var fallReason: String
+	}
+
+	var debugState: DebugState {
+		DebugState(state: state, velocityY: velocity.y, foot: foot, fallReason: fallReason)
+	}
+
+	/// Places her on a known surface and begins tracking it.
+	func debugPlaceOnSurface(_ surface: SupportSurface) {
+		state = .idle
+		movementPurpose = .none
+		foot = PixelPoint(x: surface.centerX, y: surface.top)
+		standSurface = surface
+		beginTrackingSupport(surface)
+	}
+
+	/// Advances only the ground-support handling, as one frame would.
+	func debugMaintainGroundSupport(delta: Double) {
+		maintainGroundSupport(delta)
 	}
 
 	// MARK: - Dragging

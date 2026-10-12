@@ -18,6 +18,17 @@ public final class SurfaceProvider {
 
 	public init() {}
 
+	/// Test seam: builds a provider over a known surface map, without consulting
+	/// the window server.
+	init(surfaces: [SupportSurface]) {
+		self.surfaces = surfaces
+	}
+
+	/// Test seam: replaces the map, as ``refresh(displaySpace:)`` would.
+	func setSurfaces(_ surfaces: [SupportSurface]) {
+		self.surfaces = surfaces
+	}
+
 	public func refresh(displaySpace: DisplaySpace) {
 		let floors = displaySpace.displays.map { display in
 			SupportSurface(
