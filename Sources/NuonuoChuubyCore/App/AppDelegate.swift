@@ -111,6 +111,32 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 			name: NSApplication.didChangeScreenParametersNotification,
 			object: nil
 		)
+
+		// A scripted pinch, so the effect can be checked without a human drag.
+		if CommandLine.arguments.contains("--demo-pinch") {
+			runPinchDemo(on: controller)
+		}
+	}
+
+	/// Pulls the right cheek out, holds, then releases.
+	private func runPinchDemo(on controller: PetController) {
+		let geometry = controller.cheekGeometryInView
+		let start = CGPoint(x: geometry.rightX, y: geometry.cheekY)
+		controller.beginPinch(side: .right, at: start)
+
+		let steps = 60
+		for step in 1...steps {
+			let progress = Double(step) / Double(steps)
+			let point = CGPoint(
+				x: start.x + CGFloat(46 * progress),
+				y: start.y + CGFloat(6 * progress))
+			DispatchQueue.main.asyncAfter(deadline: .now() + progress * 1.2) { [weak controller] in
+				controller?.updatePinch(to: point)
+			}
+		}
+		DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { [weak controller] in
+			controller?.endPinch()
+		}
 	}
 
 	public func applicationWillTerminate(_ notification: Notification) {

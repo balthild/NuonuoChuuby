@@ -27,17 +27,31 @@ public final class PetWindowController: NSObject, PetControllerDelegate {
 		view.bodyEllipse = controller.bodyEllipseInView
 		panel.contentView = view
 
-		view.onMouseDown = { [weak self] _ in
+		view.onMouseDown = { [weak self] event in
 			guard let self else { return }
-			self.controller.beginDrag(at: self.globalCursor)
+			// A press on a cheek pulls it; anywhere else on the body is a drag.
+			let local = self.view.convert(event.locationInWindow, from: nil)
+			if let side = self.controller.cheekHitTest(viewPoint: local) {
+				self.controller.beginPinch(side: side, at: local)
+			} else {
+				self.controller.beginDrag(at: self.globalCursor)
+			}
 		}
-		view.onMouseDragged = { [weak self] _ in
+		view.onMouseDragged = { [weak self] event in
 			guard let self else { return }
-			self.controller.updateDrag(to: self.globalCursor)
+			if self.controller.isPinching {
+				self.controller.updatePinch(to: self.view.convert(event.locationInWindow, from: nil))
+			} else {
+				self.controller.updateDrag(to: self.globalCursor)
+			}
 		}
 		view.onMouseUp = { [weak self] _ in
 			guard let self else { return }
-			self.controller.endDrag(at: self.globalCursor)
+			if self.controller.isPinching {
+				self.controller.endPinch()
+			} else {
+				self.controller.endDrag(at: self.globalCursor)
+			}
 		}
 		view.onRightMouseDown = { [weak self] event in
 			guard let self, let menu = self.menuProvider?(event) else { return }
@@ -85,6 +99,7 @@ public final class PetWindowController: NSObject, PetControllerDelegate {
 
 	public func petController(_ controller: PetController, didProduceFrame image: CGImage) {
 		view.image = image
+		view.leanDegrees = controller.bodyLeanDegrees
 	}
 
 	public func petControllerDidChangePlacement(_ controller: PetController) {

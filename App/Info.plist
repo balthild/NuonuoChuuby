@@ -34,5 +34,9 @@
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>糯糯啾比添加自身到登录项时需要使用“系统事件”。</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>糯糯啾比需要看到你删除的桌面文件，才能把它“吃掉”。文件内容不会被读取。</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>糯糯啾比需要看到你删除的下载目录文件，才能把它“吃掉”。文件内容不会被读取。</string>
 </dict>
 </plist>

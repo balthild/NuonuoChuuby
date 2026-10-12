@@ -103,6 +103,11 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var movementPurpose: MovementPurpose = .none
 	private var fallStartFootY: Double = 0
 	private var fallReason = "support-lost"
+	private var cheek = CheekPinchDynamics()
+	/// The clip's own frame, before any pinch overlay is drawn on top.
+	private var baseFrame: CGImage?
+	/// Where the pinch started, in view points, so the drag is measured from it.
+	private var pinchOrigin: CGPoint = .zero
 	private var pendingClimb: WindowClimbPlan?
 	private var activeClimb: WindowClimbPlan?
 	private var climbProgress: Double = 0
@@ -213,6 +218,8 @@ public final class PetController: SpriteAnimatorDelegate {
 		}
 
 		animator.tick(timing.animationSeconds)
+		// A pinch runs on its own spring, independent of the walk cycle.
+		updatePinchFrame(simulation)
 		notifyPlacementIfChanged()
 	}
 
@@ -914,6 +921,80 @@ public final class PetController: SpriteAnimatorDelegate {
 		}
 	}
 
+	// MARK: - Cheek pinch
+
+	/// The cheek anchors in the view's own point space.
+	public var cheekGeometryInView: CheekPinchGeometry {
+		let geometry = CheekPinchGeometry.geometry(for: profile)
+		let scale = canvasScale
+		return CheekPinchGeometry(
+			leftX: geometry.leftX * scale, rightX: geometry.rightX * scale,
+			cheekY: geometry.cheekY * scale,
+			hitRadiusX: geometry.hitRadiusX * scale, hitRadiusY: geometry.hitRadiusY * scale,
+			mouthX: geometry.mouthX * scale, mouthY: geometry.mouthY * scale)
+	}
+
+	public var isPinching: Bool { cheek.isActive }
+
+	/// How far the body leans while a cheek is pulled, in degrees.
+	public var bodyLeanDegrees: Double {
+		guard cheek.isActive else { return 0 }
+		return min(max(-cheek.x / CheekPinchDynamics.maximumHorizontal * 3.5, -3.5), 3.5)
+	}
+
+	/// The cheek under a point in the view's own point space, if any.
+	public func cheekHitTest(viewPoint: CGPoint) -> CheekSide? {
+		guard DragInteractionPolicy.canStart(from: state) || state == .pinching else { return nil }
+		return cheekGeometryInView.hitTest(x: Double(viewPoint.x), y: Double(viewPoint.y))
+	}
+
+	public func beginPinch(side: CheekSide, at viewPoint: CGPoint) {
+		guard !cheek.isActive, DragInteractionPolicy.canStart(from: state) else { return }
+		cheek.begin(side: side)
+		pinchOrigin = viewPoint
+		state = .pinching
+		movementPurpose = .none
+		stateElapsed = 0
+		velocity = .zero
+		remainderX = 0
+		remainderY = 0
+		announce(.pickedUp, voice: .aggrieved, priority: .normal)
+		renderPinchedFrame()
+	}
+
+	public func updatePinch(to viewPoint: CGPoint) {
+		guard cheek.isActive else { return }
+		let scale = max(0.0001, canvasScale)
+		cheek.drag(
+			x: Double(viewPoint.x - pinchOrigin.x) / scale,
+			y: Double(viewPoint.y - pinchOrigin.y) / scale)
+	}
+
+	public func endPinch() {
+		guard cheek.isActive else { return }
+		cheek.release()
+	}
+
+	private func updatePinchFrame(_ delta: Double) {
+		guard cheek.isActive else { return }
+		cheek.tick(delta)
+		if !cheek.isActive {
+			// The spring settled and reset itself.
+			if state == .pinching { returnToIdle() }
+			baseFrame.map { delegate?.petController(self, didProduceFrame: $0) }
+			return
+		}
+		renderPinchedFrame()
+	}
+
+	private func renderPinchedFrame() {
+		guard let baseFrame else { return }
+		let geometry = CheekPinchGeometry.geometry(for: profile)
+		let rendered = CheekPinchRenderer.render(base: baseFrame, geometry: geometry, dynamics: cheek)
+		guard let rendered else { return }
+		delegate?.petController(self, didProduceFrame: rendered)
+	}
+
 	// MARK: - Dragging
 
 	public func canBeginDrag() -> Bool { DragInteractionPolicy.canStart(from: state) }
@@ -1052,7 +1133,13 @@ public final class PetController: SpriteAnimatorDelegate {
 	// MARK: - SpriteAnimatorDelegate
 
 	public func spriteAnimator(_ animator: SpriteAnimator, didChangeTo frame: CGImage) {
-		delegate?.petController(self, didProduceFrame: frame)
+		baseFrame = frame
+		// While a cheek is being pulled the overlay is drawn on top of the cel.
+		if cheek.isActive {
+			renderPinchedFrame()
+		} else {
+			delegate?.petController(self, didProduceFrame: frame)
+		}
 	}
 
 	public func spriteAnimator(_ animator: SpriteAnimator, didFinishClip clip: String) {

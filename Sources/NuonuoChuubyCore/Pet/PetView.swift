@@ -21,6 +21,11 @@ public final class PetView: NSView {
 		didSet { if facing != oldValue { needsDisplay = true } }
 	}
 
+	/// A small lean applied while a cheek is pulled, in degrees.
+	public var leanDegrees: Double = 0 {
+		didSet { if leanDegrees != oldValue { needsDisplay = true } }
+	}
+
 	public var onMouseDown: ((NSEvent) -> Void)?
 	public var onMouseDragged: ((NSEvent) -> Void)?
 	public var onMouseUp: ((NSEvent) -> Void)?
@@ -43,6 +48,13 @@ public final class PetView: NSView {
 		if facing < 0 {
 			context.translateBy(x: bounds.width, y: 0)
 			context.scaleBy(x: -1, y: 1)
+		}
+		if leanDegrees != 0 {
+			// Rotate about the foot, so a lean pivots on the ground rather than
+			// sliding the pet sideways.
+			context.translateBy(x: bounds.width / 2, y: bounds.height)
+			context.rotate(by: CGFloat(leanDegrees) * .pi / 180)
+			context.translateBy(x: -bounds.width / 2, y: -bounds.height)
 		}
 		context.draw(image, in: CGRect(origin: .zero, size: bounds.size))
 		context.restoreGState()
