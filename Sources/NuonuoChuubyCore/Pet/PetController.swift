@@ -87,6 +87,11 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var activeClimb: WindowClimbPlan?
 	private var climbProgress: Double = 0
 	private var climbStart: PixelPoint = .zero
+	/// The y where the visible wall begins — the window's bottom edge, or her feet
+	/// if she is already standing higher than it.
+	private var climbWallStartY: Double = 0
+	/// Fraction of the total climb spent leaping up to the wall's lower corner.
+	private var climbHopFraction: Double = 0
 	private var climbDuration: Double = 3
 	private var climbWillSucceed = true
 	private var climbSlipAt: Double = 1
@@ -482,22 +487,43 @@ public final class PetController: SpriteAnimatorDelegate {
 		activeClimb = plan
 		climbStart = foot
 		climbProgress = 0
+
+		// She leaps up to the window's lower corner first — a window floating
+		// above the floor has no wall beside her until she reaches its bottom.
+		climbWallStartY = min(climbStart.y, plan.targetBottom)
+		let hopDistance = max(0, climbStart.y - climbWallStartY)
+		let hopSeconds = hopDistance > 1 ? min(0.9, max(0.28, hopDistance / 900)) : 0
+		let ascentSeconds = WindowClimbPlanner.climbDuration(
+			height: max(0, climbWallStartY - plan.targetTop),
+			scale: displayScale,
+			speedMultiplier: profile.movementSpeedMultiplier)
+		climbDuration = hopSeconds + ascentSeconds
+		climbHopFraction = climbDuration > 0 ? hopSeconds / climbDuration : 0
+
 		// The original succeeds most of the time, less often on a very tall wall,
 		// and can slip part way up.
 		let successChance = plan.height > 700 * displayScale ? 0.58 : 0.74
 		climbWillSucceed = Double.random(in: 0..<1) < successChance
 		climbSlipAt = 0.56 + Double.random(in: 0..<0.20)
-		climbDuration = WindowClimbPlanner.climbDuration(
-			height: plan.height, scale: displayScale,
-			speedMultiplier: profile.movementSpeedMultiplier)
+
 		state = .climbing
 		movementPurpose = .none
 		stateElapsed = 0
 		velocity = .zero
 		remainderX = 0
 		remainderY = 0
+		// The wall is on the side she approached from.
 		facing = plan.side == .left ? 1 : -1
-		animator.play("climb")
+		animator.play(hopSeconds > 0 ? "jump" : "climb")
+		DiagnosticsLog.shared.writeEvent("ClimbBegin", [
+			("Target", "\(plan.targetSurfaceID)"),
+			("Side", "\(plan.side)"),
+			("Start", "\(Int(climbStart.x)),\(Int(climbStart.y))"),
+			("WallStartY", "\(Int(climbWallStartY))"),
+			("LandingX", "\(Int(plan.landingX))"),
+			("TargetTop", "\(Int(plan.targetTop))"),
+			("Surface", Self.describe(surfaceID: plan.targetSurfaceID, in: surfaceProvider.surfaces)),
+		])
 	}
 
 	private func updateClimbing(_ delta: Double) {
@@ -518,11 +544,24 @@ public final class PetController: SpriteAnimatorDelegate {
 			return
 		}
 
-		// Up the visible side, then step inward onto the top edge.
-		let eased = climbProgress * climbProgress * (3 - 2 * climbProgress)
-		let x = climbStart.x + (plan.landingX - climbStart.x) * eased
-		let y = climbStart.y + (plan.targetTop - climbStart.y) * eased
-		foot = PixelPoint(x: x, y: y)
+		if climbProgress < climbHopFraction {
+			// Rising to the wall's lower corner, close beside it.
+			let t = climbHopFraction > 0 ? climbProgress / climbHopFraction : 1
+			foot = PixelPoint(
+				x: plan.approachX,
+				y: climbStart.y + (climbWallStartY - climbStart.y) * Self.smoothstep(t))
+		} else {
+			if animator.currentClip != "climb" { animator.play("climb") }
+			let span = max(0.0001, 1 - climbHopFraction)
+			let t = (climbProgress - climbHopFraction) / span
+			// y follows the wall; x stays against it and only steps inward on top,
+			// so she is never seen climbing thin air beside the window.
+			let easedY = Self.smoothstep(t)
+			let easedX = t * t
+			foot = PixelPoint(
+				x: plan.approachX + (plan.landingX - plan.approachX) * easedX,
+				y: climbWallStartY + (plan.targetTop - climbWallStartY) * easedY)
+		}
 
 		if climbProgress >= 1 {
 			activeClimb = nil
@@ -532,6 +571,11 @@ public final class PetController: SpriteAnimatorDelegate {
 			land()
 			announce(.climbSuccess, voice: .affirmative, priority: .normal)
 		}
+	}
+
+	private static func smoothstep(_ t: Double) -> Double {
+		let clamped = min(max(t, 0), 1)
+		return clamped * clamped * (3 - 2 * clamped)
 	}
 
 	// MARK: - Descending
@@ -617,6 +661,11 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	/// Exposed for tests: the offset between the foot and the grab point.
 	var dragOffsetForTesting: PixelPoint { dragOffset }
+
+	private static func describe(surfaceID: UInt32, in surfaces: [SupportSurface]) -> String {
+		guard let surface = surfaces.first(where: { $0.sourceID == surfaceID }) else { return "missing" }
+		return "L\(Int(surface.left)) R\(Int(surface.right)) B\(Int(surface.bottom))"
+	}
 
 	public func updateDrag(to cursor: PixelPoint) {
 		guard isDragging else { return }
