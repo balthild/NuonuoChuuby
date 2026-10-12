@@ -26,4 +26,15 @@ public final class PetPanel: NSPanel {
 
 	override public var canBecomeKey: Bool { true }
 	override public var canBecomeMain: Bool { false }
+
+	/// Allows the panel off the screen edges.
+	///
+	/// Her foot anchor sits near the bottom of the panel, so when she stands on a
+	/// window close to the top of the screen the panel's top has to go above it.
+	/// AppKit's default constraint pulls the panel back to the screen's visible
+	/// frame, which left her drawn ~130 pt below where the simulation had her —
+	/// she looked like she was floating in mid-air with nothing under her feet.
+	override public func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+		frameRect
+	}
 }
