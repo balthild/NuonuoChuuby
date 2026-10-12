@@ -1380,9 +1380,22 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	public func updateDrag(to cursor: PixelPoint) {
 		guard isDragging else { return }
-		foot = PixelPoint(x: cursor.x + dragOffset.x, y: cursor.y + dragOffset.y)
+		var next = PixelPoint(x: cursor.x + dragOffset.x, y: cursor.y + dragOffset.y)
+		// Dragging her below the floor leaves her with nothing to land on, because
+		// the floor is above her: on release she would fall straight out of the
+		// screen. She is put on the floor instead.
+		if let floor = floorOffset(near: next), next.y > floor {
+			next.y = floor
+		}
+		foot = next
 		dragTracker.add(point: cursor, atSeconds: CFAbsoluteTimeGetCurrent())
 		notifyPlacementIfChanged()
+	}
+
+	/// The bottom of the work area of the display nearest a point: where that
+	/// display's floor is, and the lowest place the pet may be.
+	private func floorOffset(near point: PixelPoint) -> Double? {
+		displaySpace.display(containing: point)?.visibleFrame.bottom
 	}
 
 	public func endDrag(at cursor: PixelPoint) {

@@ -97,6 +97,28 @@ struct PetControllerPlacementTests {
 		#expect(DragInteractionPolicy.canStart(from: .chomping) == false)
 	}
 
+	@Test("Dragging her below the floor puts her on the floor, not off the screen")
+	func dragBelowFloorClamps() throws {
+		let (controller, _, directory) = try makeController()
+		defer { try? FileManager.default.removeItem(at: directory) }
+
+		let floor = try #require(DisplaySpace().displays.first?.visibleFrame.bottom)
+		let grab = controller.foot
+		controller.beginDrag(at: grab)
+		controller.updateDrag(to: PixelPoint(x: grab.x, y: floor + 4000))
+
+		// Below the floor there is nothing to land on, so on release she would fall
+		// straight out of the screen.
+		#expect(controller.foot.y == floor)
+		#expect(controller.foot.x == grab.x)
+
+		// And releasing from there must land her on the floor, not past it, even
+		// though the downward drag carries release inertia.
+		controller.endDrag(at: PixelPoint(x: grab.x, y: floor + 4000))
+		for _ in 0..<30 { controller.debugStep(delta: 1.0 / 60) }
+		#expect(controller.foot.y <= floor + 1)
+	}
+
 	@Test("Resizing repositions the window immediately")
 	func resizeNotifies() throws {
 		let (controller, spy, directory) = try makeController()
