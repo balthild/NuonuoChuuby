@@ -11,9 +11,9 @@ struct WindowTerrainEligibilityTests {
 		number: UInt32 = 1, pid: Int32 = 500, owner: String = "Safari",
 		x: Double = 200, y: Double = 200, width: Double = 800, height: Double = 600,
 		layer: Int = 0, alpha: Double = 1
-	) -> TerrainWindow {
-		TerrainWindow(
-			number: number, ownerPID: pid, ownerName: owner,
+	) -> PlatformWindow {
+		PlatformWindow(
+			id: number, ownerPID: pid, ownerName: owner,
 			bounds: PixelRect(x: x, y: y, width: width, height: height),
 			layer: layer, alpha: alpha)
 	}
@@ -77,8 +77,8 @@ struct WindowSurfaceTests {
 		let displaySpace = DisplaySpace()
 		guard let display = displaySpace.displays.first else { return }
 		let area = display.visibleFrame
-		let terrain = TerrainWindow(
-			number: 7, ownerPID: 500, ownerName: "Safari",
+		let terrain = PlatformWindow(
+			id: 7, ownerPID: 500, ownerName: "Safari",
 			bounds: PixelRect(x: area.left + 100, y: area.top + 200, width: 800, height: 500),
 			layer: 0, alpha: 1)
 

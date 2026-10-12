@@ -4,35 +4,21 @@ import AppKit
 /// the original Windows implementation) so the ported physics math is unchanged.
 /// AppKit works in bottom-left origin, Y-up; this type owns the conversion.
 public struct DisplaySpace: Sendable {
-	public struct Display: Sendable, Equatable, Identifiable {
-		public let id: UInt32
-		/// Full display bounds in top-left, Y-down global coordinates.
-		public let frame: PixelRect
-		/// The area not covered by the Dock and menu bar.
-		public let visibleFrame: PixelRect
-		public let scale: Double
-	}
-
-	public let displays: [Display]
+	public let displays: [Monitor]
 	/// The primary display's height, which defines the Y flip for every display.
 	public let primaryHeight: Double
 
+	/// Builds a space from an already-enumerated display set. Pure, so a test can
+	/// describe a desktop without touching the window server.
+	public init(monitors: [Monitor], primaryHeight: Double) {
+		self.displays = monitors
+		self.primaryHeight = primaryHeight
+	}
+
 	@MainActor
 	public init() {
-		let screens = NSScreen.screens
-		let primary = NSScreen.screens.first
-		let primaryHeight = Double(primary?.frame.height ?? 0)
-		self.primaryHeight = primaryHeight
-		self.displays = screens.compactMap { screen in
-			guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
-			else { return nil }
-			return Display(
-				id: number.uint32Value,
-				frame: DisplaySpace.toTopLeft(screen.frame, primaryHeight: primaryHeight),
-				visibleFrame: DisplaySpace.toTopLeft(screen.visibleFrame, primaryHeight: primaryHeight),
-				scale: Double(screen.backingScaleFactor)
-			)
-		}
+		let platform = MacOSPlatform()
+		self.init(monitors: platform.monitors(), primaryHeight: platform.primaryHeight)
 	}
 
 	public static func toTopLeft(_ rect: CGRect, primaryHeight: Double) -> PixelRect {
@@ -48,7 +34,7 @@ public struct DisplaySpace: Sendable {
 	}
 
 	/// The display whose visible area contains the point, else the nearest one.
-	public func display(containing point: PixelPoint) -> Display? {
+	public func display(containing point: PixelPoint) -> Monitor? {
 		if let exact = displays.first(where: { $0.visibleFrame.contains(point) }) {
 			return exact
 		}

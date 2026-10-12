@@ -15,13 +15,17 @@ public final class SurfaceProvider {
 	private static let refreshInterval: Double = 0.5
 	private var secondsSinceWindowRefresh: Double = .greatestFiniteMagnitude
 	private var windowSurfaces: [SupportSurface] = []
+	private let platform: Platform
 
-	public init() {}
+	public init(platform: Platform = MacOSPlatform()) {
+		self.platform = platform
+	}
 
 	/// Test seam: builds a provider over a known surface map, without consulting
 	/// the window server.
 	init(surfaces: [SupportSurface]) {
 		self.surfaces = surfaces
+		self.platform = MacOSPlatform()
 	}
 
 	/// Test seam: replaces the map, as ``refresh(displaySpace:)`` would.
@@ -41,7 +45,8 @@ public final class SurfaceProvider {
 			)
 		}
 		windowSurfaces = WindowSurfaceProvider.surfaces(
-			from: WindowSurfaceProvider.enumerateEligibleWindows(
+			from: WindowSurfaceProvider.eligibleWindows(
+				from: platform.windows(),
 				ownPID: ProcessInfo.processInfo.processIdentifier,
 				displaySpace: displaySpace),
 			displaySpace: displaySpace)

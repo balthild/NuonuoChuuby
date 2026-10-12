@@ -1,55 +1,26 @@
 import CoreGraphics
 import Foundation
 
-/// Enumerates the on-screen windows the pet may stand on.
-///
-/// Bounds are available from `CGWindowListCopyWindowInfo` without any
-/// permission — only window *titles* and *contents* require screen recording, so
-/// this stays permission-free. The dictionary's bounds already use the
-/// top-left, Y-down origin that the simulation works in.
+/// Turns platform windows into the top edges the pet may stand on.
 enum WindowSurfaceProvider {
-	static func enumerateEligibleWindows(ownPID: Int32, displaySpace: DisplaySpace) -> [TerrainWindow] {
-		let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
-		guard
-			let raw = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: AnyObject]]
-		else { return [] }
-
-		return raw.compactMap { entry in
-			guard let number = entry[kCGWindowNumber as String] as? UInt32,
-				let ownerPID = entry[kCGWindowOwnerPID as String] as? Int32,
-				let layer = entry[kCGWindowLayer as String] as? Int,
-				let boundsDict = entry[kCGWindowBounds as String] as? [String: AnyObject]
-			else { return nil }
-
-			let ownerName = entry[kCGWindowOwnerName as String] as? String ?? ""
-			let alpha = (entry[kCGWindowAlpha as String] as? Double) ?? 1
-			guard let rect = CGRect(dictionaryRepresentation: boundsDict as CFDictionary) else { return nil }
-
-			let window = TerrainWindow(
-				number: number,
-				ownerPID: ownerPID,
-				ownerName: ownerName,
-				title: entry[kCGWindowName as String] as? String,
-				bounds: PixelRect(
-					x: Double(rect.origin.x), y: Double(rect.origin.y),
-					width: Double(rect.width), height: Double(rect.height)),
-				layer: layer,
-				alpha: alpha
-			)
-
-			// Each display judges the windows overlapping it, so a window is kept
-			// if it is reachable on any display.
-			let eligible = displaySpace.displays.contains { display in
+	/// Keeps only the windows that may be terrain.
+	///
+	/// Each display judges the windows overlapping it, so a window is kept if it
+	/// is reachable on any display.
+	static func eligibleWindows(
+		from windows: [PlatformWindow], ownPID: Int32, displaySpace: DisplaySpace
+	) -> [PlatformWindow] {
+		windows.filter { window in
+			displaySpace.displays.contains { display in
 				WindowTerrainEligibilityPolicy.isEligiblePlatform(
 					window, ownPID: ownPID, workArea: display.visibleFrame)
 			}
-			return eligible ? window : nil
 		}
 	}
 
 	/// Turns windows into standable top edges, split per display so a window
 	/// spanning two screens provides a platform on each.
-	static func surfaces(from windows: [TerrainWindow], displaySpace: DisplaySpace) -> [SupportSurface] {
+	static func surfaces(from windows: [PlatformWindow], displaySpace: DisplaySpace) -> [SupportSurface] {
 		var result: [SupportSurface] = []
 		for window in windows {
 			result.append(contentsOf: segments(for: window, displaySpace: displaySpace))
@@ -76,8 +47,8 @@ enum WindowSurfaceProvider {
 		guard let bounds = liveBounds(of: windowID) else { return nil }
 
 		let candidates = segments(
-			for: TerrainWindow(
-				number: windowID, ownerPID: 0, ownerName: "", bounds: bounds, layer: 0, alpha: 1),
+			for: PlatformWindow(
+				id: windowID, ownerPID: 0, ownerName: "", bounds: bounds, layer: 0, alpha: 1),
 			displaySpace: displaySpace,
 			requireReachable: false)
 			.filter { $0.sourceID == windowID }
@@ -105,7 +76,7 @@ enum WindowSurfaceProvider {
 
 	/// A window's standable segments, one per display it overlaps.
 	private static func segments(
-		for window: TerrainWindow,
+		for window: PlatformWindow,
 		displaySpace: DisplaySpace,
 		requireReachable: Bool = true
 	) -> [SupportSurface] {
@@ -132,7 +103,7 @@ enum WindowSurfaceProvider {
 					right: right,
 					bottom: window.bounds.bottom,
 					isDesktopFloor: false,
-					sourceID: window.number
+					sourceID: window.id
 				))
 		}
 		return result
