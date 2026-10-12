@@ -7,6 +7,13 @@ public protocol PetControllerDelegate: AnyObject {
 	func petControllerDidRequestMenu(_ controller: PetController)
 }
 
+/// Reports meals so the UI can show the ghost icon the pet is eating.
+@MainActor
+public protocol PetMealDelegate: AnyObject {
+	func petController(_ controller: PetController, didBeginMeal item: DeletedItem)
+	func petController(_ controller: PetController, didFinishMeal item: DeletedItem)
+}
+
 /// The pet's brain: it owns the simulation position, the behavioural state
 /// machine and the sprite animator, and reports where the window should be.
 ///
@@ -29,14 +36,16 @@ public final class PetController: SpriteAnimatorDelegate {
 		static let movementTimeout: Double = 8
 	}
 
-	/// Actions whose behaviour exists in this build. Food actions arrive with the
-	/// meal system.
+	/// Actions whose behaviour exists in this build.
 	private static let implementedActions: Set<AutonomousAction> = [
 		.rest, .wander, .explore, .sleep, .hop,
+		.askForFood, .lickIcon, .roll,
 	]
 
 	public let profile: PetCharacterProfile
 	public weak var delegate: PetControllerDelegate?
+	/// Reported separately because meals have their own on-screen companion.
+	public weak var mealDelegate: PetMealDelegate?
 	/// Optional speech; when absent the pet stays silent.
 	public weak var speech: PetSpeechCoordinator?
 
@@ -60,8 +69,14 @@ public final class PetController: SpriteAnimatorDelegate {
 	public var fastingMode = false
 	public var quietMode = false {
 		didSet {
-			// Turning quiet mode on mid-walk should stop the pet where it is.
-			if quietMode, state == .running { returnToIdle() }
+			// Turning quiet mode on mid-walk should stop the pet where it is; a meal
+			// in progress goes back on the queue rather than being lost.
+			if quietMode {
+				requeueActiveMeal()
+				if state == .running || state == .chomping || state == .licking {
+					returnToIdle()
+				}
+			}
 		}
 	}
 
@@ -80,6 +95,11 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var dragOffset = PixelPoint.zero
 	private var isDragging = false
 	private var targetX: Double = 0
+	/// The full 2D destination for a meal or an icon lick.
+	private var targetPoint: PixelPoint = .zero
+	private var mealQueue = MealQueue()
+	private var activeMeal: DeletedItem?
+	private var burstTracker = DeletionBurstTracker()
 	private var movementPurpose: MovementPurpose = .none
 	private var fallStartFootY: Double = 0
 	private var fallReason = "support-lost"
@@ -179,13 +199,16 @@ public final class PetController: SpriteAnimatorDelegate {
 		case .running: updateRunning(simulation)
 		case .falling: updateFalling(simulation)
 		case .climbing: updateClimbing(simulation)
-		case .landing, .curious, .waking:
+		case .landing, .curious, .waking, .satisfied, .rolling:
 			// These play out for a fixed dwell, then return to idle.
 			if stateElapsed >= transientDuration {
 				if state == .waking { announce(.wakeNormally, voice: .calm) }
 				returnToIdle()
 			}
 		case .sleeping: updateSleeping(simulation)
+		case .chomping, .licking:
+			// Driven by the clip finishing, not by a timer.
+			break
 		default: break
 		}
 
@@ -242,14 +265,258 @@ public final class PetController: SpriteAnimatorDelegate {
 			beginGroundMove(purpose: .explore)
 		case .hop:
 			beginHop()
-		case .rest, .askForFood, .lickIcon, .roll:
-			// `.rest` and anything not yet implemented simply extends the idle.
+		case .askForFood:
+			// Pending meals take priority over pleading for one.
+			if beginNextMeal() { return }
+			beginHungryPlea()
+		case .lickIcon:
+			if beginNextMeal() { return }
+			if tryBeginIconLick(manual: false) { return }
+			resetIdleTimer(factor: 1.2)
+		case .roll:
+			beginRoll()
+		case .rest:
 			resetIdleTimer(factor: 1.4)
 		}
 	}
 
 	private func resetIdleTimer(factor: Double = 1) {
 		idleRemaining = Double.random(in: 1.2...profile.maximumIdleSeconds) * factor
+	}
+
+	// MARK: - Meals and icon licks
+
+	/// Where a canvas anchor sits on screen for the pet's current size.
+	private var canvasScale: Double { petSize / SpriteGeometry.canvasSize }
+
+	private func screenPoint(canvasX: Double, canvasY: Double) -> PixelPoint {
+		PixelPoint(
+			x: foot.x + (canvasX - profile.geometry.footCanvasX) * canvasScale,
+			y: foot.y + (canvasY - profile.geometry.footCanvasY) * canvasScale)
+	}
+
+	/// Her mouth and lick point, which are what actually reach the target.
+	private var mouthPoint: PixelPoint {
+		screenPoint(
+			canvasX: profile.geometry.mouthCanvasX, canvasY: profile.geometry.mouthCanvasY)
+	}
+
+	private var lickPoint: PixelPoint {
+		screenPoint(
+			canvasX: profile.geometry.lickContactCanvasX,
+			canvasY: profile.geometry.lickContactCanvasY)
+	}
+
+	/// Accepts deleted items, subject to the mode and queue limits, then starts
+	/// eating if she is free.
+	@discardableResult
+	public func enqueueMeals(_ items: [DeletedItem]) -> Int {
+		guard profile.supportsFood, PetModePolicy.allowsDeletionMeal(quietMode: quietMode) else {
+			return 0
+		}
+
+		var accepted = 0
+		for item in items {
+			guard
+				MealQueuePolicy.canAcceptDeletion(
+					queuedCount: mealQueue.count, hasActiveDeletionMeal: activeMeal != nil)
+			else {
+				DiagnosticsLog.shared.writeEvent("MealQueueFull", [("Dropped", "1")])
+				break
+			}
+			mealQueue.enqueue(item)
+			accepted += 1
+		}
+		guard accepted > 0 else { return 0 }
+
+		// A burst reads as a buffet rather than a single snack.
+		if burstTracker.register(detectedAt: Date()) {
+			announce(.buffet, voice: .positive, priority: .important)
+		} else {
+			announce(.mealSpotted, voice: .question, priority: .normal)
+		}
+
+		if activeMeal == nil, state == .idle || state == .curious {
+			_ = beginNextMeal()
+		}
+		return accepted
+	}
+
+	/// Starts walking to the next queued meal. Returns false when there is none.
+	@discardableResult
+	private func beginNextMeal() -> Bool {
+		guard activeMeal == nil, !quietMode else { return false }
+		guard let item = mealQueue.dequeue() else { return false }
+
+		activeMeal = item
+		targetPoint = item.anchor
+		state = .running
+		movementPurpose = .meal
+		stateElapsed = 0
+		velocity = .zero
+		remainderX = 0
+		remainderY = 0
+		animator.play("run")
+		mealDelegate?.petController(self, didBeginMeal: item)
+		DiagnosticsLog.shared.writeEvent("MealRunStarted", [
+			("Name", item.displayName),
+			("Target", "\(Int(item.anchor.x)),\(Int(item.anchor.y))"),
+		])
+		return true
+	}
+
+	/// Sends her to lick an icon when she is hungry but has nothing to eat.
+	@discardableResult
+	public func tryBeginIconLick(manual: Bool) -> Bool {
+		guard profile.supportsFood, !quietMode else { return false }
+
+		let display = displaySpace.display(containing: foot) ?? displaySpace.displays.first
+		guard let workArea = display?.visibleFrame else { return false }
+		let candidates = DesktopIconGrid.positions(count: 12, in: workArea)
+		guard
+			let target = IconLickTargetSelector.choose(
+				candidates: candidates, origin: lickPoint, randomUnit: Double.random(in: 0..<1))
+		else { return false }
+
+		targetPoint = target
+		state = .running
+		movementPurpose = .iconLick
+		stateElapsed = 0
+		velocity = .zero
+		remainderX = 0
+		remainderY = 0
+		animator.play("run")
+		announce(
+			manual ? .manualIconLick : .curiousIconLick,
+			voice: manual ? .aggrieved : .question,
+			priority: manual ? .important : .normal)
+		return true
+	}
+
+	/// Walks in two dimensions to a free-standing target (a meal or an icon).
+	private func updateMealRun(_ delta: Double) {
+		let isMeal = movementPurpose == .meal
+		let contact = isMeal ? mouthPoint : lickPoint
+
+		let deltaX = targetPoint.x - contact.x
+		let deltaY = targetPoint.y - contact.y
+		let distance = (deltaX * deltaX + deltaY * deltaY).squareRoot()
+
+		if distance < 18 || stateElapsed > 6.5 {
+			foot.x += deltaX
+			foot.y += deltaY
+			if isMeal {
+				beginChomp()
+			} else {
+				beginLickAnimation()
+			}
+			return
+		}
+
+		let speed =
+			min(max(distance * 3.2, 250), isMeal ? 720 : 640) * displayScale
+			* profile.movementSpeedMultiplier
+		let desiredX = deltaX / distance * speed
+		let desiredY = deltaY / distance * speed
+		let response = min(1, delta * 7.5)
+		velocity.x += (desiredX - velocity.x) * response
+		velocity.y += (desiredY - velocity.y) * response
+
+		let movementX = SubpixelMotion.takeWholePixels(velocity.x * delta, remainder: &remainderX)
+		let movementY = SubpixelMotion.takeWholePixels(velocity.y * delta, remainder: &remainderY)
+		foot.x += Double(movementX)
+		foot.y += Double(movementY)
+		if abs(velocity.x) > 8 { facing = velocity.x < 0 ? -1 : 1 }
+	}
+
+	private func beginChomp() {
+		state = .chomping
+		stateElapsed = 0
+		velocity = .zero
+		remainderX = 0
+		remainderY = 0
+		facing = 1
+		animator.play("chomp")
+		if let item = activeMeal, !item.exactAnchor {
+			announce(.suction, voice: .positive, priority: .normal)
+		}
+	}
+
+	private func beginLickAnimation() {
+		state = .licking
+		stateElapsed = 0
+		velocity = .zero
+		remainderX = 0
+		remainderY = 0
+		animator.play("lick")
+	}
+
+	private func beginHungryPlea() {
+		state = .rolling
+		movementPurpose = .none
+		stateElapsed = 0
+		transientDuration = 1.6
+		velocity = .zero
+		animator.play("hungry")
+		announce(.hungryRoll, voice: .sad, priority: .important)
+	}
+
+	private func beginRoll() {
+		state = .rolling
+		movementPurpose = .none
+		stateElapsed = 0
+		transientDuration = animator.durationSeconds
+		velocity = .zero
+		animator.play("roll")
+		announce(.hungryRoll, voice: .sad, priority: .important)
+	}
+
+	/// Turns an interrupted meal back into a queued one rather than losing it.
+	private func requeueActiveMeal() {
+		guard let item = activeMeal else { return }
+		mealQueue.requeueAtFront(item)
+		activeMeal = nil
+		mealDelegate?.petController(self, didFinishMeal: item)
+	}
+
+	private func completeActiveMeal() {
+		guard let item = activeMeal else { return }
+		activeMeal = nil
+
+		life.registerMeal(
+			path: item.originalPath,
+			nourishment: Double.random(in: 6...14))
+		persistLifeStateQuietly()
+		mealDelegate?.petController(self, didFinishMeal: item)
+
+		let stuffed = life.hunger <= 2
+		announce(
+			stuffed ? .stuffed : .tastedItem,
+			voice: .affirmative,
+			priority: .normal,
+			itemName: item.displayName)
+
+		state = .satisfied
+		movementPurpose = .none
+		stateElapsed = 0
+		transientDuration = animator.durationSeconds
+		velocity = .zero
+		animator.play(stuffed ? "satisfied" : "satisfied_quick")
+		DiagnosticsLog.shared.writeEvent("MealCompleted", [
+			("Name", item.displayName),
+			("Hunger", String(format: "%.1f", life.hunger)),
+			("Queued", "\(mealQueue.count)"),
+		])
+	}
+
+	/// What to do once a meal finishes: carry on down the queue, or settle.
+	private func advanceAfterMeal() {
+		if !mealQueue.isEmpty, beginNextMeal() { return }
+		returnToIdle()
+	}
+
+	private func persistLifeStateQuietly() {
+		try? lifeStore.save(life)
 	}
 
 	private func returnToIdle() {
@@ -280,6 +547,12 @@ public final class PetController: SpriteAnimatorDelegate {
 	}
 
 	private func updateRunning(_ delta: Double) {
+		// A meal or an icon lick is a free-standing two-dimensional walk.
+		if movementPurpose == .meal || movementPurpose == .iconLick {
+			updateMealRun(delta)
+			return
+		}
+
 		guard let surface = surfaceProvider.support(footX: foot.x, footY: foot.y) else {
 			beginFall()
 			return
@@ -647,6 +920,11 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	public func beginDrag(at cursor: PixelPoint) {
 		guard canBeginDrag() else { return }
+		// Being picked up interrupts a meal; it is re-queued so she finishes it
+		// after landing.
+		if movementPurpose == .meal {
+			requeueActiveMeal()
+		}
 		isDragging = true
 		state = .dragging
 		stateElapsed = 0
@@ -714,8 +992,10 @@ public final class PetController: SpriteAnimatorDelegate {
 		announce(.startup, voice: .neutral, priority: .normal)
 	}
 
-	private func announce(_ cue: DialogueCue, voice: VoiceCue, priority: VoicePriority = .normal) {
-		speech?.react(cue, voice: voice, priority: priority)
+	private func announce(
+		_ cue: DialogueCue, voice: VoiceCue, priority: VoicePriority = .normal, itemName: String? = nil
+	) {
+		speech?.react(cue, voice: voice, priority: priority, itemName: itemName)
 	}
 
 	public func setSize(_ size: Double) {
@@ -777,7 +1057,14 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	public func spriteAnimator(_ animator: SpriteAnimator, didFinishClip clip: String) {
 		switch clip {
-		case "land", "curious", "sleep_exit", "satisfied", "satisfied_quick":
+		case "chomp":
+			// Eating the item is what completes the meal.
+			completeActiveMeal()
+		case "lick":
+			returnToIdle()
+		case "satisfied", "satisfied_quick":
+			advanceAfterMeal()
+		case "land", "curious", "sleep_exit":
 			if state == .landing || state == .curious || state == .waking {
 				returnToIdle()
 			}

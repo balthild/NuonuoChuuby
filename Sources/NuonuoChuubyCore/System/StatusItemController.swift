@@ -33,6 +33,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 		public var setSize: (Double) -> Void
 		public var setFasting: (Bool) -> Void
 		public var setQuiet: (Bool) -> Void
+		public var setDeleteReaction: (Bool) -> Void
 		public var setBubbles: (Bool) -> Void
 		public var setMuted: (Bool) -> Void
 		public var setLaunchAtLogin: (Bool) -> Void
@@ -44,6 +45,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 			setSize: @escaping (Double) -> Void,
 			setFasting: @escaping (Bool) -> Void,
 			setQuiet: @escaping (Bool) -> Void,
+			setDeleteReaction: @escaping (Bool) -> Void,
 			setBubbles: @escaping (Bool) -> Void,
 			setMuted: @escaping (Bool) -> Void,
 			setLaunchAtLogin: @escaping (Bool) -> Void,
@@ -54,6 +56,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 			self.setSize = setSize
 			self.setFasting = setFasting
 			self.setQuiet = setQuiet
+			self.setDeleteReaction = setDeleteReaction
 			self.setBubbles = setBubbles
 			self.setMuted = setMuted
 			self.setLaunchAtLogin = setLaunchAtLogin
@@ -69,6 +72,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 	private let sizeItem = NSMenuItem()
 	private let fastingItem = NSMenuItem()
 	private let quietItem = NSMenuItem()
+	private let deleteReactionItem = NSMenuItem()
 	private let bubblesItem = NSMenuItem()
 	private let mutedItem = NSMenuItem()
 	private let launchItem = NSMenuItem()
@@ -135,6 +139,11 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 		quietItem.action = #selector(toggleQuiet)
 		menu.addItem(quietItem)
 
+		deleteReactionItem.title = "吃掉删除的文件"
+		deleteReactionItem.target = self
+		deleteReactionItem.action = #selector(toggleDeleteReaction)
+		menu.addItem(deleteReactionItem)
+
 		bubblesItem.title = "显示头顶对话气泡"
 		bubblesItem.target = self
 		bubblesItem.action = #selector(toggleBubbles)
@@ -163,6 +172,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 	private func refreshMenuState() {
 		fastingItem.state = settings.fastingMode ? .on : .off
 		quietItem.state = settings.quietMode ? .on : .off
+		deleteReactionItem.state = settings.reactToDeletes ? .on : .off
 		bubblesItem.state = settings.showSpeechBubbles ? .on : .off
 		// The item reads as "mute", so it is checked when sound is off.
 		mutedItem.state = settings.soundEnabled ? .off : .on
@@ -187,6 +197,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 
 	@objc private func toggleFasting() { callbacks.setFasting(!settings.fastingMode) }
 	@objc private func toggleQuiet() { callbacks.setQuiet(!settings.quietMode) }
+	@objc private func toggleDeleteReaction() { callbacks.setDeleteReaction(!settings.reactToDeletes) }
 	@objc private func toggleBubbles() { callbacks.setBubbles(!settings.showSpeechBubbles) }
 	@objc private func toggleMuted() { callbacks.setMuted(settings.soundEnabled) }
 	@objc private func toggleLaunchAtLogin() { callbacks.setLaunchAtLogin(!callbacks.isLaunchAtLogin()) }

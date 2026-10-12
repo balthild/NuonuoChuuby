@@ -3,7 +3,7 @@ import AppKit
 /// Application bootstrap: resolve assets and settings, build the pet, and wire
 /// the menu bar.
 @MainActor
-public final class AppDelegate: NSObject, NSApplicationDelegate {
+public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate {
 	private var environment: AppEnvironment?
 	private var settingsStore: SettingsStore?
 	private var settings = PetSettings()
@@ -14,6 +14,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var speech: PetSpeechCoordinator?
 	private var voice: VoicePlaybackService?
 	private var statusItem: StatusItemController?
+	private var mouseMonitor: MouseMonitor?
+	private var deletionWatcher: FileDeletionWatcher?
+	private var ghostIcons: [Int: GhostIconWindow] = [:]
 
 	public func applicationDidFinishLaunching(_ notification: Notification) {
 		// Required when running the executable directly (no bundle to read
@@ -81,9 +84,25 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
 		statusItem = makeStatusItem(character: character)
 
+		// The pet eats files the user deletes from a watched folder. The monitor
+		// supplies the anchor guess, since macOS exposes no icon positions.
+		let mouseMonitor = MouseMonitor(displaySpace: displaySpace)
+		mouseMonitor.start()
+		self.mouseMonitor = mouseMonitor
+		let deletionWatcher = FileDeletionWatcher(anchorProvider: { [weak mouseMonitor] in
+			mouseMonitor?.anchor() ?? (PixelPoint(x: 0, y: 0), false)
+		})
+		deletionWatcher.onMealsReady = { [weak self] items in
+			self?.controller?.enqueueMeals(items)
+		}
+		self.deletionWatcher = deletionWatcher
+		controller.mealDelegate = self
+
 		applySettings()
+		DiagnosticsLog.shared.writeEvent("SettingsApplied")
 		petWindow.show()
 		controller.start()
+		DiagnosticsLog.shared.writeEvent("PetStarted")
 		controller.announceStartup()
 
 		NotificationCenter.default.addObserver(
@@ -97,6 +116,25 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 	public func applicationWillTerminate(_ notification: Notification) {
 		controller?.persistLifeState()
 		controller?.stop()
+		deletionWatcher?.stop()
+		mouseMonitor?.stop()
+	}
+
+	// MARK: - PetMealDelegate
+
+	public func petController(_ controller: PetController, didBeginMeal item: DeletedItem) {
+		let ghost = GhostIconWindow()
+		ghost.show(
+			icon: ShellIconProvider.icon(forPath: item.originalPath),
+			at: item.anchor,
+			size: controller.petSize * 0.34,
+			displaySpace: displaySpace ?? DisplaySpace())
+		ghostIcons[item.id] = ghost
+	}
+
+	public func petController(_ controller: PetController, didFinishMeal item: DeletedItem) {
+		guard let ghost = ghostIcons.removeValue(forKey: item.id) else { return }
+		ghost.fadeOut()
 	}
 
 	@objc private func displayParametersChanged() {
@@ -124,6 +162,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 				},
 				setQuiet: { [weak self] on in
 					self?.update { $0.quietMode = on }
+				},
+				setDeleteReaction: { [weak self] on in
+					self?.update { $0.reactToDeletes = on }
 				},
 				setBubbles: { [weak self] on in
 					self?.update { $0.showSpeechBubbles = on }
@@ -167,6 +208,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 		speech?.showBubbles = settings.showSpeechBubbles
 		speech?.isVoiceEnabled = settings.soundEnabled
 		speech?.voiceVolume = settings.voiceVolume
+
+		// Reaction to deletions is a user toggle, so the watcher follows it.
+		if settings.reactToDeletes, settings.character.supportsFood {
+			deletionWatcher?.start(extraFolders: settings.watchedFolders)
+		} else {
+			deletionWatcher?.stop()
+		}
 	}
 
 	// MARK: - Assets
