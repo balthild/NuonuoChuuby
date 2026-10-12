@@ -7,11 +7,18 @@ import AppKit
 /// as the item titles, and the standard row height. A default-sized `NSSlider`
 /// would otherwise make the row taller than every other item.
 final class SliderMenuItemView: NSView {
+	/// The row's width, and the only knob for how wide the slider ends up: the
+	/// slider takes the row minus the two insets, the title and the gap. A wider row
+	/// widens the menu with it, since a custom menu-item view is what sizes the menu.
+	static let rowWidth: Double = 280
 	/// The standard menu item height, so this row is not taller than its neighbours.
 	static let rowHeight: Double = 22
-	/// Where a standard menu item's title begins. Tweak this to line the label up
-	/// with the item titles above and below it.
-	static let titleInset: Double = 22
+	/// Leading inset of the title, matching where the menu draws its item titles.
+	static let titleInsetLeft: Double = 24
+	/// Trailing inset of the slider from the row's edge.
+	static let titleInsetRight: Double = 12
+	/// Space between the title and the slider.
+	static let gap: Double = 12
 	/// Menu item titles are drawn by the menu in its vibrant context, which a plain
 	/// custom view does not share, so `.labelColor` came out lighter than the titles
 	/// around it. `.controlTextColor` is what matches.
@@ -25,19 +32,31 @@ final class SliderMenuItemView: NSView {
 			value: value, minValue: range.lowerBound, maxValue: range.upperBound,
 			target: target, action: action)
 		slider.isContinuous = true
-		slider.controlSize = .small
+		slider.controlSize = .mini
+
 		label = NSTextField(labelWithString: title)
 		label.font = NSFont.menuFont(ofSize: 0)
 		label.textColor = Self.titleColor
 
-		super.init(frame: NSRect(x: 0, y: 0, width: 240, height: Self.rowHeight))
+		super.init(frame: NSRect(x: 0, y: 0, width: Self.rowWidth, height: Self.rowHeight))
 
-		let textHeight: Double = 16
-		let textY = (Self.rowHeight - textHeight) / 2
-		label.frame = NSRect(x: Self.titleInset, y: textY, width: 116, height: textHeight)
-		slider.frame = NSRect(x: 136, y: textY, width: 92, height: textHeight)
+		label.translatesAutoresizingMaskIntoConstraints = false
+		slider.translatesAutoresizingMaskIntoConstraints = false
+		// The title keeps its natural width; the slider absorbs the rest.
+		label.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+		label.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+		slider.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
 		addSubview(label)
 		addSubview(slider)
+		NSLayoutConstraint.activate([
+			label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.titleInsetLeft),
+			label.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+			slider.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: Self.gap),
+			slider.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.titleInsetRight),
+			slider.centerYAnchor.constraint(equalTo: centerYAnchor),
+		])
 	}
 
 	@available(*, unavailable)
