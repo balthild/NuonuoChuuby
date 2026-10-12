@@ -75,4 +75,28 @@ struct MockPlatformTests {
 		#expect(behind != nil)
 		#expect(behind?.visible == [Span(start: 700, end: 1100)])
 	}
+
+	@Test("The pet's own overlay does not stop her landing on a window")
+	func ownOverlayDoesNotBlockLanding() {
+		let platform = MockPlatform.singleMonitor(width: 1440, height: 900)
+		let space = DisplaySpace(monitors: platform.monitors(), primaryHeight: 900)
+		platform.setWindows([
+			// The pet's panel: floating, transparent, exactly where she is.
+			PlatformWindow(
+				id: 10, ownerPID: ProcessInfo.processInfo.processIdentifier,
+				ownerName: "NuonuoChuuby",
+				bounds: PixelRect(x: 600, y: 700, width: 256, height: 256), layer: 3, alpha: 1),
+			// A normal window she is falling onto.
+			PlatformWindow(
+				id: 20, ownerPID: 900, ownerName: "Safari",
+				bounds: PixelRect(x: 100, y: 800, width: 1200, height: 400), layer: 0, alpha: 1),
+		])
+
+		let provider = SurfaceProvider(platform: platform)
+		provider.refresh(displaySpace: space)
+
+		// She is falling through the panel's x-range onto the window top at y=800.
+		let landing = provider.landingSurface(footX: 700, fromY: 760, toY: 810)
+		#expect(landing?.key == SurfaceKey(owner: 20, kind: .windowTop))
+	}
 }

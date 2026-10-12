@@ -51,11 +51,15 @@ public enum SurfaceBuilder {
 					ownerBounds: monitor.frame, isReachable: true))
 		}
 
+		let eligible = windows.map { window in monitors.contains { isEligible(window, $0) } }
+
 		for (index, window) in windows.enumerated() {
-			guard monitors.contains(where: { isEligible(window, $0) }) else { continue }
-			// Only the windows in front of this one can hide its edges; everything
-			// behind it is beneath it.
-			let occluders = windows[..<index]
+			guard eligible[index] else { continue }
+			// Only an ordinary app window hides an edge. Anything else — our own
+			// transparent overlays, the Dock, a HUD, a panel — is not desktop
+			// content, and treating it as an occluder is how the pet's own panel
+			// came to hide the very edge she was landing on.
+			let occluders = (0..<index).filter { eligible[$0] }.map { windows[$0] }
 			result.append(contentsOf: edges(of: window, occludedBy: occluders))
 		}
 
@@ -63,7 +67,7 @@ public enum SurfaceBuilder {
 	}
 
 	private static func edges(
-		of window: PlatformWindow, occludedBy occluders: ArraySlice<PlatformWindow>
+		of window: PlatformWindow, occludedBy occluders: [PlatformWindow]
 	) -> [Surface] {
 		let bounds = window.bounds
 		// The top edge is the only one the pet may stand on this round (D3); the
@@ -106,7 +110,7 @@ public enum SurfaceBuilder {
 		of span: Span,
 		covering coordinate: Double,
 		along axis: Axis,
-		by occluders: ArraySlice<PlatformWindow>
+		by occluders: [PlatformWindow]
 	) -> [Span] {
 		var runs = [span]
 		for occluder in occluders {

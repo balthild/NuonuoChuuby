@@ -98,6 +98,40 @@ struct SurfaceBuilderTests {
 		#expect(top(of: 2, in: graph)?.visible == [Span(start: 100, end: 1100)])
 	}
 
+	@Test("An ordinary window in front does hide the edge")
+	func eligibleFrontOccludes() {
+		let front = window(id: 1, x: 400, y: 200, w: 300, h: 500)
+		let behind = window(id: 2, x: 100, y: 200, w: 1000, h: 500)
+		let graph = build([front, behind])
+		#expect(
+			top(of: 2, in: graph)?.visible == [
+				Span(start: 100, end: 400), Span(start: 700, end: 1100),
+			])
+	}
+
+	@Test("A raised overlay in front does not hide the edge")
+	func ineligibleFrontDoesNotOcclude() {
+		// Our own pet panel: floating level, transparent, sitting right where the
+		// pet is. Treating it as an occluder hid the edge she was landing on, so
+		// she fell straight past every window.
+		let overlay = PlatformWindow(
+			id: 1, ownerPID: 900, ownerName: "NuonuoChuuby",
+			bounds: PixelRect(x: 400, y: 200, width: 300, height: 300), layer: 3, alpha: 1)
+		let behind = window(id: 2, x: 100, y: 200, w: 1000, h: 500)
+		let graph = build([overlay, behind])
+		#expect(top(of: 2, in: graph)?.visible == [Span(start: 100, end: 1100)])
+	}
+
+	@Test("A fully transparent window in front does not hide the edge")
+	func transparentFrontDoesNotOcclude() {
+		let overlay = PlatformWindow(
+			id: 1, ownerPID: 900, ownerName: "HUD",
+			bounds: PixelRect(x: 400, y: 200, width: 300, height: 300), layer: 0, alpha: 0.01)
+		let behind = window(id: 2, x: 100, y: 200, w: 1000, h: 500)
+		let graph = build([overlay, behind])
+		#expect(top(of: 2, in: graph)?.visible == [Span(start: 100, end: 1100)])
+	}
+
 	@Test("A window whose top is under the menu bar yields no surface")
 	func menuBarTopIneligible() {
 		let graph = build([window(id: 1, x: 100, y: 10, w: 800, h: 500)])

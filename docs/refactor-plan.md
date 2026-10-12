@@ -409,6 +409,17 @@ public enum SurfaceChange: Sendable, Equatable {
 >   `SupportSurface` 一并消失。
 > - 第 5 条（删 `TerrainWindow.title`）**提前到 Phase A 完成**：`TerrainWindow` 被
 >   `PlatformWindow` 取代，若把它带过 Phase A 就得为它写一阶段的死代码。
+>
+> **Phase B 遮挡集修正（2026-10-12，修 bug）**
+> §4.2 原写「能遮挡它的只有 `windows[..<i]`」，实现时字面照做 —— **这是错的**：
+> 遮挡集里混进了**我们自己的透明浮层**（宠物面板 `.floating` = layer 3、气泡窗、
+> 幽灵图标窗）。宠物面板恰好在她脚下，于是她把**自己正踩着的窗沿**挖出一个洞，
+> `landingSurface` / `support` 全部落空 —— 表现为「拖到窗口上方仍直接掉到屏幕底部」、
+> 「站在窗口上」永不成立。
+> **修正：只有本身可作地形的窗口（`isEligible`）才参与遮挡。** 普通应用窗口照旧互相
+> 遮挡（真正的用途），而我们自己的浮层、Dock、HUD、各类 panel 不再挖洞。
+> 代价（已知、可接受）：别的应用的**不透明浮层**盖住一段窗沿时不再遮挡，宠物可能站在
+> 被它盖住的位置 —— 远比「所有窗沿都不可站」轻。
 
 **验证**
 - `swift test`；移植的边界用例通过。
