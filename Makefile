@@ -61,11 +61,17 @@ PLIST_BUDDY := /usr/libexec/PlistBuddy
 
 .DEFAULT_GOAL := help
 
-.PHONY: help format assets manifest strip-assets icon build test app sign signing-cert package run rerun dev reset-data clean release
+.PHONY: help format lint assets manifest strip-assets icon build test app sign signing-cert package run rerun dev reset-data clean release
 
 help: ## Show this help.
 	@printf '%s\n' "$(DISPLAY_NAME) $(VERSION) — available targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%s\t\033[0m %s\n", $$1, $$2}' | column -t -s $$'\t'
+
+format: ## Format the sources in place (Swift via swift-format, JSON via dprint).
+	dprint fmt
+
+lint: ## Report formatting violations, changing nothing.
+	dprint check
 
 assets: ## Seed runtime assets from the upstream submodule.
 	Tools/seed-assets.sh "$(UPSTREAM_SUBMODULE)" "$(ASSETS_DIR)"

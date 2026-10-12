@@ -1,0 +1,48 @@
+{
+	// Swift is formatted by `swift format`, driven through the exec plugin, so
+	// `.swift-format` stays the single source of truth for Swift style.
+	//
+	// The include list is an allowlist, which is what keeps the upstream submodule
+	// and the generated asset manifest out of it: `Vendor/` holds another project's
+	// C#, and `asset-manifest.json` is written by Tools/generate-asset-manifest.sh
+	// with a layout of its own, so formatting it would only fight the generator.
+	"includes": [
+		".vscode/*.json",
+		".swift-format",
+		"dprint.json",
+		"Sources/**/*.swift",
+		"Tests/**/*.swift",
+		"Tools/**/*.swift",
+		"Package.swift",
+	],
+	"excludes": [
+		".build",
+	],
+	"useTabs": true,
+	"indentWidth": 2,
+	"lineWidth": 100,
+	"json": {
+		"associations": ["*.{json,jsonc}", ".swift-format"],
+		"trailingCommas": "jsonc",
+		"jsonTrailingCommaFiles": [
+			"dprint.json",
+			".vscode/settings.json",
+			".vscode/launch.json",
+		],
+	},
+	"exec": {
+		"cwd": "${configDir}",
+		"commands": [
+			{
+				"command": "swift format {{file_path}}",
+				"exts": ["swift"],
+				"cacheKeyFiles": [".swift-format"],
+				"stdin": false,
+			},
+		],
+	},
+	"plugins": [
+		"npm:@dprint/json@0.24.0",
+		"npm:@dprint/exec@0.7.3/plugin.json@704701df449dd7e942a71144773778ac529d68c2e4657bfc236d393b898b9a67",
+	],
+}
