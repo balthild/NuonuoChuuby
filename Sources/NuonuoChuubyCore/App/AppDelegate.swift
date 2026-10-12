@@ -283,7 +283,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		settings.normalize()
 		settingsStore?.save(settings)
 		applySettings()
-		statusItem?.settings = settings
 	}
 
 	private func applySettings() {
@@ -293,6 +292,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		speech?.showBubbles = settings.showSpeechBubbles
 		speech?.isVoiceEnabled = settings.soundEnabled
 		speech?.voiceVolume = settings.voiceVolume
+
+		// The menu mirrors the settings. This is the one place that happens, so it
+		// also runs at startup: the status item is built before the saved settings
+		// are applied, and without this the size slider would show the default while
+		// the pet was drawn at the saved size.
+		statusItem?.settings = settings
 
 		// Reaction to deletions is a user toggle, so the watcher follows it.
 		if settings.reactToDeletes, settings.character.supportsFood {
