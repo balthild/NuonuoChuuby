@@ -9,6 +9,8 @@ import AppKit
 @MainActor
 public final class SurfaceProvider {
 	public private(set) var surfaces: [Surface] = []
+	/// Set by ``refresh(displaySpace:)``; the simulation suspends while true.
+	public private(set) var isFullscreenAppActive = false
 
 	/// Windows change constantly, so the graph is rebuilt on an interval rather
 	/// than per frame.
@@ -34,8 +36,11 @@ public final class SurfaceProvider {
 
 	public func refresh(displaySpace: DisplaySpace) {
 		let ownPID = ProcessInfo.processInfo.processIdentifier
+		let windows = platform.windows()
+		isFullscreenAppActive = FullscreenDetector.isFullscreenAppActive(
+			windows: windows, monitors: displaySpace.displays)
 		surfaces = SurfaceBuilder.build(
-			windows: platform.windows(), monitors: displaySpace.displays,
+			windows: windows, monitors: displaySpace.displays,
 			isEligible: { window, monitor in
 				WindowTerrainEligibilityPolicy.isEligiblePlatform(
 					window, ownPID: ownPID, workArea: monitor.visibleFrame)

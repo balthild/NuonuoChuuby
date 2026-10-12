@@ -215,8 +215,17 @@ public final class PetController: SpriteAnimatorDelegate {
 		life.advance(elapsedSeconds: simulation, sleeping: state == .sleeping)
 		stateElapsed += simulation
 		// Other apps move their windows underneath her, so the terrain map is
-		// re-read on an interval rather than only at startup.
+		// re-read on an interval rather than only at startup. It keeps refreshing
+		// even while suspended, because that is how the fullscreen check below
+		// notices the app going away.
 		surfaceProvider.refreshIfStale(displaySpace: displaySpace, delta: simulation)
+
+		// Suspended: no display at all (the session is locked or a screen slept), or
+		// a fullscreen app covering one. Nothing moves (TODO.md §2 items 4 and 5).
+		if displaySpace.displays.isEmpty || surfaceProvider.isFullscreenAppActive {
+			return
+		}
+
 		// Standing, sleeping or walking, she rides the window under her. This runs
 		// for every grounded state, because a dragged window moves her whether or
 		// not she happens to be walking.
@@ -1288,6 +1297,11 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// Advances only the ground-support handling, as one frame would.
 	func debugMaintainGroundSupport(delta: Double) {
 		maintainGroundSupport(delta)
+	}
+
+	/// Advances one whole simulation frame, as the timer would.
+	func debugStep(delta: Double) {
+		step(delta)
 	}
 
 	/// Triggers a hop, which is normally chosen by the autonomy planner.

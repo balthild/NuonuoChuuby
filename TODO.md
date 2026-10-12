@@ -41,8 +41,13 @@ landing / curious` 五种落地状态运行，且只有两条路：
 2. ~~**遮挡减法**：按 z 序（窗口列表顺序，front-to-back）做一维区间减法，只保留**可见**的边。输入只需窗口矩形 + 顺序。当前实现不做减法，所以桌宠可能站在被别的窗口盖住的**隐形窗沿**上。~~
    **已实施（2026-10-12，重构 Phase B）**：`World/SurfaceBuilder.swift` 按窗口列表顺序做一维区间减法，`Surface.span`（整条边）与 `Surface.visible`（未遮挡片段，可能多段）分离。`SurfaceProvider` 只把可见片段派生成可站的 `SupportSurface`。见 `docs/refactor-plan.md` Phase B。
 3. **开机自启改用 `~/Library/LaunchAgents` plist**：绕开 `SMAppService` 的 Team-ID 签名要求。（原先还写了「去掉了现在 `osascript` 方案的系统事件授权弹窗」这个理由，**已撤回**：授权弹窗是一次性的，不构成设计理由。）
-4. **锁屏 / 零显示器当作挂起**：macOS 在锁屏或显示器休眠时会报告「零个显示器」，绝不能当成空桌面。当前 `DisplaySpace` 会退化成默认矩形，属于同类 bug。（Ledgeling 自己踩过：曾经恢复后永远挂起。）
-5. **全屏应用时挂起**：识别方式是「存在一个 layer-0 窗口逐边贴合某显示器 bounds（±2px）」。
+4. ~~**锁屏 / 零显示器当作挂起**：macOS 在锁屏或显示器休眠时会报告「零个显示器」，绝不能当成空桌面。当前 `DisplaySpace` 会退化成默认矩形，属于同类 bug。~~
+   **已实施（2026-10-12，重构 Phase E）**：`PetController.step` 在 `displaySpace.displays.isEmpty`
+   时直接返回 —— 不模拟、不位移。显示器恢复非空即继续。
+5. ~~**全屏应用时挂起**：识别方式是「存在一个 layer-0 窗口逐边贴合某显示器 bounds（±2px）」。~~
+   **已实施（2026-10-12，重构 Phase E）**：`World/FullscreenDetector.swift` 是**纯函数**
+   `isFullscreenAppActive(windows:monitors:)`，由 `SurfaceProvider.refresh` 每 2 Hz 求值，
+   `PetController.step` 据此挂起。注意：**最大化**（绿钮）的窗口停在菜单栏之下，不会误判为全屏。
 6. **空闲时间用 `CGEventSourceSecondsSinceLastEventType`**：免权限，且无需额外监听。（免权限是附带好处，不是选择理由。）
 7. **窗口快速移动 = 「受惊」反应，而不是把宠物甩出去**（`STARTLING_SPEED = 900`）。我们目前保留原版的抛出行为，阈值已对齐 900。
 8. ~~**扫描节奏**：2 Hz 常态，变化后 2 秒内 10 Hz；挂起时完全不扫描。渲染静止 30 Hz / 移动 60 Hz。~~

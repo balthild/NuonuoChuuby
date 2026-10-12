@@ -298,4 +298,25 @@ struct PlatformRideIntegrationTests {
 			#expect(state.perchKey != nil, "grounded but unperched at tick \(tick)")
 		}
 	}
+
+	@Test("With no display she is suspended and does not move")
+	func suspendedWithoutDisplay() throws {
+		guard let root = Self.assetsRoot else { throw TestSkip.missingAssets }
+		let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+			.appendingPathComponent("nuonuo-suspend-\(UUID().uuidString)")
+		defer { try? FileManager.default.removeItem(at: directory) }
+
+		// No monitors at all: the session is locked or every screen slept.
+		let controller = PetController(
+			catalog: AssetCatalog(locator: AssetLocator(root: root)),
+			surfaceProvider: SurfaceProvider(platform: MockPlatform()),
+			lifeStore: PetLifeStateStore(stateDirectory: directory),
+			displaySpace: DisplaySpace(monitors: [], primaryHeight: 0))
+
+		let before = controller.debugState.foot
+		for _ in 0..<60 { controller.debugStep(delta: Self.frame) }
+		// Without the suspension guard she would have been dropped by gravity.
+		#expect(controller.debugState.foot == before)
+		#expect(controller.state == .idle)
+	}
 }

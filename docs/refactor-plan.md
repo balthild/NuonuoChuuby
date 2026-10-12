@@ -499,6 +499,15 @@ public enum SurfaceChange: Sendable, Equatable {
 **验证**：零显示器 + flush 窗口检测的单元测试；手动锁屏 / 拔显示器，
 从 `activity.log` 确认没有运行、没有位移。
 
+> **Phase E 实施修正（2026-10-12）**
+> - 挂起判定放在 `PetController.step` 的**开头**，`return` 掉后面的全部模拟（移动、
+>   状态机、动画、心跳）。零显示器时甚至连地形图都不再重建。
+> - **例外**：出于「怎么知道该恢复」的需要，`refreshIfStale` 仍以 2 Hz 运行 ——
+>   它是全屏检测的唯一数据来源，停掉它就再也发现不了全屏应用退出。这是为可恢复性
+>   付的极小代价（一次 2 Hz 的窗口枚举），并不违反「不动」。
+> - 新增 `debugStep` 测试缝（与既有 `debugMaintainGroundSupport` 同风格），用来断言
+>   零显示器下 60 帧内 `foot` 完全不变、状态仍是 `idle`。
+
 ---
 
 ## 6. 独立交付项：AX 真实桌面图标坐标（**不属于上面任何阶段**）
