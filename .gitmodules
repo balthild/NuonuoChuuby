@@ -1,0 +1,3 @@
+[submodule "Vendor/JiuNuoDesktopPet"]
+	path = Vendor/JiuNuoDesktopPet
+	url = https://github.com/nicedoctors/JiuNuoDesktopPet

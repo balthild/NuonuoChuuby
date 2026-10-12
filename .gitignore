@@ -1,0 +1,13 @@
+.DS_Store
+/.build
+/Packages
+xcuserdata/
+DerivedData/
+.swiftpm/configuration/registries.json
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.netrc
+
+# Seeded from the upstream submodule by `make assets`; the bytes are never
+# committed. Only the placeholder is tracked so the resource folder exists.
+/Sources/NuonuoChuubyCore/Resources/Assets/*
+!/Sources/NuonuoChuubyCore/Resources/Assets/.gitkeep
