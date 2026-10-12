@@ -2,10 +2,9 @@ import Foundation
 
 /// Whether a fullscreen app is covering a display.
 ///
-/// A pure function over the window list and the displays, so it can be tested
-/// without a Mac in front of it. A fullscreen window is an ordinary (layer 0)
-/// window whose edges meet a monitor's frame within a small tolerance; a merely
-/// maximised window stops at the menu bar and so does not count.
+/// A fullscreen window is an ordinary (layer 0) window whose edges meet a
+/// monitor's frame within a small tolerance; a maximised window stops at the
+/// menu bar and does not count.
 public enum FullscreenDetector {
 	/// How far off a perfect match still counts. Window bounds and display frames
 	/// are both in points, so a pixel or two of rounding is normal.

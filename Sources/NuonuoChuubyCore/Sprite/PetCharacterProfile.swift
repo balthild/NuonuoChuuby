@@ -19,8 +19,7 @@ public struct PetCharacterGeometry: Sendable, Equatable {
 	public var burpOffsetCanvasY: Double = 0
 }
 
-/// Per-character configuration. The macOS build instantiates only 糯糯, but the
-/// indirection is kept intact so 菲比 can be added without a merge.
+/// Per-character configuration.
 public struct PetCharacterProfile: Sendable, Equatable, Identifiable {
 	public let id: String
 	public let displayName: String

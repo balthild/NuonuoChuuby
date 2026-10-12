@@ -2,22 +2,18 @@ import AppKit
 
 /// A menu that can carry a slider inline (used for the size control).
 ///
-/// A custom menu-item view replaces the standard item rendering, so it has to be
-/// built to match one: the menu's own font and text colour, the same leading inset
-/// as the item titles, and the standard row height. A default-sized `NSSlider`
-/// would otherwise make the row taller than every other item.
+/// A custom menu-item view replaces the standard rendering, so it has to be built
+/// to match one: the menu's font, the same leading inset as the item titles, and
+/// the standard row height.
 final class SliderMenuItemView: NSView {
-	/// The row's width, and the only knob for how wide the slider ends up: the
-	/// slider takes the row minus the two insets, the title and the gap. A wider row
-	/// widens the menu with it, since a custom menu-item view is what sizes the menu.
+	/// The row's width. Also the knob for the slider's width and the menu's, since a
+	/// custom menu-item view is what sizes the menu.
 	static let rowWidth: Double = 280
 	/// The standard menu item height, so this row is not taller than its neighbours.
 	static let rowHeight: Double = 22
 	/// Leading inset of the title, matching where the menu draws its item titles.
 	static let titleInsetLeft: Double = 24
-	/// Trailing inset of the slider from the row's edge.
 	static let titleInsetRight: Double = 12
-	/// Space between the title and the slider.
 	static let gap: Double = 12
 	/// Menu item titles are drawn by the menu in its vibrant context, which a plain
 	/// custom view does not share, so `.labelColor` came out lighter than the titles
@@ -127,7 +123,6 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 	private let quitItem = NSMenuItem()
 	private let sizeSlider: NSSlider
 
-	/// Mirrors the current settings into the menu's checkmarks and slider.
 	public var settings: PetSettings = PetSettings() {
 		didSet { refreshMenuState() }
 	}
@@ -158,7 +153,6 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 		refreshMenuState()
 	}
 
-	/// Shows the same menu for a right-click on the pet itself.
 	public func popUpMenu(atScreenPoint point: NSPoint) {
 		refreshMenuState()
 		statusItem.menu?.popUp(positioning: nil, at: point, in: nil)

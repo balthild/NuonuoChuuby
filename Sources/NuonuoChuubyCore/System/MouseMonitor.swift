@@ -1,10 +1,6 @@
 import AppKit
 
 /// Records where the user last clicked.
-///
-/// A global monitor for mouse-down events needs no special permission — unlike
-/// keyboard monitoring, which would require Accessibility. That is why the pet
-/// reacts to *deletions* rather than to the Delete key being pressed.
 @MainActor
 public final class MouseMonitor {
 	/// A click is only a useful anchor for a short while after it happens.

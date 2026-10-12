@@ -37,8 +37,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		self.settingsStore = settingsStore
 		settings = settingsStore.load()
 
-		// A release build ships no artwork, so the first launch has to fetch it.
-		// Nothing else can start until the assets are there.
 		Task { @MainActor in
 			guard let locator = await resolveAssets(environment: environment) else {
 				NSApp.terminate(nil)
@@ -132,16 +130,14 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 			self?.statusItem?.popUpMenu(atScreenPoint: NSEvent.mouseLocation)
 			return nil
 		}
-		// Keep the bubble glued to the pet as it walks, falls and is dragged.
+
 		petWindow.onPlacementChanged = { [weak speech] frame in
 			speech?.updatePetFrame(frame)
 		}
 		self.petWindow = petWindow
 
-		// Real desktop icon positions, when Accessibility allows it. Soft: without
-		// the grant (or with Finder not running) the pet falls back to the
-		// Finder-default layout approximation. The index has to be kept warm
-		// because a deleted icon's element is gone by the time it is deleted.
+		// The index has to be kept warm: a deleted icon's element is gone by the
+		// time it is deleted.
 		let desktopIcons = DesktopIconIndex()
 		DesktopIconIndex.requestTrustIfNeeded(prompt: true)
 		desktopIcons.start()
@@ -150,8 +146,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 
 		statusItem = makeStatusItem(character: character)
 
-		// The pet eats files the user deletes from a watched folder. The monitor
-		// supplies the anchor guess, since macOS exposes no icon positions.
+		// The monitor supplies the anchor guess, since macOS exposes no icon
+		// positions.
 		let mouseMonitor = MouseMonitor(displaySpace: displaySpace)
 		mouseMonitor.start()
 		self.mouseMonitor = mouseMonitor
@@ -184,7 +180,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		}
 	}
 
-	/// Pulls the right cheek out, holds, then releases.
 	private func runPinchDemo(on controller: PetController) {
 		let geometry = controller.cheekGeometryInView
 		let start = CGPoint(x: geometry.rightX, y: geometry.cheekY)
@@ -217,8 +212,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 	// MARK: - PetMealDelegate
 
 	public func petController(_ controller: PetController, didBeginMeal item: DeletedItem) {
-		// The real icon position is better than the click/cursor guess when it is
-		// known, so the ghost appears where the icon actually was.
+
 		let anchor = desktopIcons?.position(of: item.displayName) ?? item.anchor
 		let ghost = GhostIconWindow()
 		ghost.show(
@@ -310,13 +304,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		speech?.isVoiceEnabled = settings.soundEnabled
 		speech?.voiceVolume = settings.voiceVolume
 
-		// The menu mirrors the settings. This is the one place that happens, so it
-		// also runs at startup: the status item is built before the saved settings
-		// are applied, and without this the size slider would show the default while
-		// the pet was drawn at the saved size.
+		// The menu mirrors the settings; this also runs at startup, since the status
+		// item is built before the saved settings are applied.
 		statusItem?.settings = settings
 
-		// Reaction to deletions is a user toggle, so the watcher follows it.
 		if settings.reactToDeletes, settings.character.supportsFood {
 			deletionWatcher?.start(extraFolders: settings.watchedFolders)
 		} else {

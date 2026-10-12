@@ -1,15 +1,13 @@
 import AppKit
 
-/// The simulation is kept in **top-left origin, Y-down** coordinates (matching
-/// the original Windows implementation) so the ported physics math is unchanged.
-/// AppKit works in bottom-left origin, Y-up; this type owns the conversion.
+/// The simulation is kept in **top-left origin, Y-down** coordinates; AppKit works
+/// in bottom-left origin, Y-up, and this type owns the conversion.
 public struct DisplaySpace: Sendable {
 	public let displays: [Monitor]
 	/// The primary display's height, which defines the Y flip for every display.
 	public let primaryHeight: Double
 
-	/// Builds a space from an already-enumerated display set. Pure, so a test can
-	/// describe a desktop without touching the window server.
+	/// Builds a space from an already-enumerated display set.
 	public init(monitors: [Monitor], primaryHeight: Double) {
 		self.displays = monitors
 		self.primaryHeight = primaryHeight

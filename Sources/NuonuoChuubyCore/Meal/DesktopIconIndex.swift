@@ -11,23 +11,19 @@ public struct DesktopIcon: Sendable, Equatable {
 
 /// Reads Finder's **real** desktop icon positions through Accessibility.
 ///
-/// macOS exposes no public API for this, and the icon's accessibility element
-/// disappears the instant it is deleted — so the mapping has to be built *ahead*
-/// of time. This is therefore a periodic index (name → position) that a deletion
-/// event looks up, not a lookup performed at deletion time.
+/// The icon's accessibility element disappears the instant it is deleted, so this
+/// has to be a periodic index (name → position) that a deletion event looks up.
 ///
-/// Accessibility is a **soft** dependency: when it is not granted (or Finder is
-/// not running) `icons` is empty and callers fall back to ``DesktopIconGrid``.
+/// Accessibility is a **soft** dependency: without it (or with Finder not running)
+/// `icons` is empty and callers fall back to ``DesktopIconGrid``.
 @MainActor
 public final class DesktopIconIndex {
-	/// Supplies the icons. Injectable so the index can be tested without
-	/// Accessibility; returns nil when it cannot read at all.
+	/// Supplies the icons; returns nil when it cannot read at all.
 	public typealias Reader = () -> [DesktopIcon]?
 
 	private let reader: Reader
 	private var timer: Timer?
 
-	/// The latest reading, keyed by file name.
 	public private(set) var icons: [String: DesktopIcon] = [:]
 	/// The last count written to the diagnostics log, so only a change is logged.
 	private var lastLoggedCount = -1
@@ -45,7 +41,6 @@ public final class DesktopIconIndex {
 			.map(\.position)
 	}
 
-	/// Where a named icon is, if the last reading saw it.
 	public func position(of name: String) -> PixelPoint? { icons[name]?.position }
 
 	public func refresh() {
@@ -54,9 +49,8 @@ public final class DesktopIconIndex {
 		} else {
 			icons = [:]
 		}
-		// Logged only when the count changes, so the log stays quiet while the
-		// desktop is still. This is also how you tell whether Accessibility was
-		// actually granted.
+		// Logged only when the count changes; a count of 0 means Accessibility
+		// was not granted.
 		guard icons.count != lastLoggedCount else { return }
 		lastLoggedCount = icons.count
 		DiagnosticsLog.shared.writeEvent("DesktopIconIndex", [("Icons", "\(icons.count)")])

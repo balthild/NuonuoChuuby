@@ -1,8 +1,4 @@
-/// Emits only when a value changes.
-///
-/// A signal that stays the same for a whole gesture — a dragged window's ride
-/// response, say — would otherwise be recorded once per frame. This collapses a
-/// run of identical values into a single emission.
+/// Emits only when a value changes, collapsing a run of identical values into one.
 struct ChangeGate<Value: Equatable> {
 	private var last: Value?
 
@@ -13,7 +9,6 @@ struct ChangeGate<Value: Equatable> {
 		return true
 	}
 
-	/// Forgets the last value, so the next one emits afresh.
 	mutating func reset() {
 		last = nil
 	}

@@ -2,13 +2,7 @@ import CoreGraphics
 import Foundation
 
 /// Draws the pinched cheek over the pet's resting frame.
-///
-/// The original redrew a face rig (cheek patch, eye squint, mouth) over a stable
-/// cel. This does the same with the geometry that is actually known: the cheek
-/// and mouth anchors. Everything is drawn at the runtime frame size, so the
-/// result scales with the pet like any other frame.
 public enum CheekPinchRenderer {
-	/// Draws `base` with the cheek stretched by `dynamics`.
 	public static func render(
 		base: CGImage,
 		geometry: CheekPinchGeometry,
@@ -55,8 +49,6 @@ public enum CheekPinchRenderer {
 		)
 		drawBlush(in: context, geometry: geometry, dynamics: dynamics, scale: scale)
 
-		// A wide pull opens a small mouth, which is what reads as "she is being
-		// pinched" rather than merely bulging.
 		if dynamics.tension > 0.45 {
 			drawMouth(in: context, geometry: geometry, dynamics: dynamics, scale: scale)
 		}
@@ -77,8 +69,6 @@ public enum CheekPinchRenderer {
 			y: (geometry.cheekY + dynamics.y) * scale
 		)
 
-		// The patch stretches along the pull direction, so the cheek reads as
-		// elastic rather than as a circle that moved.
 		let stretch = 1 + dynamics.tension * 0.45
 		let radiusX = geometry.hitRadiusX * scale * stretch
 		let radiusY = geometry.hitRadiusY * scale * (1 + dynamics.tension * 0.12)
@@ -94,7 +84,6 @@ public enum CheekPinchRenderer {
 			)
 		)
 
-		// A soft outline keeps the patch from dissolving into the face.
 		context.setStrokeColor(inkColor(from: skin))
 		context.setLineWidth(1.1)
 		context.strokeEllipse(
@@ -144,7 +133,7 @@ public enum CheekPinchRenderer {
 	) {
 		let openness = (dynamics.tension - 0.45) / 0.55
 		let center = CGPoint(x: geometry.mouthX * scale, y: geometry.mouthY * scale)
-		// The nibble wobble modulates how far the mouth is open.
+
 		let height = (7 + 9 * openness) * (0.75 + dynamics.nibble * 0.5) * scale
 		let width = (11 + 5 * openness) * scale
 
@@ -159,7 +148,6 @@ public enum CheekPinchRenderer {
 			)
 		)
 
-		// Tongue, visible only once the mouth is properly open.
 		if openness > 0.4 {
 			context.setFillColor(CGColor(red: 0.94, green: 0.55, blue: 0.60, alpha: 1))
 			context.fillEllipse(

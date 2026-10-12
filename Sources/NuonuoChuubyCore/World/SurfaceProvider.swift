@@ -2,18 +2,13 @@ import AppKit
 
 /// The surfaces the pet can stand on: each display's floor, plus every window
 /// edge, from ``SurfaceBuilder``'s graph.
-///
-/// The graph carries the whole edge (`span`) and the unoccluded parts
-/// (`visible`), so the pet is never anchored to a piece of edge some other window
-/// covers.
 @MainActor
 public final class SurfaceProvider {
 	public private(set) var surfaces: [Surface] = []
 	/// Set by ``refresh(displaySpace:)``; the simulation suspends while true.
 	public private(set) var isFullscreenAppActive = false
 
-	/// Windows change constantly, so the graph is rebuilt on an interval rather
-	/// than per frame.
+	/// Windows change constantly, so the graph is rebuilt on an interval.
 	private static let refreshInterval: Double = 0.5
 	private var secondsSinceWindowRefresh: Double = .greatestFiniteMagnitude
 	private let platform: Platform

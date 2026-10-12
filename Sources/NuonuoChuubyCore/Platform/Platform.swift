@@ -2,9 +2,8 @@ import Foundation
 
 /// A window as the operating system reports it.
 ///
-/// The list order **is** the z-order: index 0 is frontmost. Occlusion is
-/// computed from this order alone (refactor-plan §4.2), which is why `zIndex`
-/// is carried even though it is currently just the enumeration position.
+/// The list order **is** the z-order: index 0 is frontmost, and occluders are the
+/// windows before it in the list.
 public struct PlatformWindow: Sendable, Equatable {
 	/// `CGWindowID`, used as the owner of a surface key.
 	public var id: UInt32
@@ -54,10 +53,8 @@ public struct Monitor: Sendable, Equatable, Identifiable {
 	}
 }
 
-/// The windowing system, behind the smallest surface the simulation needs.
-///
-/// Deliberately only geometry — nothing here reads system idle time or the
-/// frontmost process (refactor-plan D6).
+/// The windowing system, behind the smallest surface the simulation needs
+/// (geometry only).
 @MainActor
 public protocol Platform {
 	func windows() -> [PlatformWindow]

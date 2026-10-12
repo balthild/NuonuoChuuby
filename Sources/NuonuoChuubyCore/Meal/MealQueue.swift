@@ -42,8 +42,7 @@ public enum MealQueuePolicy {
 	}
 }
 
-/// A bounded FIFO of pending meals. The pet eats one at a time; a queue rather
-/// than a single slot is what makes a burst of deletes feel like a buffet.
+/// A bounded FIFO of pending meals.
 public struct MealQueue: Sendable {
 	private var items: [DeletedItem] = []
 
@@ -58,7 +57,6 @@ public struct MealQueue: Sendable {
 		items.append(item)
 	}
 
-	/// An interrupted meal goes back to the front so it is not silently lost.
 	public mutating func requeueAtFront(_ item: DeletedItem) {
 		items.insert(item, at: 0)
 	}
@@ -110,8 +108,7 @@ public enum IconLickTargetSelector {
 	}
 }
 
-/// Picks a free spot for the ghost icon when the real position is unknown, so
-/// several ghosts do not stack on top of each other.
+/// Picks a free spot for the ghost icon when the real position is unknown.
 public enum GhostAnchorLayout {
 	static let offsets: [PixelPoint] = [
 		PixelPoint(x: 0, y: 0), PixelPoint(x: 84, y: 0), PixelPoint(x: -84, y: 0),
@@ -140,8 +137,7 @@ public enum GhostAnchorLayout {
 	}
 }
 
-/// Detects a burst of deletions, which reads as "she hit the buffet" rather than
-/// a single snack.
+/// Detects a burst of deletions.
 public struct DeletionBurstTracker: Sendable {
 	private var recent: [Date] = []
 
@@ -149,7 +145,6 @@ public struct DeletionBurstTracker: Sendable {
 
 	public var count: Int { recent.count }
 
-	/// Returns true once two deletions land inside the window.
 	public mutating func register(detectedAt: Date, window: Double = 6) -> Bool {
 		recent.removeAll { detectedAt.timeIntervalSince($0) > window }
 		recent.append(detectedAt)

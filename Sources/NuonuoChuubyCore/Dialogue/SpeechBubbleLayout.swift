@@ -5,9 +5,7 @@ import Foundation
 public enum SpeechBubbleLayout {
 	/// - Parameters:
 	///   - petFrame: the pet panel's frame, top-left origin, Y down.
-	///   - bubbleSize: the bubble's width and height in points.
 	///   - workArea: the visible area of the pet's display.
-	/// - Returns: the bubble's top-left corner.
 	public static func topLeft(
 		petFrame: PixelRect,
 		bubbleWidth: Double,

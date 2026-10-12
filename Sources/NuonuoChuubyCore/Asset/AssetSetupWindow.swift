@@ -1,8 +1,7 @@
 import AppKit
 
 /// Shows the first-launch download: progress while it runs, and a retry when it
-/// fails. A release build has no artwork of its own, so this is the only way the
-/// pet can appear the first time.
+/// fails.
 @MainActor
 public final class AssetSetupWindowController {
 	private let panel: NSPanel
@@ -10,7 +9,6 @@ public final class AssetSetupWindowController {
 	private let progressBar: NSProgressIndicator
 	private let retryButton: NSButton
 
-	/// Called when the user asks to try again.
 	public var onRetry: (() -> Void)?
 
 	public init() {

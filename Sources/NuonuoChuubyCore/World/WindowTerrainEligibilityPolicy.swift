@@ -1,11 +1,8 @@
 import Foundation
 
-/// Which on-screen windows a pet may stand on.
-///
-/// The Windows original filtered by Win32 style bits; macOS expresses the same
-/// intent with the window level, alpha and owner. The point is the same: only
-/// ordinary, solid, user-facing windows are terrain — never the desktop, the
-/// Dock, the menu bar, panels or our own pet windows.
+/// Which on-screen windows a pet may stand on: only ordinary, solid, user-facing
+/// windows are terrain — never the desktop, the Dock, the menu bar, panels or our
+/// own pet windows.
 public enum WindowTerrainEligibilityPolicy {
 	public static let minimumWidth: Double = 140
 	public static let minimumHeight: Double = 60

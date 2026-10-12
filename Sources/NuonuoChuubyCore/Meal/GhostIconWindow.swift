@@ -66,7 +66,6 @@ public final class GhostIconWindow {
 		panel.orderFrontRegardless()
 	}
 
-	/// Fades the icon out as the pet finishes eating it.
 	public func fadeOut(then completion: (() -> Void)? = nil) {
 		NSAnimationContext.runAnimationGroup { context in
 			context.duration = 0.25

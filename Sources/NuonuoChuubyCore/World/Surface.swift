@@ -45,17 +45,14 @@ public struct Span: Sendable, Equatable {
 
 /// One edge of one window (or a monitor's floor).
 ///
-/// `t` parameterises a position along `span`, which is the **whole** edge
-/// including any part another window hides. That is deliberate: an edge split by
-/// an occluder keeps the same `t` for the same physical spot, so a perch survives
-/// the edge being cut (refactor-plan §4.1).
+/// `t` parameterises a position along `span`, the **whole** edge including any part
+/// another window hides, so an edge cut by an occluder keeps the same `t` for the
+/// same physical spot.
 public struct Surface: Sendable, Equatable {
 	public var key: SurfaceKey
-	/// The whole edge.
 	public var span: Span
 	/// The parts of the edge that are not hidden, in order. A list rather than a
-	/// single span because an occluder in the middle of an edge leaves two
-	/// disjoint visible runs (refactor-plan §4.2, "把遮挡者的区间减掉，剩下的").
+	/// single span because an occluder in the middle leaves two disjoint runs.
 	/// Empty means the edge is completely covered.
 	public var visible: [Span]
 	/// The edge's fixed coordinate: its y for a horizontal edge, its x for a
@@ -64,11 +61,10 @@ public struct Surface: Sendable, Equatable {
 	/// The owning window's full rectangle (a monitor's for a floor). Climbing needs
 	/// the window's bottom edge, which the edge alone does not carry.
 	public var ownerBounds: PixelRect?
-	/// Whether the pet may currently stand on it. Only window tops and floors are
-	/// enabled this round (decision D3); the vertical edges are built but unused.
+	/// Whether the pet may stand on it. Only window tops and floors are enabled this
+	/// round; the vertical edges are built but unused.
 	public var isReachable: Bool
 
-	/// True for the edges whose `span` runs along x.
 	public var isHorizontal: Bool { key.kind != .windowLeft && key.kind != .windowRight }
 
 	public init(
@@ -101,13 +97,11 @@ public struct Surface: Sendable, Equatable {
 		visible.contains { coordinate >= $0.start + inset && coordinate <= $0.end - inset }
 	}
 
-	/// The visible run a `t` position falls in, if any.
 	public func visibleRun(containingT t: Double) -> Span? {
 		let coordinate = coordinate(atT: t)
 		return visible.first { $0.contains(coordinate) }
 	}
 
-	/// The visible run holding a world point, measured along the edge's axis.
 	public func visibleRun(containing point: PixelPoint) -> Span? {
 		let coordinate = isHorizontal ? point.x : point.y
 		return visible.first { $0.contains(coordinate) }

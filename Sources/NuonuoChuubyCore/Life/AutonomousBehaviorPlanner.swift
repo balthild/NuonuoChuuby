@@ -46,8 +46,6 @@ public enum AutonomousBehaviorPlanner {
 			)
 		}
 
-		// A short nap is also an ordinary idle variation; sleepiness raises its
-		// probability, but even a rested pet can occasionally choose it.
 		add(.sleep, 0.75 + max(0, life.sleepiness - 43) / 9)
 
 		if supportsFood {

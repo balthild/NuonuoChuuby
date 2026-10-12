@@ -1,8 +1,6 @@
 import AVFoundation
 
-/// Plays the character's recordings with the original's rotation rules: a cue
-/// cannot retrigger immediately, no file returns within twelve seconds, and a
-/// higher-priority line may interrupt a lower one.
+/// Plays the character's recordings with rotation and priority rules.
 @MainActor
 public final class VoicePlaybackService: NSObject, AVAudioPlayerDelegate {
 	private static let defaultCueCooldown: Double = 1.8

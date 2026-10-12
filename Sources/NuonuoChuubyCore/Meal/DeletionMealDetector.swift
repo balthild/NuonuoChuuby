@@ -1,12 +1,7 @@
 import Foundation
 
-/// Turns raw filesystem observations into confirmed meals.
-///
-/// macOS has no equivalent of the Recycle Bin's `$I*` metadata, so a deletion is
-/// inferred: a name disappears from a watched folder, and the same name appears
-/// in `~/.Trash`. The Trash arrival is corroboration, not a requirement — a file
-/// removed with `rm` never reaches the Trash, so a removal that is not
-/// corroborated is still accepted once a short window passes.
+/// Turns raw filesystem observations into confirmed meals: a name disappears from
+/// a watched folder, and a matching arrival in `~/.Trash` corroborates it.
 public struct DeletionMealDetector: Sendable {
 	public struct Pending: Sendable, Equatable {
 		public var name: String

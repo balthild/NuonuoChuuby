@@ -38,8 +38,7 @@ public protocol SpriteAnimatorDelegate: AnyObject {
 	func spriteAnimator(_ animator: SpriteAnimator, didFinishClip clip: String)
 }
 
-/// Steps a clip's frames over time. The clip table and timing rules are ported
-/// unchanged from the original; only the bitmap type differs.
+/// Steps a clip's frames over time.
 @MainActor
 public final class SpriteAnimator {
 	private static let defaultClips: [String: SpriteClip] = [
@@ -345,7 +344,6 @@ public final class SpriteAnimator {
 
 		if profile.usesMischief {
 			folders = folders.filter { !foodAssetFolders.contains($0) }
-			// Mischief (菲比) clips are appended here when that character lands.
 		} else {
 			folders = folders.filter { $0 != "pair_icon_kick" }
 		}
@@ -503,8 +501,7 @@ public final class SpriteAnimator {
 	}
 }
 
-/// Pair-scene timings live here so the clip table can reference them before the
-/// companion system itself is ported.
+/// Pair-scene timings referenced by the clip table.
 public enum CompanionLifeConstants {
 	public static let kickFrameSeconds: Double = 0.13
 	public static let kickContact = 7 * kickFrameSeconds

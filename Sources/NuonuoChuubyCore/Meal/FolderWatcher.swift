@@ -17,7 +17,6 @@ final class FolderWatcher {
 	private let queue = DispatchQueue(label: "com.balthild.NuonuoChuuby.folder-watcher")
 	private var stream: FSEventStreamRef?
 
-	/// Called after a change, with the added/removed names.
 	var onChange: (@Sendable (Change) -> Void)?
 
 	init(url: URL) {

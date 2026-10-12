@@ -1,9 +1,6 @@
 import Foundation
 
 /// Durable user preferences.
-///
-/// This is a fresh macOS format, not the Windows file: there is no legacy macOS
-/// settings to migrate from, so a corrupt file simply falls back to defaults.
 public struct PetSettings: Sendable, Equatable, Codable {
 	public static let currentVersion = 1
 

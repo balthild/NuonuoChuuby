@@ -9,17 +9,14 @@ public final class PetSpeechCoordinator {
 	private var selector: PetDialogueSelector
 	private let displaySpace: DisplaySpace
 
-	/// The bubble is a separate toggle from the voice; both default to on.
 	public var showBubbles = true
 
-	/// Event speech is frequent, so bubbles are throttled: an important line may
-	/// appear after a short gap, ambient chatter only occasionally — otherwise a
-	/// hopping pet would paper the screen in captions.
+	/// Event speech is frequent, so bubbles are throttled: important lines appear
+	/// after a short gap, ambient chatter only occasionally.
 	private var lastBubbleAt = Date.distantPast
 	private static let minimumGap: Double = 2.5
 	private static let ambientGap: Double = 20
 
-	/// The pet's current frame, used to place and keep the bubble attached.
 	private var petFrame: PixelRect = .zero
 
 	public init(
@@ -44,14 +41,12 @@ public final class PetSpeechCoordinator {
 		set { voice.setVolume(newValue) }
 	}
 
-	/// Called whenever the pet moves, so a visible bubble travels with it.
 	public func updatePetFrame(_ frame: PixelRect) {
 		petFrame = frame
 		guard bubble.isVisible, let topLeft = bubbleTopLeft() else { return }
 		bubble.reposition(to: topLeft, displaySpace: displaySpace)
 	}
 
-	/// Reacts with a line and a matching recording.
 	@discardableResult
 	public func react(
 		_ cue: DialogueCue,
@@ -88,7 +83,6 @@ public final class PetSpeechCoordinator {
 
 	private func canShowBubble(priority: VoicePriority) -> Bool {
 		let gap = Date().timeIntervalSince(lastBubbleAt)
-		// Ambient chatter is the pet thinking aloud; it should read as occasional.
 		return gap >= (priority >= .normal ? Self.minimumGap : Self.ambientGap)
 	}
 

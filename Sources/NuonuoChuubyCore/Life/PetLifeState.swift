@@ -11,8 +11,7 @@ public struct PetLifeState: Sendable, Equatable, Codable {
 	public var curiosity: Double = 48
 	public var totalMeals: Int = 0
 	public var favoriteFoodType: String = ""
-	/// Keys are lowercased so lookups behave case-insensitively, as the original
-	/// `OrdinalIgnoreCase` dictionary did.
+	/// Keys are lowercased so lookups behave case-insensitively.
 	public var foodTypeCounts: [String: Int] = [:]
 	public var lastUpdatedUtc: Date = Date()
 

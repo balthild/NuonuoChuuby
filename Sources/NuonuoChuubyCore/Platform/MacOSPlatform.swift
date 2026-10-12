@@ -4,9 +4,8 @@ import CoreGraphics
 /// The real ``Platform``: `CGWindowListCopyWindowInfo` for windows, `NSScreen`
 /// for displays.
 ///
-/// Bounds come from the window server without any permission — only window
-/// *titles* and *contents* need screen recording. The dictionary's bounds
-/// already use the top-left, Y-down origin the simulation works in.
+/// The dictionary's bounds already use the top-left, Y-down origin the simulation
+/// works in.
 @MainActor
 public final class MacOSPlatform: Platform {
 	public init() {}

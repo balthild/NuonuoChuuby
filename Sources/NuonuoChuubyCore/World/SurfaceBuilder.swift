@@ -2,14 +2,11 @@ import Foundation
 
 /// Turns a front-to-back window list and a display set into the surface graph.
 ///
-/// Pure: the only inputs are window rectangles and their order, which is the
-/// z-order. No window server, no displays to read.
+/// Pure: the only inputs are window rectangles and their order (the z-order).
 public enum SurfaceBuilder {
 	/// Which way an edge runs, so the right coordinate is compared.
 	private enum Axis {
-		/// A horizontal edge sitting at some y.
 		case horizontal
-		/// A vertical edge sitting at some x.
 		case vertical
 
 		/// The interval along this edge that `window` hides, if it covers it at all.
@@ -60,10 +57,8 @@ public enum SurfaceBuilder {
 
 		for (index, window) in windows.enumerated() {
 			guard eligible[index] else { continue }
-			// Only an ordinary app window hides an edge. Anything else — our own
-			// transparent overlays, the Dock, a HUD, a panel — is not desktop
-			// content, and treating it as an occluder is how the pet's own panel
-			// came to hide the very edge she was landing on.
+			// Only an ordinary app window hides an edge; our own overlays, the Dock
+			// and HUDs are not desktop content.
 			let occluders = (0..<index).filter { eligible[$0] }.map { windows[$0] }
 			result.append(contentsOf: edges(of: window, occludedBy: occluders))
 		}
@@ -76,8 +71,8 @@ public enum SurfaceBuilder {
 		occludedBy occluders: [PlatformWindow]
 	) -> [Surface] {
 		let bounds = window.bounds
-		// The top edge is the only one the pet may stand on this round (D3); the
-		// other three are built so the graph is complete.
+		// Only the top edge is standable this round (D3); the other three are
+		// built for completeness.
 		let horizontal: [(SurfaceKind, Double)] = [
 			(.windowTop, bounds.top), (.windowBottom, bounds.bottom),
 		]
@@ -115,7 +110,6 @@ public enum SurfaceBuilder {
 		return result
 	}
 
-	/// The parts of an edge that its occluders do not hide, front to back.
 	private static func visibleRuns(
 		of span: Span,
 		covering coordinate: Double,
@@ -131,7 +125,6 @@ public enum SurfaceBuilder {
 		return runs
 	}
 
-	/// One interval minus another, giving the (up to two) leftover pieces.
 	private static func subtract(_ cut: Span, from run: Span) -> [Span] {
 		guard let overlap = run.intersection(with: cut) else { return [run] }
 		var parts: [Span] = []

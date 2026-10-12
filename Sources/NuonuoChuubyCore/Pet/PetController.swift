@@ -7,7 +7,6 @@ public protocol PetControllerDelegate: AnyObject {
 	func petControllerDidRequestMenu(_ controller: PetController)
 }
 
-/// Reports meals so the UI can show the ghost icon the pet is eating.
 @MainActor
 public protocol PetMealDelegate: AnyObject {
 	func petController(_ controller: PetController, didBeginMeal item: DeletedItem)
@@ -17,9 +16,7 @@ public protocol PetMealDelegate: AnyObject {
 /// The pet's brain: it owns the simulation position, the behavioural state
 /// machine and the sprite animator, and reports where the window should be.
 ///
-/// All coordinates are in **points**, top-left origin, Y down (see
-/// ``DisplaySpace``). Working in points means the original's DIP constants carry
-/// over unchanged, so `displayScale` stays 1.
+/// Coordinates are points, top-left origin, Y down (see ``DisplaySpace``).
 @MainActor
 public final class PetController: SpriteAnimatorDelegate {
 	private enum Motion {
@@ -34,13 +31,11 @@ public final class PetController: SpriteAnimatorDelegate {
 		static let hopVelocity: Double = 420
 		static let arrivalTolerance: Double = 5
 		static let movementTimeout: Double = 8
-		/// How far a surface may move in a single tick before it is yanked out from
-		/// under her. 15 pt per 60 Hz frame is the 900 pt/s the original read as a
-		/// deliberate flick rather than a drag (Ledgeling's `STARTLING_SPEED`).
+		/// How far a surface may move in one tick before it is yanked out from under
+		/// her. 15 pt at 60 Hz is the 900 pt/s the original read as a deliberate flick.
 		static let releaseDisplacement: Double = 15
 	}
 
-	/// Actions whose behaviour exists in this build.
 	private static let implementedActions: Set<AutonomousAction> = [
 		.rest, .wander, .explore, .sleep, .hop,
 		.askForFood, .lickIcon, .roll,
@@ -48,12 +43,10 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	public let profile: PetCharacterProfile
 	public weak var delegate: PetControllerDelegate?
-	/// Reported separately because meals have their own on-screen companion.
 	public weak var mealDelegate: PetMealDelegate?
-	/// Optional speech; when absent the pet stays silent.
 	public weak var speech: PetSpeechCoordinator?
-	/// Real desktop icon positions, when Accessibility allows it. Falls back to
-	/// ``DesktopIconGrid``'s approximation when absent or empty.
+	/// Real desktop icon positions; empty when Accessibility is unavailable, and
+	/// callers fall back to ``DesktopIconGrid``.
 	public var desktopIcons: DesktopIconIndex?
 
 	public private(set) var state: PetState = .idle {
@@ -75,12 +68,11 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// -1 faces left, +1 faces right.
 	public private(set) var facing: Double = 1
 
-	/// Mode flags, kept in step with ``PetSettings``.
 	public var fastingMode = false
 	public var quietMode = false {
 		didSet {
-			// Turning quiet mode on mid-walk should stop the pet where it is; a meal
-			// in progress goes back on the queue rather than being lost.
+			// Turning quiet mode on stops her mid-walk; an interrupted meal goes back
+			// on the queue rather than being lost.
 			if quietMode {
 				requeueActiveMeal()
 				if state == .running || state == .chomping || state == .licking {
@@ -105,7 +97,6 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var dragOffset = PixelPoint.zero
 	private var isDragging = false
 	private var targetX: Double = 0
-	/// The full 2D destination for a meal or an icon lick.
 	private var targetPoint: PixelPoint = .zero
 	private var mealQueue = MealQueue()
 	private var activeMeal: DeletedItem?
@@ -116,36 +107,28 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var cheek = CheekPinchDynamics()
 	/// The clip's own frame, before any pinch overlay is drawn on top.
 	private var baseFrame: CGImage?
-	/// Where the pinch started, in view points, so the drag is measured from it.
+	/// Where the pinch started, in view points.
 	private var pinchOrigin: CGPoint = .zero
 
-	// Support: she is anchored to a point along an edge, not to a world coordinate.
-	/// Where along which edge she is standing; absent mid-air or mid-drag.
+	// MARK: - Support
+
 	private var perch: Perch?
-	/// The surface the perch resolved to this frame.
 	private var perchSurface: Surface?
-	/// The surface's offset in the previous tick, to measure how far it moved.
 	private var lastPerchOffset: Double?
-	/// How long the perch has failed to resolve, for the recovery grace.
 	private var perchUnavailableSeconds: Double = 0
-	/// Set while the grace is being held, so it is logged once not per frame.
+	/// So the grace is logged once, not per frame.
 	private var isInPerchGrace = false
-	/// Collapses a run of identical ride responses into one log line.
 	private var perchLogGate = ChangeGate<PlatformMotionResponse>()
 	private var pendingClimb: WindowClimbPlan?
 	private var activeClimb: WindowClimbPlan?
 	private var climbProgress: Double = 0
 	private var climbStart: PixelPoint = .zero
-	/// The y where the visible wall begins — the window's bottom edge, or her feet
-	/// if she is already standing higher than it.
+	/// Where the visible wall begins: the window's bottom, or her feet if higher.
 	private var climbWallStartY: Double = 0
-	/// Fraction of the total climb spent leaping up to the wall's lower corner.
 	private var climbHopFraction: Double = 0
 	private var climbDuration: Double = 3
 	private var climbWillSucceed = true
 	private var climbSlipAt: Double = 1
-
-	/// How long a transient state (landing, curious, waking) lasts before idle.
 	private var transientDuration: Double = 0
 
 	private let displayScale: Double = 1
@@ -174,7 +157,6 @@ public final class PetController: SpriteAnimatorDelegate {
 		let animator = SpriteAnimator(catalog: catalog, profile: profile)
 		self.animator = animator
 
-		// Start standing on the primary display's floor, centred.
 		let home =
 			displaySpace.displays.first?.visibleFrame ?? PixelRect(x: 0, y: 0, width: 1440, height: 900)
 		self.foot = PixelPoint(x: home.centerX, y: home.bottom)
@@ -221,21 +203,17 @@ public final class PetController: SpriteAnimatorDelegate {
 
 		life.advance(elapsedSeconds: simulation, sleeping: state == .sleeping)
 		stateElapsed += simulation
-		// Other apps move their windows underneath her, so the terrain map is
-		// re-read on an interval rather than only at startup. It keeps refreshing
-		// even while suspended, because that is how the fullscreen check below
-		// notices the app going away.
+		// Kept refreshing while suspended too: this is where the fullscreen check
+		// below gets its data, so stopping it would mean never resuming.
 		surfaceProvider.refreshIfStale(displaySpace: displaySpace, delta: simulation)
 
-		// Suspended: no display at all (the session is locked or a screen slept), or
-		// a fullscreen app covering one. Nothing moves (TODO.md §2 items 4 and 5).
+		// No display (session locked, screen asleep) or a fullscreen app: suspend.
 		if displaySpace.displays.isEmpty || surfaceProvider.isFullscreenAppActive {
 			return
 		}
 
-		// Standing, sleeping or walking, she rides the window under her. This runs
-		// for every grounded state, because a dragged window moves her whether or
-		// not she happens to be walking.
+		// Runs for every grounded state, not only while walking: a dragged window
+		// moves her whether or not she happens to be walking.
 		maintainGroundSupport(simulation)
 
 		switch state {
@@ -244,7 +222,6 @@ public final class PetController: SpriteAnimatorDelegate {
 		case .falling: updateFalling(simulation)
 		case .climbing: updateClimbing(simulation)
 		case .landing, .curious, .waking, .satisfied, .rolling:
-			// These play out for a fixed dwell, then return to idle.
 			if stateElapsed >= transientDuration {
 				if state == .waking { announce(.wakeNormally, voice: .calm) }
 				returnToIdle()
@@ -257,7 +234,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		}
 
 		animator.tick(timing.animationSeconds)
-		// A pinch runs on its own spring, independent of the walk cycle.
+		// The pinch spring runs independently of the walk cycle.
 		updatePinchFrame(simulation)
 		notifyPlacementIfChanged()
 		logHeartbeat(simulation)
@@ -265,9 +242,8 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	/// A periodic snapshot of state, position and support.
 	///
-	/// "She is stuck in mid-air" is otherwise only diagnosable from a report: the
-	/// state log only fires on transitions, so a pet that has settled somewhere
-	/// wrong logs nothing at all. This makes that case self-evident.
+	/// The state log only fires on transitions, so a pet that settled somewhere
+	/// wrong would otherwise log nothing at all.
 	private func logHeartbeat(_ delta: Double) {
 		heartbeatRemaining -= delta
 		guard heartbeatRemaining <= 0 else { return }

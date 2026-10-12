@@ -24,8 +24,7 @@ public enum VoicePriority: Int, Sendable, Comparable {
 	}
 }
 
-/// Each cue maps to one or more recorded files. The rotation policy keeps a cue
-/// from sounding like a single loop.
+/// Each cue maps to one or more recorded files.
 public enum VoiceCueCatalog {
 	static let nuonuoFiles: [VoiceCue: [String]] = [
 		.neutral: [

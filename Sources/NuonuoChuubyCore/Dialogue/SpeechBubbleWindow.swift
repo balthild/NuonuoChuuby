@@ -75,7 +75,7 @@ final class SpeechBubbleView: NSView {
 		)
 
 		let path = NSBezierPath(roundedRect: bubbleRect, xRadius: 9, yRadius: 9)
-		// The tail sits just left of centre so it does not cover the pet's face.
+
 		let tailX = bubbleRect.midX
 		let tail = NSBezierPath()
 		tail.move(to: NSPoint(x: tailX - 5, y: bubbleRect.maxY))
@@ -116,7 +116,6 @@ public final class SpeechBubbleWindowController {
 
 	public var isVisible: Bool { panel.isVisible }
 
-	/// The bubble's current size, needed to re-place it as the pet moves.
 	public var bubbleSize: (width: Double, height: Double) {
 		(width: Double(currentSize.width), height: Double(currentSize.height))
 	}
@@ -149,7 +148,6 @@ public final class SpeechBubbleWindowController {
 		DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: work)
 	}
 
-	/// Keeps a visible bubble attached to the pet as it moves.
 	public func reposition(to topLeft: PixelPoint, displaySpace: DisplaySpace) {
 		guard panel.isVisible else { return }
 		applyFrame(topLeft: topLeft, displaySpace: displaySpace)

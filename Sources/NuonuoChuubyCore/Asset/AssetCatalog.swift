@@ -2,8 +2,7 @@ import CoreGraphics
 import Foundation
 import ImageIO
 
-/// Loads and caches per-clip frame arrays. Frames are decoded once and reused
-/// for the life of the process.
+/// Loads and caches per-clip frame arrays.
 @MainActor
 public final class AssetCatalog {
 	private let locator: AssetLocator

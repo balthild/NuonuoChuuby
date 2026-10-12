@@ -1,12 +1,8 @@
 import CoreGraphics
 import Foundation
 
-/// Re-reads a single window's bounds, for the surface the pet is standing on.
-///
-/// The graph is only rebuilt every half second, which would make a dragged
-/// window feel jerky. Asking the window server about the one window the pet is
-/// standing on is cheap enough to do every frame, and is what the original called
-/// its "live tracked surface". Everything else lives in ``SurfaceBuilder``.
+/// Re-reads a single window's bounds, for the surface the pet is standing on, so a
+/// dragged window does not lag the half-second graph rebuild.
 enum WindowSurfaceProvider {
 	/// The window's top edge as a surface, read fresh this frame.
 	///
@@ -30,7 +26,6 @@ enum WindowSurfaceProvider {
 		)
 	}
 
-	/// The window's current bounds, queried directly.
 	static func liveBounds(of windowID: UInt32) -> PixelRect? {
 		// Asking about one window is far cheaper than enumerating the list, which
 		// matters because this runs every frame for the window she stands on.

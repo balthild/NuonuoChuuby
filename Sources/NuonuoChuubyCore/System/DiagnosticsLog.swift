@@ -3,10 +3,8 @@ import Foundation
 
 /// A local, rotating activity log.
 ///
-/// Diagnostics must never interrupt the pet, so every write is best-effort. Free
-/// text is scrubbed of paths and e-mail addresses, and anything the caller marks
-/// as user content is replaced by a session-scoped reference that keeps events
-/// correlatable without recording what the user had on screen.
+/// Every write is best-effort; free text is scrubbed of paths and e-mail
+/// addresses, and user content is replaced by a session-scoped reference.
 public final class DiagnosticsLog: @unchecked Sendable {
 	public static let shared = DiagnosticsLog()
 
@@ -97,9 +95,8 @@ public final class DiagnosticsLog: @unchecked Sendable {
 			try handle.seekToEnd()
 			try handle.write(contentsOf: Data((line + "\n").utf8))
 			// The line reaches the kernel on every write, so an app crash cannot
-			// lose it. Deliberately no `synchronize()` (fsync): the old code never
-			// called it, and forcing a disk write on the main thread once per frame
-			// would add exactly the stall this change removes.
+			// lose it. Deliberately no fsync: forcing a disk write per frame would
+			// add the stall this change removes.
 		} catch {
 			// A failed write must never interrupt the pet. Drop the handle so the
 			// next write reopens cleanly.
@@ -147,7 +144,6 @@ enum DiagnosticsPrivacy {
 		flatten(value)
 	}
 
-	/// Flattens and then scrubs anything path- or identity-shaped.
 	static func message(_ value: String, reference: (String) -> String) -> String {
 		var text = flatten(value)
 		for regex in redactions {

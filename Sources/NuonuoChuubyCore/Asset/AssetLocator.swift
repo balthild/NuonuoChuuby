@@ -1,11 +1,6 @@
 import Foundation
 
 /// Resolves where the sprite frames and voice clips live.
-///
-/// A development build ships a seed copy inside the app bundle (copied from the
-/// upstream submodule by `make assets`). A release build downloads the pinned
-/// revision into Application Support on first launch. Whichever is present, the
-/// same relative layout is used so the rest of the app never has to care.
 public struct AssetLocator: Sendable {
 	public let root: URL
 

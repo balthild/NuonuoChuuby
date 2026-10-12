@@ -1,10 +1,7 @@
 import Foundation
 
-/// The pinned list of runtime files a release build fetches.
-///
-/// The manifest holds only paths and a commit id — no asset bytes — so it can be
-/// committed and reviewed without carrying any of the artwork's unresolved
-/// redistribution status. See `Tools/generate-asset-manifest.sh`.
+/// The pinned list of runtime files a release build fetches. See
+/// `Tools/generate-asset-manifest.sh`.
 public struct AssetManifest: Sendable, Decodable {
 	public struct Entry: Sendable, Decodable {
 		/// Where the file goes, relative to the app's asset folder.
@@ -17,7 +14,6 @@ public struct AssetManifest: Sendable, Decodable {
 	public var commit: String
 	public var files: [Entry]
 
-	/// Reads the manifest bundled with the app.
 	public static func bundled() -> AssetManifest? {
 		guard let url = Bundle.module.url(forResource: "asset-manifest", withExtension: "json"),
 			let data = try? Data(contentsOf: url)
@@ -25,7 +21,6 @@ public struct AssetManifest: Sendable, Decodable {
 		return try? JSONDecoder().decode(AssetManifest.self, from: data)
 	}
 
-	/// The github.com URL the files are served from.
 	public var rawBaseURL: URL? {
 		URL(
 			string: upstream.replacingOccurrences(
@@ -48,11 +43,8 @@ public struct AssetManifest: Sendable, Decodable {
 	}
 }
 
-/// Fetches and verifies the asset folder a release build runs from.
-///
-/// A development build ships a seed copy inside the bundle, so this only runs
-/// when the seed is absent. Assets live under `assets/<commit>/`, which means a
-/// release that pins a new commit naturally downloads once and then reuses it.
+/// Fetches and verifies the asset folder a release build runs from. Assets live
+/// under `assets/<commit>/`, so a new pinned commit downloads once and is reused.
 @MainActor
 public final class AssetStore {
 	public enum Failure: Error, CustomStringConvertible {
@@ -95,7 +87,7 @@ public final class AssetStore {
 		environment.assetsRootDirectory.appendingPathComponent(manifest.commit)
 	}
 
-	/// The upstream revision these assets came from, for logging and support.
+	/// The upstream revision these assets came from.
 	public var manifestCommit: String { manifest.commit }
 
 	/// Files that are absent or empty, so a half-finished download is retried.
@@ -114,7 +106,6 @@ public final class AssetStore {
 		missingFiles(in: installDirectory).isEmpty
 	}
 
-	/// Downloads whatever is missing, reporting progress as it goes.
 	public func install(progress: @escaping @Sendable (Progress) -> Void) async throws {
 		let directory = installDirectory
 		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -136,8 +127,6 @@ public final class AssetStore {
 			]
 		)
 
-		// A bounded number of parallel requests keeps the download short without
-		// hammering the server or opening hundreds of sockets.
 		try await withThrowingTaskGroup(of: String.self) { group in
 			var iterator = missing.makeIterator()
 			var inFlight = 0
