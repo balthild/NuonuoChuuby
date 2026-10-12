@@ -38,13 +38,20 @@ public final class SurfaceProvider {
 		let ownPID = ProcessInfo.processInfo.processIdentifier
 		let windows = platform.windows()
 		isFullscreenAppActive = FullscreenDetector.isFullscreenAppActive(
-			windows: windows, monitors: displaySpace.displays)
+			windows: windows,
+			monitors: displaySpace.displays
+		)
 		surfaces = SurfaceBuilder.build(
-			windows: windows, monitors: displaySpace.displays,
+			windows: windows,
+			monitors: displaySpace.displays,
 			isEligible: { window, monitor in
 				WindowTerrainEligibilityPolicy.isEligiblePlatform(
-					window, ownPID: ownPID, workArea: monitor.visibleFrame)
-			})
+					window,
+					ownPID: ownPID,
+					workArea: monitor.visibleFrame
+				)
+			}
+		)
 	}
 
 	/// Called from the simulation tick; re-enumerates windows only occasionally.
@@ -67,7 +74,12 @@ public final class SurfaceProvider {
 	}
 
 	/// The surface a descending foot crosses between `fromY` and `toY`.
-	public func landingSurface(footX: Double, fromY: Double, toY: Double, inset: Double = 10) -> Surface? {
+	public func landingSurface(
+		footX: Double,
+		fromY: Double,
+		toY: Double,
+		inset: Double = 10
+	) -> Surface? {
 		standable(horizontalOnly: true)
 			.filter {
 				$0.offset >= fromY - 1 && $0.offset <= toY + 1

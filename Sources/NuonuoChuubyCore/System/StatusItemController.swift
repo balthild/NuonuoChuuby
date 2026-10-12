@@ -27,10 +27,20 @@ final class SliderMenuItemView: NSView {
 	let slider: NSSlider
 	let label: NSTextField
 
-	init(title: String, value: Double, range: ClosedRange<Double>, target: AnyObject?, action: Selector) {
+	init(
+		title: String,
+		value: Double,
+		range: ClosedRange<Double>,
+		target: AnyObject?,
+		action: Selector
+	) {
 		slider = NSSlider(
-			value: value, minValue: range.lowerBound, maxValue: range.upperBound,
-			target: target, action: action)
+			value: value,
+			minValue: range.lowerBound,
+			maxValue: range.upperBound,
+			target: target,
+			action: action
+		)
 		slider.isContinuous = true
 		slider.controlSize = .mini
 
@@ -133,7 +143,9 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 
 		if let button = statusItem.button {
 			button.image = NSImage(
-				systemSymbolName: "pawprint.fill", accessibilityDescription: characterName)
+				systemSymbolName: "pawprint.fill",
+				accessibilityDescription: characterName
+			)
 			button.image?.size = NSSize(width: 18, height: 18)
 			button.toolTip = characterName
 		}
@@ -159,10 +171,16 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 		menu.addItem(homeItem)
 
 		sizeItem.view = SliderMenuItemView(
-			title: "桌宠尺寸", value: settings.petSize,
-			range: PetSizePolicy.fromPercent(PetSizePolicy.minimumPercent)...PetSizePolicy.fromPercent(
-				PetSizePolicy.maximumPercent),
-			target: self, action: #selector(sizeChanged(_:)))
+			title: "桌宠尺寸",
+			value: settings.petSize,
+			range: PetSizePolicy.fromPercent(
+				PetSizePolicy.minimumPercent
+			)...PetSizePolicy.fromPercent(
+				PetSizePolicy.maximumPercent
+			),
+			target: self,
+			action: #selector(sizeChanged(_:))
+		)
 		menu.addItem(sizeItem)
 
 		menu.addItem(.separator())
@@ -235,9 +253,13 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 
 	@objc private func toggleFasting() { callbacks.setFasting(!settings.fastingMode) }
 	@objc private func toggleQuiet() { callbacks.setQuiet(!settings.quietMode) }
-	@objc private func toggleDeleteReaction() { callbacks.setDeleteReaction(!settings.reactToDeletes) }
+	@objc private func toggleDeleteReaction() {
+		callbacks.setDeleteReaction(!settings.reactToDeletes)
+	}
 	@objc private func toggleBubbles() { callbacks.setBubbles(!settings.showSpeechBubbles) }
 	@objc private func toggleMuted() { callbacks.setMuted(settings.soundEnabled) }
-	@objc private func toggleLaunchAtLogin() { callbacks.setLaunchAtLogin(!callbacks.isLaunchAtLogin()) }
+	@objc private func toggleLaunchAtLogin() {
+		callbacks.setLaunchAtLogin(!callbacks.isLaunchAtLogin())
+	}
 	@objc private func quit() { callbacks.quit() }
 }

@@ -17,8 +17,11 @@ public struct AppEnvironment: Sendable {
 	}
 
 	public init() {
-		let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-			?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
+		let base =
+			FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+			?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(
+				"Library/Application Support"
+			)
 		self.init(storageDirectory: base.appendingPathComponent(AppEnvironment.storageFolderName))
 	}
 

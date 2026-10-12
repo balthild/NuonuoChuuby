@@ -18,11 +18,23 @@ public struct CheekPinchGeometry: Sendable, Equatable {
 	public static func geometry(for character: PetCharacterProfile) -> CheekPinchGeometry {
 		character.usesMischief
 			? CheekPinchGeometry(
-				leftX: 133, rightX: 244, cheekY: 239, hitRadiusX: 25, hitRadiusY: 18,
-				mouthX: 191, mouthY: 241)
+				leftX: 133,
+				rightX: 244,
+				cheekY: 239,
+				hitRadiusX: 25,
+				hitRadiusY: 18,
+				mouthX: 191,
+				mouthY: 241
+			)
 			: CheekPinchGeometry(
-				leftX: 122, rightX: 239, cheekY: 232, hitRadiusX: 25, hitRadiusY: 18,
-				mouthX: 178, mouthY: 227)
+				leftX: 122,
+				rightX: 239,
+				cheekY: 232,
+				hitRadiusX: 25,
+				hitRadiusY: 18,
+				mouthX: 178,
+				mouthY: 227
+			)
 	}
 
 	/// The cheek under a canvas-space point, if any.
@@ -71,7 +83,10 @@ public struct CheekPinchDynamics: Sendable {
 			max(
 				((x * x) / (Self.maximumHorizontal * Self.maximumHorizontal)
 					+ (y * y) / (Self.maximumVertical * Self.maximumVertical)).squareRoot(),
-				0), 1)
+				0
+			),
+			1
+		)
 	}
 
 	/// The chewing wobble when a cheek is pulled out hard.

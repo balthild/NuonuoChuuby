@@ -24,8 +24,11 @@ public struct DisplaySpace: Sendable {
 	public static func toTopLeft(_ rect: CGRect, primaryHeight: Double) -> PixelRect {
 		let top = primaryHeight - Double(rect.origin.y) - Double(rect.height)
 		return PixelRect(
-			x: Double(rect.origin.x), y: top,
-			width: Double(rect.width), height: Double(rect.height))
+			x: Double(rect.origin.x),
+			y: top,
+			width: Double(rect.width),
+			height: Double(rect.height)
+		)
 	}
 
 	public static func toAppKit(_ rect: PixelRect, primaryHeight: Double) -> CGRect {

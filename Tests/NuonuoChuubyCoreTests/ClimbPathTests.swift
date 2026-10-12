@@ -25,20 +25,28 @@ struct ClimbPathTests {
 		let wallStartY = min(plan.start.y, plan.targetBottom)
 		if progress < hopFraction {
 			let t = hopFraction > 0 ? progress / hopFraction : 1
-			return PixelPoint(x: plan.approachX, y: plan.start.y + (wallStartY - plan.start.y) * smoothstep(t))
+			return PixelPoint(
+				x: plan.approachX,
+				y: plan.start.y + (wallStartY - plan.start.y) * smoothstep(t)
+			)
 		}
 		let span = max(0.0001, 1 - hopFraction)
 		let t = (progress - hopFraction) / span
 		return PixelPoint(
 			x: plan.approachX + (plan.landingX - plan.approachX) * (t * t),
-			y: wallStartY + (plan.targetTop - wallStartY) * smoothstep(t))
+			y: wallStartY + (plan.targetTop - wallStartY) * smoothstep(t)
+		)
 	}
 
 	// The measured case: standing on the floor, a window whose bottom is well
 	// above the floor and whose right edge is just past her.
 	private let plan = Plan(
-		approachX: 1604, landingX: 1556, targetTop: 258, targetBottom: 752,
-		start: PixelPoint(x: 1604, y: 1117))
+		approachX: 1604,
+		landingX: 1556,
+		targetTop: 258,
+		targetBottom: 752,
+		start: PixelPoint(x: 1604, y: 1117)
+	)
 	private let hopFraction = 0.25
 
 	@Test("The ascent never happens below the window's bottom edge")
@@ -64,11 +72,19 @@ struct ClimbPathTests {
 	@Test("She hugs the wall for the body of the ascent")
 	func hugsTheWall() {
 		// A tenth of the way into the ascent she has barely moved inward.
-		let early = position(plan, progress: hopFraction + (1 - hopFraction) * 0.1, hopFraction: hopFraction)
+		let early = position(
+			plan,
+			progress: hopFraction + (1 - hopFraction) * 0.1,
+			hopFraction: hopFraction
+		)
 		#expect(abs(early.x - plan.approachX) < 2)
 
 		// Halfway up she is still within a pet's body width of the wall.
-		let middle = position(plan, progress: hopFraction + (1 - hopFraction) * 0.5, hopFraction: hopFraction)
+		let middle = position(
+			plan,
+			progress: hopFraction + (1 - hopFraction) * 0.5,
+			hopFraction: hopFraction
+		)
 		#expect(abs(middle.x - plan.approachX) <= 14)
 	}
 
@@ -83,8 +99,12 @@ struct ClimbPathTests {
 	func noHopWhenAlreadyAtTheWall() {
 		// Standing above the window's bottom, so the wall starts at her feet.
 		let close = Plan(
-			approachX: 500, landingX: 452, targetTop: 300, targetBottom: 900,
-			start: PixelPoint(x: 500, y: 600))
+			approachX: 500,
+			landingX: 452,
+			targetTop: 300,
+			targetBottom: 900,
+			start: PixelPoint(x: 500, y: 600)
+		)
 		let start = position(close, progress: 0, hopFraction: 0)
 		#expect(abs(start.x - close.approachX) < 0.001)
 		#expect(abs(start.y - close.start.y) < 0.001)

@@ -21,9 +21,12 @@ public final class MouseMonitor {
 	public func start() {
 		guard monitors.isEmpty else { return }
 		let mask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown]
-		if let monitor = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] event in
-			MainActor.assumeIsolated { self?.record(event) }
-		}) {
+		if let monitor = NSEvent.addGlobalMonitorForEvents(
+			matching: mask,
+			handler: { [weak self] event in
+				MainActor.assumeIsolated { self?.record(event) }
+			}
+		) {
 			monitors.append(monitor)
 		}
 	}
@@ -45,7 +48,9 @@ public final class MouseMonitor {
 	public var cursor: PixelPoint {
 		let location = NSEvent.mouseLocation
 		return PixelPoint(
-			x: Double(location.x), y: displaySpace.primaryHeight - Double(location.y))
+			x: Double(location.x),
+			y: displaySpace.primaryHeight - Double(location.y)
+		)
 	}
 
 	private func record(_ event: NSEvent) {

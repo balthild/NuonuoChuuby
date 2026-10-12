@@ -52,7 +52,8 @@ public final class VoicePlaybackService: NSObject, AVAudioPlayerDelegate {
 			requestedFiles: VoiceCueCatalog.fileNames(for: cue, character: character),
 			priority: priority,
 			cueCooldown: cueCooldown,
-			minimumIntervalSinceAnyVoice: minimumIntervalSinceAnyVoice)
+			minimumIntervalSinceAnyVoice: minimumIntervalSinceAnyVoice
+		)
 	}
 
 	private func playFiles(
@@ -78,19 +79,26 @@ public final class VoicePlaybackService: NSObject, AVAudioPlayerDelegate {
 			return false
 		}
 		if let player, player.isPlaying {
-			let canInterrupt = priority == .critical || priority > currentPriority
+			let canInterrupt =
+				priority == .critical || priority > currentPriority
 				|| (priority == currentPriority && priority >= .important)
 			guard canInterrupt else { return false }
 			player.stop()
 		}
 
 		let fresh = VoicePlaybackPolicy.freshFiles(
-			available: requestedFiles, lastFileStarted: lastFileStarted, now: now)
+			available: requestedFiles,
+			lastFileStarted: lastFileStarted,
+			now: now
+		)
 		let pool = fresh.isEmpty ? requestedFiles.filter { $0 != currentFileName } : fresh
 		let playable = pool.isEmpty ? requestedFiles : pool
-		guard let chosen = VoicePlaybackPolicy.rotationCandidates(
-			freshFiles: playable, previousFileForCue: lastFileByCue[cue], previousFileOverall: lastFileName
-		).randomElement() ?? playable.first
+		guard
+			let chosen = VoicePlaybackPolicy.rotationCandidates(
+				freshFiles: playable,
+				previousFileForCue: lastFileByCue[cue],
+				previousFileOverall: lastFileName
+			).randomElement() ?? playable.first
 		else { return false }
 
 		return start(fileName: chosen, cue: cue, priority: priority, now: now)
@@ -104,7 +112,9 @@ public final class VoicePlaybackService: NSObject, AVAudioPlayerDelegate {
 		}
 
 		created.delegate = self
-		created.volume = Float(loudness.volume(character: character.id, file: fileName, requested: volume))
+		created.volume = Float(
+			loudness.volume(character: character.id, file: fileName, requested: volume)
+		)
 		guard created.prepareToPlay(), created.play() else { return false }
 
 		player = created
@@ -131,11 +141,16 @@ public final class VoicePlaybackService: NSObject, AVAudioPlayerDelegate {
 	public func setVolume(_ newVolume: Double) {
 		volume = min(max(newVolume, 0), 1)
 		if let currentFileName {
-			player?.volume = Float(loudness.volume(character: character.id, file: currentFileName, requested: volume))
+			player?.volume = Float(
+				loudness.volume(character: character.id, file: currentFileName, requested: volume)
+			)
 		}
 	}
 
-	nonisolated public func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+	nonisolated public func audioPlayerDidFinishPlaying(
+		_ player: AVAudioPlayer,
+		successfully flag: Bool
+	) {
 		// AVAudioPlayer is not Sendable, so pass only its identity across the
 		// isolation boundary and re-check against the current player there.
 		let identifier = ObjectIdentifier(player)

@@ -45,7 +45,8 @@ public struct AssetLocator: Sendable {
 		let manager = FileManager.default
 		guard let versions = try? manager.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
 		else { return nil }
-		let newest = versions
+		let newest =
+			versions
 			.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
 			.max { $0.lastPathComponent < $1.lastPathComponent }
 		guard let newest else { return nil }

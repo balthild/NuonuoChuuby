@@ -47,7 +47,10 @@ public enum VoiceCueCatalog {
 		.landing: ["糯糯_软.wav", "糯糯_有点委屈.wav"],
 	]
 
-	public static func fileNames(for cue: VoiceCue, character: PetCharacterProfile = .nuonuo) -> [String] {
+	public static func fileNames(
+		for cue: VoiceCue,
+		character: PetCharacterProfile = .nuonuo
+	) -> [String] {
 		if character.usesMischief {
 			return []
 		}

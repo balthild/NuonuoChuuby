@@ -87,7 +87,10 @@ public enum PetDialogueCatalog {
 		.voiceDisabled: ["我安静啦。", "嘘。", "不说话啦。", "小声一点。"],
 	]
 
-	public static func lines(for cue: DialogueCue, character: PetCharacterProfile = .nuonuo) -> [String] {
+	public static func lines(
+		for cue: DialogueCue,
+		character: PetCharacterProfile = .nuonuo
+	) -> [String] {
 		if character.usesMischief { return [] }
 		return nuonuoLines[cue] ?? []
 	}

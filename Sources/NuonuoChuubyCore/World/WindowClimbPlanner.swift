@@ -47,46 +47,71 @@ public enum WindowClimbPlanner {
 			guard bottom >= currentSupport.offset - floorReachTolerance else { continue }
 
 			addSide(
-				id: targetID, target: target, side: .left,
-				approachX: target.span.start - sideGap, landingX: target.span.start + landingInset,
-				height: height)
+				id: targetID,
+				target: target,
+				side: .left,
+				approachX: target.span.start - sideGap,
+				landingX: target.span.start + landingInset,
+				height: height
+			)
 			addSide(
-				id: targetID, target: target, side: .right,
-				approachX: target.span.end + sideGap, landingX: target.span.end - landingInset,
-				height: height)
+				id: targetID,
+				target: target,
+				side: .right,
+				approachX: target.span.end + sideGap,
+				landingX: target.span.end - landingInset,
+				height: height
+			)
 		}
 
 		func addSide(
-			id: UInt32, target: Surface, side: WindowClimbSide,
-			approachX: Double, landingX: Double, height: Double
+			id: UInt32,
+			target: Surface,
+			side: WindowClimbSide,
+			approachX: Double,
+			landingX: Double,
+			height: Double
 		) {
 			guard currentSupport.isVisible(atCoordinate: approachX, inset: 18) else { return }
 			guard target.isVisible(atCoordinate: landingX, inset: 8) else { return }
 
 			let horizontalDistance = abs(approachX - footX)
 			let score = horizontalDistance + height * 0.16
-			candidates.append((
-				WindowClimbPlan(
-					targetSurfaceID: id, side: side, approachX: approachX, landingX: landingX,
-					targetTop: target.offset, targetBottom: target.ownerBounds?.bottom ?? target.offset,
-					height: height),
-				score))
+			candidates.append(
+				(
+					WindowClimbPlan(
+						targetSurfaceID: id,
+						side: side,
+						approachX: approachX,
+						landingX: landingX,
+						targetTop: target.offset,
+						targetBottom: target.ownerBounds?.bottom ?? target.offset,
+						height: height
+					),
+					score
+				)
+			)
 		}
 
-		let pool = candidates
+		let pool =
+			candidates
 			.sorted { lhs, rhs in
 				if lhs.score != rhs.score { return lhs.score < rhs.score }
 				return lhs.plan.targetTop < rhs.plan.targetTop
 			}
 			.prefix(4)
-			guard !pool.isEmpty else { return nil }
+		guard !pool.isEmpty else { return nil }
 
-		let index = min(pool.count - 1, Int((min(max(randomUnit, 0), 0.999999) * Double(pool.count)).rounded(.down)))
+		let index = min(
+			pool.count - 1,
+			Int((min(max(randomUnit, 0), 0.999999) * Double(pool.count)).rounded(.down))
+		)
 		return pool[index].plan
 	}
 
 	/// Taller climbs take longer, bounded so the animation never drags.
-	public static func climbDuration(height: Double, scale: Double, speedMultiplier: Double) -> Double {
+	public static func climbDuration(height: Double, scale: Double, speedMultiplier: Double) -> Double
+	{
 		let perSecond = 175 * max(0.5, scale) * max(0.5, speedMultiplier)
 		return min(max(height / perSecond, 2.0), 6.4)
 	}

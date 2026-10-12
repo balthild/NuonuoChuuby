@@ -20,12 +20,19 @@ public final class MockPlatform: Platform {
 	/// One display with a menu bar strip along the top, so a test can describe a
 	/// desktop in a line.
 	public static func singleMonitor(
-		id: UInt32 = 1, width: Double = 1440, height: Double = 900, scale: Double = 1,
+		id: UInt32 = 1,
+		width: Double = 1440,
+		height: Double = 900,
+		scale: Double = 1,
 		menuBarHeight: Double = 25
 	) -> MockPlatform {
 		let frame = PixelRect(x: 0, y: 0, width: width, height: height)
 		let visible = PixelRect(
-			x: 0, y: menuBarHeight, width: width, height: height - menuBarHeight)
+			x: 0,
+			y: menuBarHeight,
+			width: width,
+			height: height - menuBarHeight
+		)
 		return MockPlatform(monitors: [
 			Monitor(id: id, frame: frame, visibleFrame: visible, scale: scale)
 		])

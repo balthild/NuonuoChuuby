@@ -42,21 +42,31 @@ struct VoicePlaybackPolicyTests {
 		let now = Date()
 		let files = ["a.wav", "b.wav", "c.wav"]
 		let lastStarted = ["a.wav": now.addingTimeInterval(-2), "c.wav": now.addingTimeInterval(-30)]
-		let fresh = VoicePlaybackPolicy.freshFiles(available: files, lastFileStarted: lastStarted, now: now)
+		let fresh = VoicePlaybackPolicy.freshFiles(
+			available: files,
+			lastFileStarted: lastStarted,
+			now: now
+		)
 		#expect(fresh == ["b.wav", "c.wav"])
 	}
 
 	@Test("Rotation avoids the cue's previous pick and the overall previous pick")
 	func rotationAvoidsRepeat() {
 		let candidates = VoicePlaybackPolicy.rotationCandidates(
-			freshFiles: ["a.wav", "b.wav", "c.wav"], previousFileForCue: "a.wav", previousFileOverall: "b.wav")
+			freshFiles: ["a.wav", "b.wav", "c.wav"],
+			previousFileForCue: "a.wav",
+			previousFileOverall: "b.wav"
+		)
 		#expect(candidates == ["c.wav"])
 	}
 
 	@Test("Rotation falls back when avoiding everything would leave nothing")
 	func rotationFallsBack() {
 		let candidates = VoicePlaybackPolicy.rotationCandidates(
-			freshFiles: ["a.wav"], previousFileForCue: "a.wav", previousFileOverall: "a.wav")
+			freshFiles: ["a.wav"],
+			previousFileForCue: "a.wav",
+			previousFileOverall: "a.wav"
+		)
 		#expect(candidates == ["a.wav"])
 	}
 }
@@ -107,22 +117,46 @@ struct VoiceLoudnessTests {
 struct LandingVoicePolicyTests {
 	@Test("A long fall earns a reaction")
 	func longFall() {
-		#expect(LandingVoicePolicy.shouldReact(
-			fallDistancePixels: 100, downwardImpactSpeed: 0, reason: "released", displayScale: 1))
+		#expect(
+			LandingVoicePolicy.shouldReact(
+				fallDistancePixels: 100,
+				downwardImpactSpeed: 0,
+				reason: "released",
+				displayScale: 1
+			)
+		)
 	}
 
 	@Test("A short drop stays quiet")
 	func shortDrop() {
-		#expect(!LandingVoicePolicy.shouldReact(
-			fallDistancePixels: 20, downwardImpactSpeed: 50, reason: "released", displayScale: 1))
+		#expect(
+			!LandingVoicePolicy.shouldReact(
+				fallDistancePixels: 20,
+				downwardImpactSpeed: 50,
+				reason: "released",
+				displayScale: 1
+			)
+		)
 	}
 
 	@Test("A thrown pet reacts on impact speed alone")
 	func thrownPet() {
-		#expect(LandingVoicePolicy.shouldReact(
-			fallDistancePixels: 10, downwardImpactSpeed: 400, reason: "DragThrow", displayScale: 1))
-		#expect(!LandingVoicePolicy.shouldReact(
-			fallDistancePixels: 10, downwardImpactSpeed: 200, reason: "DragThrow", displayScale: 1))
+		#expect(
+			LandingVoicePolicy.shouldReact(
+				fallDistancePixels: 10,
+				downwardImpactSpeed: 400,
+				reason: "DragThrow",
+				displayScale: 1
+			)
+		)
+		#expect(
+			!LandingVoicePolicy.shouldReact(
+				fallDistancePixels: 10,
+				downwardImpactSpeed: 200,
+				reason: "DragThrow",
+				displayScale: 1
+			)
+		)
 	}
 }
 
@@ -164,7 +198,9 @@ struct DiagnosticPrivacyTests {
 	func redaction() {
 		let log = DiagnosticsLog()
 		let text = DiagnosticsPrivacy.message(
-			"opened /Users/someone/Secret/file.txt and mailed a@b.com", reference: log.reference)
+			"opened /Users/someone/Secret/file.txt and mailed a@b.com",
+			reference: log.reference
+		)
 		#expect(!text.contains("Secret"))
 		#expect(!text.contains("a@b.com"))
 		#expect(text.contains("[private:"))

@@ -121,7 +121,8 @@ public struct PetLifeStateStore: Sendable {
 
 		try FileManager.default.createDirectory(at: stateDirectory, withIntermediateDirectories: true)
 		let temporary = stateDirectory.appendingPathComponent(
-			".life-state.\(ProcessInfo.processInfo.processIdentifier).\(UUID().uuidString).tmp")
+			".life-state.\(ProcessInfo.processInfo.processIdentifier).\(UUID().uuidString).tmp"
+		)
 
 		let encoder = JSONEncoder()
 		encoder.dateEncodingStrategy = .iso8601

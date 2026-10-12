@@ -33,9 +33,14 @@ struct CheekPinchRendererTests {
 		var buffer = [UInt8](repeating: 0, count: image.width * image.height * 4)
 		guard
 			let context = CGContext(
-				data: &buffer, width: image.width, height: image.height, bitsPerComponent: 8,
-				bytesPerRow: image.width * 4, space: CGColorSpaceCreateDeviceRGB(),
-				bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+				data: &buffer,
+				width: image.width,
+				height: image.height,
+				bitsPerComponent: 8,
+				bytesPerRow: image.width * 4,
+				space: CGColorSpaceCreateDeviceRGB(),
+				bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+			)
 		else { return buffer }
 		context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
 		return buffer
@@ -46,7 +51,10 @@ struct CheekPinchRendererTests {
 		let base = try idleFrame()
 		let geometry = CheekPinchGeometry.geometry(for: .nuonuo)
 		let rendered = CheekPinchRenderer.render(
-			base: base, geometry: geometry, dynamics: CheekPinchDynamics())
+			base: base,
+			geometry: geometry,
+			dynamics: CheekPinchDynamics()
+		)
 		#expect(rendered === base)
 	}
 
@@ -62,7 +70,8 @@ struct CheekPinchRendererTests {
 		#expect(dynamics.isActive)
 
 		let rendered = try #require(
-			CheekPinchRenderer.render(base: base, geometry: geometry, dynamics: dynamics))
+			CheekPinchRenderer.render(base: base, geometry: geometry, dynamics: dynamics)
+		)
 
 		let before = pixels(of: base)
 		let after = pixels(of: rendered)

@@ -11,7 +11,10 @@ public struct FrameTiming: Sendable, Equatable {
 
 	/// Simulation sees the full step; animation is clamped so a hitch cannot skip
 	/// a whole animation cycle.
-	public static func fromElapsed(_ elapsedSeconds: Double, maximumAnimationStep: Double = 0.05) -> FrameTiming {
+	public static func fromElapsed(
+		_ elapsedSeconds: Double,
+		maximumAnimationStep: Double = 0.05
+	) -> FrameTiming {
 		let simulation = max(0, elapsedSeconds)
 		let animation = min(max(simulation, 0), maximumAnimationStep)
 		return FrameTiming(simulationSeconds: simulation, animationSeconds: animation)

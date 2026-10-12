@@ -1,6 +1,6 @@
+import CoreGraphics
 import Foundation
 import ImageIO
-import CoreGraphics
 
 /// Loads and caches per-clip frame arrays. Frames are decoded once and reused
 /// for the life of the process.

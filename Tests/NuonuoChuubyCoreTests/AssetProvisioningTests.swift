@@ -72,15 +72,21 @@ struct AssetStoreTests {
 		upstream: "https://github.com/owner/repo",
 		commit: "deadbeef",
 		files: [
-			.init(path: "sprites/runtime/idle/frame_00.png", source: "assets/sprites/runtime/idle/frame_00.png"),
+			.init(
+				path: "sprites/runtime/idle/frame_00.png",
+				source: "assets/sprites/runtime/idle/frame_00.png"
+			),
 			.init(path: "audio/voice/a.wav", source: "音效/a.wav"),
-		])
+		]
+	)
 
 	private func makeStore() -> (AssetStore, URL) {
 		let root = URL(fileURLWithPath: NSTemporaryDirectory())
 			.appendingPathComponent("nuonuo-assets-\(UUID().uuidString)")
 		let environment = AppEnvironment(storageDirectory: root)
-		return (MainActor.assumeIsolated { AssetStore(environment: environment, manifest: manifest) }, root)
+		return (
+			MainActor.assumeIsolated { AssetStore(environment: environment, manifest: manifest) }, root
+		)
 	}
 
 	@MainActor
@@ -100,7 +106,9 @@ struct AssetStoreTests {
 
 		let file = store.installDirectory.appendingPathComponent("audio/voice/a.wav")
 		try FileManager.default.createDirectory(
-			at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+			at: file.deletingLastPathComponent(),
+			withIntermediateDirectories: true
+		)
 		// A truncated download must not look complete.
 		try Data().write(to: file)
 
@@ -117,7 +125,9 @@ struct AssetStoreTests {
 		for entry in manifest.files {
 			let file = store.installDirectory.appendingPathComponent(entry.path)
 			try FileManager.default.createDirectory(
-				at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+				at: file.deletingLastPathComponent(),
+				withIntermediateDirectories: true
+			)
 			try Data([0x00]).write(to: file)
 		}
 		#expect(store.isComplete())

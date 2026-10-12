@@ -22,8 +22,12 @@ enum WindowSurfaceProvider {
 		}
 		return Surface(
 			key: SurfaceKey(owner: windowID, kind: .windowTop),
-			span: span, visible: [span], offset: bounds.top, ownerBounds: bounds,
-			isReachable: reachable)
+			span: span,
+			visible: [span],
+			offset: bounds.top,
+			ownerBounds: bounds,
+			isReachable: reachable
+		)
 	}
 
 	/// The window's current bounds, queried directly.
@@ -45,7 +49,10 @@ enum WindowSurfaceProvider {
 		else { return nil }
 
 		return PixelRect(
-			x: Double(rect.origin.x), y: Double(rect.origin.y),
-			width: Double(rect.width), height: Double(rect.height))
+			x: Double(rect.origin.x),
+			y: Double(rect.origin.y),
+			width: Double(rect.width),
+			height: Double(rect.height)
+		)
 	}
 }

@@ -12,7 +12,8 @@ public enum FullscreenDetector {
 	public static let tolerance: Double = 2
 
 	public static func isFullscreenAppActive(
-		windows: [PlatformWindow], monitors: [Monitor]
+		windows: [PlatformWindow],
+		monitors: [Monitor]
 	) -> Bool {
 		guard !monitors.isEmpty else { return false }
 		return windows.contains { window in

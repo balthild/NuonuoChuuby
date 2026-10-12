@@ -40,7 +40,8 @@ struct PlatformRideIntegrationTests {
 			visible: [Span(start: 200, end: 1400)],
 			offset: top,
 			ownerBounds: PixelRect(x: 200, y: top, width: 1200, height: 400),
-			isReachable: reachable)
+			isReachable: reachable
+		)
 	}
 
 	private func makeRig(windowTop: Double = 800) throws -> Rig {
@@ -57,14 +58,16 @@ struct PlatformRideIntegrationTests {
 			visible: [Span(start: monitorFrame.left, end: monitorFrame.right)],
 			offset: monitor?.visibleFrame.bottom ?? 1117,
 			ownerBounds: monitorFrame,
-			isReachable: true)
+			isReachable: true
+		)
 
 		let provider = SurfaceProvider(surfaces: [windowSurface(top: windowTop), floor])
 		let controller = PetController(
 			catalog: AssetCatalog(locator: AssetLocator(root: root)),
 			surfaceProvider: provider,
 			lifeStore: PetLifeStateStore(stateDirectory: directory),
-			displaySpace: space)
+			displaySpace: space
+		)
 		controller.debugPlaceOnSurface(windowSurface(top: windowTop))
 		return Rig(controller: controller, provider: provider, floor: floor, directory: directory)
 	}
@@ -199,7 +202,8 @@ struct PlatformRideIntegrationTests {
 			visible: [Span(start: 200, end: 500), Span(start: 1100, end: 1400)],
 			offset: 800,
 			ownerBounds: PixelRect(x: 200, y: 800, width: 1200, height: 400),
-			isReachable: true)
+			isReachable: true
+		)
 		rig.provider.setSurfaces([covered, rig.floor])
 
 		// The window server still describes the window, so the live read succeeds
@@ -209,10 +213,12 @@ struct PlatformRideIntegrationTests {
 		rig.controller.debugLiveWindowSurfaceOverride = { _ in
 			Surface(
 				key: SurfaceKey(owner: Self.windowID, kind: .windowTop),
-				span: Span(start: 200, end: 1400), visible: [Span(start: 200, end: 1400)],
+				span: Span(start: 200, end: 1400),
+				visible: [Span(start: 200, end: 1400)],
 				offset: 800,
 				ownerBounds: PixelRect(x: 200, y: 800, width: 1200, height: 400),
-				isReachable: true)
+				isReachable: true
+			)
 		}
 
 		// Held through the grace, then dropped — she cannot stand on a covered edge.
@@ -288,9 +294,12 @@ struct PlatformRideIntegrationTests {
 		// Move her onto a second window by hand, as a landing would.
 		let second = Surface(
 			key: SurfaceKey(owner: 9999, kind: .windowTop),
-			span: Span(start: 200, end: 1400), visible: [Span(start: 200, end: 1400)],
-			offset: 400, ownerBounds: PixelRect(x: 200, y: 400, width: 1200, height: 400),
-			isReachable: true)
+			span: Span(start: 200, end: 1400),
+			visible: [Span(start: 200, end: 1400)],
+			offset: 400,
+			ownerBounds: PixelRect(x: 200, y: 400, width: 1200, height: 400),
+			isReachable: true
+		)
 		rig.controller.debugPlaceOnSurface(second)
 		rig.controller.debugMaintainGroundSupport(delta: Self.frame)
 		#expect(rig.controller.debugState.trackedWindowID == 9999)
@@ -303,9 +312,12 @@ struct PlatformRideIntegrationTests {
 
 		let fresh = Surface(
 			key: SurfaceKey(owner: 7777, kind: .windowTop),
-			span: Span(start: 200, end: 1400), visible: [Span(start: 200, end: 1400)],
-			offset: 500, ownerBounds: PixelRect(x: 200, y: 500, width: 1200, height: 400),
-			isReachable: true)
+			span: Span(start: 200, end: 1400),
+			visible: [Span(start: 200, end: 1400)],
+			offset: 500,
+			ownerBounds: PixelRect(x: 200, y: 500, width: 1200, height: 400),
+			isReachable: true
+		)
 		rig.controller.debugLand(on: fresh)
 		#expect(rig.controller.debugState.trackedWindowID == 7777)
 		#expect(rig.controller.debugState.state == .landing)
@@ -352,7 +364,8 @@ struct PlatformRideIntegrationTests {
 			catalog: AssetCatalog(locator: AssetLocator(root: root)),
 			surfaceProvider: SurfaceProvider(platform: MockPlatform()),
 			lifeStore: PetLifeStateStore(stateDirectory: directory),
-			displaySpace: DisplaySpace(monitors: [], primaryHeight: 0))
+			displaySpace: DisplaySpace(monitors: [], primaryHeight: 0)
+		)
 
 		let before = controller.debugState.foot
 		for _ in 0..<60 { controller.debugStep(delta: Self.frame) }

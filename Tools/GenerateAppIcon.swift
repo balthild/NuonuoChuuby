@@ -29,9 +29,14 @@ func drawIcon(pixels: Int) -> CGImage? {
 	let size = Double(pixels)
 	guard
 		let context = CGContext(
-			data: nil, width: pixels, height: pixels, bitsPerComponent: 8, bytesPerRow: 0,
+			data: nil,
+			width: pixels,
+			height: pixels,
+			bitsPerComponent: 8,
+			bytesPerRow: 0,
 			space: CGColorSpaceCreateDeviceRGB(),
-			bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+			bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+		)
 	else { return nil }
 
 	context.setAllowsAntialiasing(true)
@@ -51,13 +56,15 @@ func drawIcon(pixels: Int) -> CGImage? {
 			CGColor(red: 0.99, green: 0.93, blue: 0.90, alpha: 1),
 			CGColor(red: 0.93, green: 0.62, blue: 0.60, alpha: 1),
 		] as CFArray,
-		locations: [0, 1])
+		locations: [0, 1]
+	)
 	if let gradient {
 		context.drawLinearGradient(
 			gradient,
 			start: CGPoint(x: body.minX, y: body.maxY),
 			end: CGPoint(x: body.maxX, y: body.minY),
-			options: [])
+			options: []
+		)
 	}
 	context.restoreGState()
 
@@ -69,8 +76,12 @@ func drawIcon(pixels: Int) -> CGImage? {
 	func ellipse(centerX: Double, centerY: Double, radiusX: Double, radiusY: Double) {
 		context.fillEllipse(
 			in: CGRect(
-				x: size * centerX - size * radiusX, y: size * centerY - size * radiusY,
-				width: size * radiusX * 2, height: size * radiusY * 2))
+				x: size * centerX - size * radiusX,
+				y: size * centerY - size * radiusY,
+				width: size * radiusX * 2,
+				height: size * radiusY * 2
+			)
+		)
 	}
 
 	// Main pad.
@@ -91,7 +102,11 @@ for variant in variants {
 	let url = outputDirectory.appendingPathComponent("\(variant.name).png")
 	guard
 		let destination = CGImageDestinationCreateWithURL(
-			url as CFURL, "public.png" as CFString, 1, nil)
+			url as CFURL,
+			"public.png" as CFString,
+			1,
+			nil
+		)
 	else { fatalError("cannot write \(url.path)") }
 	CGImageDestinationAddImage(destination, image, nil)
 	guard CGImageDestinationFinalize(destination) else { fatalError("cannot write \(url.path)") }

@@ -30,7 +30,9 @@ public enum VoicePlaybackPolicy {
 	) -> [String] {
 		guard freshFiles.count > 1 else { return freshFiles }
 
-		var candidates = freshFiles.filter { $0.caseInsensitiveCompare(previousFileForCue ?? "") != .orderedSame }
+		var candidates = freshFiles.filter {
+			$0.caseInsensitiveCompare(previousFileForCue ?? "") != .orderedSame
+		}
 		if candidates.isEmpty { candidates = freshFiles }
 
 		if candidates.count > 1 {

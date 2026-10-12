@@ -15,15 +15,19 @@ public enum DesktopIconGrid {
 
 	/// `xIndex` 0 is the rightmost column; `yIndex` 0 is the topmost icon.
 	public static func position(
-		xIndex: Int, yIndex: Int, in workArea: PixelRect
+		xIndex: Int,
+		yIndex: Int,
+		in workArea: PixelRect
 	) -> PixelPoint {
 		PixelPoint(
 			x: workArea.right - firstInsetRight - Double(xIndex) * horizontalSpacing,
-			y: workArea.top + firstInsetTop + Double(yIndex) * verticalSpacing)
+			y: workArea.top + firstInsetTop + Double(yIndex) * verticalSpacing
+		)
 	}
 
 	/// The first `count` icon slots, in the order Finder fills them.
-	public static func positions(count: Int, in workArea: PixelRect, maxRows: Int = 8) -> [PixelPoint] {
+	public static func positions(count: Int, in workArea: PixelRect, maxRows: Int = 8) -> [PixelPoint]
+	{
 		guard count > 0, maxRows > 0 else { return [] }
 		return (0..<count).map { index in
 			position(xIndex: index / maxRows, yIndex: index % maxRows, in: workArea)

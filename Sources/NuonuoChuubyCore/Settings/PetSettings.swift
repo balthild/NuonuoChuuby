@@ -59,7 +59,9 @@ public struct SettingsStore: Sendable {
 		encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
 		guard let data = try? encoder.encode(normalized) else { return }
 		try? FileManager.default.createDirectory(
-			at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
+			at: path.deletingLastPathComponent(),
+			withIntermediateDirectories: true
+		)
 		try? data.write(to: path, options: .atomic)
 	}
 }

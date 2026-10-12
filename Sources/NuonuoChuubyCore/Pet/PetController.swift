@@ -59,11 +59,14 @@ public final class PetController: SpriteAnimatorDelegate {
 	public private(set) var state: PetState = .idle {
 		didSet {
 			guard state != oldValue else { return }
-			DiagnosticsLog.shared.writeEvent("StateTransition", [
-				("From", oldValue.rawValue),
-				("To", state.rawValue),
-				("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
-			])
+			DiagnosticsLog.shared.writeEvent(
+				"StateTransition",
+				[
+					("From", oldValue.rawValue),
+					("To", state.rawValue),
+					("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
+				]
+			)
 		}
 	}
 	public private(set) var life: PetLifeState
@@ -172,7 +175,8 @@ public final class PetController: SpriteAnimatorDelegate {
 		self.animator = animator
 
 		// Start standing on the primary display's floor, centred.
-		let home = displaySpace.displays.first?.visibleFrame ?? PixelRect(x: 0, y: 0, width: 1440, height: 900)
+		let home =
+			displaySpace.displays.first?.visibleFrame ?? PixelRect(x: 0, y: 0, width: 1440, height: 900)
 		self.foot = PixelPoint(x: home.centerX, y: home.bottom)
 		self.idleRemaining = Double.random(in: 0.5...1.6)
 
@@ -279,13 +283,16 @@ public final class PetController: SpriteAnimatorDelegate {
 			perch.flatMap { $0.key.kind == .windowTop ? String($0.key.owner) : nil } ?? "none"
 		let position = "\(Int(foot.x)),\(Int(foot.y))"
 
-		DiagnosticsLog.shared.writeEvent("StatusHeartbeat", [
-			("State", state.rawValue),
-			("Foot", position),
-			("Support", support),
-			("Tracked", tracked),
-			("VelocityY", String(format: "%.0f", velocity.y)),
-		])
+		DiagnosticsLog.shared.writeEvent(
+			"StatusHeartbeat",
+			[
+				("State", state.rawValue),
+				("Foot", position),
+				("Support", support),
+				("Tracked", tracked),
+				("VelocityY", String(format: "%.0f", velocity.y)),
+			]
+		)
 	}
 
 	/// The panel follows the simulation, so every place that moves the foot or
@@ -322,13 +329,16 @@ public final class PetController: SpriteAnimatorDelegate {
 			randomUnit: Double.random(in: 0..<1),
 			profile: profile
 		)
-		DiagnosticsLog.shared.writeEvent("AutonomousDecision", [
-			("Action", action.rawValue),
-			("Support", "\(hasSupport)"),
-			("Sleepiness", String(format: "%.0f", life.sleepiness)),
-			("Curiosity", String(format: "%.0f", life.curiosity)),
-			("Hunger", String(format: "%.0f", life.hunger)),
-		])
+		DiagnosticsLog.shared.writeEvent(
+			"AutonomousDecision",
+			[
+				("Action", action.rawValue),
+				("Support", "\(hasSupport)"),
+				("Sleepiness", String(format: "%.0f", life.sleepiness)),
+				("Curiosity", String(format: "%.0f", life.curiosity)),
+				("Hunger", String(format: "%.0f", life.hunger)),
+			]
+		)
 
 		switch action {
 		case .sleep:
@@ -371,19 +381,23 @@ public final class PetController: SpriteAnimatorDelegate {
 	private func screenPoint(canvasX: Double, canvasY: Double) -> PixelPoint {
 		PixelPoint(
 			x: foot.x + (canvasX - profile.geometry.footCanvasX) * canvasScale,
-			y: foot.y + (canvasY - profile.geometry.footCanvasY) * canvasScale)
+			y: foot.y + (canvasY - profile.geometry.footCanvasY) * canvasScale
+		)
 	}
 
 	/// Her mouth and lick point, which are what actually reach the target.
 	private var mouthPoint: PixelPoint {
 		screenPoint(
-			canvasX: profile.geometry.mouthCanvasX, canvasY: profile.geometry.mouthCanvasY)
+			canvasX: profile.geometry.mouthCanvasX,
+			canvasY: profile.geometry.mouthCanvasY
+		)
 	}
 
 	private var lickPoint: PixelPoint {
 		screenPoint(
 			canvasX: profile.geometry.lickContactCanvasX,
-			canvasY: profile.geometry.lickContactCanvasY)
+			canvasY: profile.geometry.lickContactCanvasY
+		)
 	}
 
 	/// Accepts deleted items, subject to the mode and queue limits, then starts
@@ -398,7 +412,9 @@ public final class PetController: SpriteAnimatorDelegate {
 		for item in items {
 			guard
 				MealQueuePolicy.canAcceptDeletion(
-					queuedCount: mealQueue.count, hasActiveDeletionMeal: activeMeal != nil)
+					queuedCount: mealQueue.count,
+					hasActiveDeletionMeal: activeMeal != nil
+				)
 			else {
 				DiagnosticsLog.shared.writeEvent("MealQueueFull", [("Dropped", "1")])
 				break
@@ -437,10 +453,13 @@ public final class PetController: SpriteAnimatorDelegate {
 		remainderY = 0
 		animator.play("run")
 		mealDelegate?.petController(self, didBeginMeal: item)
-		DiagnosticsLog.shared.writeEvent("MealRunStarted", [
-			("Name", item.displayName),
-			("Target", "\(Int(item.anchor.x)),\(Int(item.anchor.y))"),
-		])
+		DiagnosticsLog.shared.writeEvent(
+			"MealRunStarted",
+			[
+				("Name", item.displayName),
+				("Target", "\(Int(item.anchor.x)),\(Int(item.anchor.y))"),
+			]
+		)
 		return true
 	}
 
@@ -454,10 +473,14 @@ public final class PetController: SpriteAnimatorDelegate {
 		// The real Finder positions when Accessibility allows them; otherwise the
 		// Finder-default layout approximation, which is not where the icons are.
 		let realIcons = desktopIcons?.positions ?? []
-		let candidates = realIcons.isEmpty ? DesktopIconGrid.positions(count: 12, in: workArea) : realIcons
+		let candidates =
+			realIcons.isEmpty ? DesktopIconGrid.positions(count: 12, in: workArea) : realIcons
 		guard
 			let target = IconLickTargetSelector.choose(
-				candidates: candidates, origin: lickPoint, randomUnit: Double.random(in: 0..<1))
+				candidates: candidates,
+				origin: lickPoint,
+				randomUnit: Double.random(in: 0..<1)
+			)
 		else { return false }
 
 		targetPoint = target
@@ -471,7 +494,8 @@ public final class PetController: SpriteAnimatorDelegate {
 		announce(
 			manual ? .manualIconLick : .curiousIconLick,
 			voice: manual ? .aggrieved : .question,
-			priority: manual ? .important : .normal)
+			priority: manual ? .important : .normal
+		)
 		return true
 	}
 
@@ -567,7 +591,8 @@ public final class PetController: SpriteAnimatorDelegate {
 
 		life.registerMeal(
 			path: item.originalPath,
-			nourishment: Double.random(in: 6...14))
+			nourishment: Double.random(in: 6...14)
+		)
 		persistLifeStateQuietly()
 		mealDelegate?.petController(self, didFinishMeal: item)
 
@@ -576,7 +601,8 @@ public final class PetController: SpriteAnimatorDelegate {
 			stuffed ? .stuffed : .tastedItem,
 			voice: .affirmative,
 			priority: .normal,
-			itemName: item.displayName)
+			itemName: item.displayName
+		)
 
 		state = .satisfied
 		movementPurpose = .none
@@ -584,11 +610,14 @@ public final class PetController: SpriteAnimatorDelegate {
 		transientDuration = animator.durationSeconds
 		velocity = .zero
 		animator.play(stuffed ? "satisfied" : "satisfied_quick")
-		DiagnosticsLog.shared.writeEvent("MealCompleted", [
-			("Name", item.displayName),
-			("Hunger", String(format: "%.1f", life.hunger)),
-			("Queued", "\(mealQueue.count)"),
-		])
+		DiagnosticsLog.shared.writeEvent(
+			"MealCompleted",
+			[
+				("Name", item.displayName),
+				("Hunger", String(format: "%.1f", life.hunger)),
+				("Queued", "\(mealQueue.count)"),
+			]
+		)
 	}
 
 	/// What to do once a meal finishes: carry on down the queue, or settle.
@@ -720,15 +749,21 @@ public final class PetController: SpriteAnimatorDelegate {
 			let velocityY = displacement / max(delta, 1.0 / 240)
 			let upward = displacement < 0
 			logRide(
-				upward ? .launchUpward : .releaseDownward, displacement: displacement,
-				velocityY: velocityY, surface: surface)
+				upward ? .launchUpward : .releaseDownward,
+				displacement: displacement,
+				velocityY: velocityY,
+				surface: surface
+			)
 			releasePerch()
 			if upward {
 				// Thrown up, inheriting a fraction of the surface's speed.
 				let initial = min(max(velocityY * 0.88, -1150 * displayScale), -300 * displayScale)
-				DiagnosticsLog.shared.writeEvent("PlatformLaunch", [
-					("PetVelocityY", String(format: "%.0f", initial))
-				])
+				DiagnosticsLog.shared.writeEvent(
+					"PlatformLaunch",
+					[
+						("PetVelocityY", String(format: "%.0f", initial))
+					]
+				)
 				announce(.platformLaunch, voice: .scream, priority: .critical)
 				beginFall(reason: "PlatformLaunch", initialVelocityY: initial)
 			} else {
@@ -741,8 +776,11 @@ public final class PetController: SpriteAnimatorDelegate {
 
 		if abs(displacement) >= 0.5 {
 			logRide(
-				.follow, displacement: displacement,
-				velocityY: displacement / max(delta, 1.0 / 240), surface: surface)
+				.follow,
+				displacement: displacement,
+				velocityY: displacement / max(delta, 1.0 / 240),
+				surface: surface
+			)
 		}
 
 		// The ledge carries her, whether she is walking, standing or asleep.
@@ -750,16 +788,22 @@ public final class PetController: SpriteAnimatorDelegate {
 	}
 
 	private func logRide(
-		_ response: PlatformMotionResponse, displacement: Double, velocityY: Double, surface: Surface
+		_ response: PlatformMotionResponse,
+		displacement: Double,
+		velocityY: Double,
+		surface: Surface
 	) {
 		guard perchLogGate.emits(response) else { return }
-		DiagnosticsLog.shared.writeEvent("PlatformRide", [
-			("Response", "\(response)"),
-			("DisplacementY", String(format: "%.1f", displacement)),
-			("VelocityY", String(format: "%.0f", velocityY)),
-			("Top", String(format: "%.1f", surface.offset)),
-			("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
-		])
+		DiagnosticsLog.shared.writeEvent(
+			"PlatformRide",
+			[
+				("Response", "\(response)"),
+				("DisplacementY", String(format: "%.1f", displacement)),
+				("VelocityY", String(format: "%.0f", velocityY)),
+				("Top", String(format: "%.1f", surface.offset)),
+				("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
+			]
+		)
 	}
 
 	/// The surface a perch points at, read fresh.
@@ -778,8 +822,9 @@ public final class PetController: SpriteAnimatorDelegate {
 				return debugLiveWindowSurfaceOverride(perch.key.owner)
 			}
 			if let live = WindowSurfaceProvider.liveWindowSurface(
-				windowID: perch.key.owner, monitors: displaySpace.displays)
-			{
+				windowID: perch.key.owner,
+				monitors: displaySpace.displays
+			) {
 				return live
 			}
 			return surfaceProvider.surfaces.first { $0.key == perch.key }
@@ -836,15 +881,18 @@ public final class PetController: SpriteAnimatorDelegate {
 		perchUnavailableSeconds += delta
 
 		if PlatformRidePhysics.shouldPreserveTransientSupport(
-			unavailableSeconds: perchUnavailableSeconds)
-		{
+			unavailableSeconds: perchUnavailableSeconds
+		) {
 			// Logged once per grace period rather than every frame.
 			if !isInPerchGrace {
 				isInPerchGrace = true
-				DiagnosticsLog.shared.writeEvent("PlatformSupportGrace", [
-					("Footnote", "\(Int(foot.x)),\(Int(foot.y))"),
-					("Top", lastPerchOffset.map { String(format: "%.1f", $0) } ?? "none"),
-				])
+				DiagnosticsLog.shared.writeEvent(
+					"PlatformSupportGrace",
+					[
+						("Footnote", "\(Int(foot.x)),\(Int(foot.y))"),
+						("Top", lastPerchOffset.map { String(format: "%.1f", $0) } ?? "none"),
+					]
+				)
 			}
 			return
 		}
@@ -906,7 +954,9 @@ public final class PetController: SpriteAnimatorDelegate {
 		let atEdge = foot.x <= run.start + 24 || foot.x >= run.end - 24
 		guard atEdge else { return nil }
 		return TerrainBehaviorPlanner.chooseAtEdge(
-			isDesktopFloor: false, randomUnit: Double.random(in: 0..<1))
+			isDesktopFloor: false,
+			randomUnit: Double.random(in: 0..<1)
+		)
 	}
 
 	// MARK: - Falling
@@ -939,8 +989,11 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	private func beginHop() {
 		beginFall(
-			reason: "TerrainHop", initialVelocityY: -Motion.hopVelocity * displayScale,
-			clip: "jump", purpose: .wander)
+			reason: "TerrainHop",
+			initialVelocityY: -Motion.hopVelocity * displayScale,
+			clip: "jump",
+			purpose: .wander
+		)
 		announce(.terrainHop, voice: .positive, priority: .ambient)
 	}
 
@@ -949,7 +1002,8 @@ public final class PetController: SpriteAnimatorDelegate {
 		velocity.x *= exp(-Motion.horizontalAirDrag * delta)
 		velocity.y = min(
 			Motion.terminalVelocity * scale,
-			velocity.y + Motion.gravity * scale * delta)
+			velocity.y + Motion.gravity * scale * delta
+		)
 
 		// The toss sheet covers the rising half; the fall sheet the rest.
 		if velocity.y >= 0, animator.currentClip == "toss" {
@@ -979,7 +1033,11 @@ public final class PetController: SpriteAnimatorDelegate {
 
 		if movementY > 0,
 			let landing = surfaceProvider.landingSurface(
-				footX: nextFootX, fromY: foot.y, toY: nextFootY, inset: Motion.landingInset)
+				footX: nextFootX,
+				fromY: foot.y,
+				toY: nextFootY,
+				inset: Motion.landingInset
+			)
 		{
 			foot.x = nextFootX
 			foot.y = landing.offset
@@ -1014,7 +1072,8 @@ public final class PetController: SpriteAnimatorDelegate {
 			fallDistancePixels: fallDistance,
 			downwardImpactSpeed: impactSpeed,
 			reason: fallReason,
-			displayScale: displayScale)
+			displayScale: displayScale
+		)
 
 		// Adopt what she landed on straight away, so the first frame back on a
 		// moving window is already anchored to it rather than to nothing.
@@ -1046,7 +1105,8 @@ public final class PetController: SpriteAnimatorDelegate {
 				currentSupport: support,
 				footX: foot.x,
 				scale: displayScale,
-				randomUnit: Double.random(in: 0..<1))
+				randomUnit: Double.random(in: 0..<1)
+			)
 		else { return false }
 
 		pendingClimb = plan
@@ -1075,7 +1135,8 @@ public final class PetController: SpriteAnimatorDelegate {
 		let ascentSeconds = WindowClimbPlanner.climbDuration(
 			height: max(0, climbWallStartY - plan.targetTop),
 			scale: displayScale,
-			speedMultiplier: profile.movementSpeedMultiplier)
+			speedMultiplier: profile.movementSpeedMultiplier
+		)
 		climbDuration = hopSeconds + ascentSeconds
 		climbHopFraction = climbDuration > 0 ? hopSeconds / climbDuration : 0
 
@@ -1094,15 +1155,18 @@ public final class PetController: SpriteAnimatorDelegate {
 		// The wall is on the side she approached from.
 		facing = plan.side == .left ? 1 : -1
 		animator.play(hopSeconds > 0 ? "jump" : "climb")
-		DiagnosticsLog.shared.writeEvent("ClimbBegin", [
-			("Target", "\(plan.targetSurfaceID)"),
-			("Side", "\(plan.side)"),
-			("Start", "\(Int(climbStart.x)),\(Int(climbStart.y))"),
-			("WallStartY", "\(Int(climbWallStartY))"),
-			("LandingX", "\(Int(plan.landingX))"),
-			("TargetTop", "\(Int(plan.targetTop))"),
-			("Surface", Self.describe(surfaceID: plan.targetSurfaceID, in: surfaceProvider.surfaces)),
-		])
+		DiagnosticsLog.shared.writeEvent(
+			"ClimbBegin",
+			[
+				("Target", "\(plan.targetSurfaceID)"),
+				("Side", "\(plan.side)"),
+				("Start", "\(Int(climbStart.x)),\(Int(climbStart.y))"),
+				("WallStartY", "\(Int(climbWallStartY))"),
+				("LandingX", "\(Int(plan.landingX))"),
+				("TargetTop", "\(Int(plan.targetTop))"),
+				("Surface", Self.describe(surfaceID: plan.targetSurfaceID, in: surfaceProvider.surfaces)),
+			]
+		)
 	}
 
 	private func updateClimbing(_ delta: Double) {
@@ -1128,7 +1192,8 @@ public final class PetController: SpriteAnimatorDelegate {
 			let t = climbHopFraction > 0 ? climbProgress / climbHopFraction : 1
 			foot = PixelPoint(
 				x: plan.approachX,
-				y: climbStart.y + (climbWallStartY - climbStart.y) * Self.smoothstep(t))
+				y: climbStart.y + (climbWallStartY - climbStart.y) * Self.smoothstep(t)
+			)
 		} else {
 			if animator.currentClip != "climb" { animator.play("climb") }
 			let span = max(0.0001, 1 - climbHopFraction)
@@ -1139,7 +1204,8 @@ public final class PetController: SpriteAnimatorDelegate {
 			let easedX = t * t
 			foot = PixelPoint(
 				x: plan.approachX + (plan.landingX - plan.approachX) * easedX,
-				y: climbWallStartY + (plan.targetTop - climbWallStartY) * easedY)
+				y: climbWallStartY + (plan.targetTop - climbWallStartY) * easedY
+			)
 		}
 
 		if climbProgress >= 1 {
@@ -1163,14 +1229,16 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// A controlled descent: faster than walking, slower than a fall, and she
 	/// stays against the wall.
 	private func beginSlideDown(from surface: Surface) {
-		guard let target = surfaceProvider.surfaceBelow(footX: foot.x, currentTop: surface.offset) else {
+		guard let target = surfaceProvider.surfaceBelow(footX: foot.x, currentTop: surface.offset)
+		else {
 			beginFall(reason: "EdgeSlide", clip: "slide")
 			return
 		}
 		beginFall(
 			reason: "EdgeSlide",
 			initialVelocityY: target.offset > foot.y ? 260 : 120,
-			clip: "slide")
+			clip: "slide"
+		)
 		announce(.edgeSlide, voice: .calm, priority: .ambient)
 	}
 
@@ -1181,7 +1249,8 @@ public final class PetController: SpriteAnimatorDelegate {
 			reason: "EdgeJump",
 			initialVelocityY: -120 * displayScale,
 			initialVelocityX: outward * 90 * displayScale,
-			clip: "jump")
+			clip: "jump"
+		)
 		facing = outward
 		announce(.terrainJumpDown, voice: .scream, priority: .ambient)
 	}
@@ -1219,10 +1288,14 @@ public final class PetController: SpriteAnimatorDelegate {
 		let geometry = CheekPinchGeometry.geometry(for: profile)
 		let scale = canvasScale
 		return CheekPinchGeometry(
-			leftX: geometry.leftX * scale, rightX: geometry.rightX * scale,
+			leftX: geometry.leftX * scale,
+			rightX: geometry.rightX * scale,
 			cheekY: geometry.cheekY * scale,
-			hitRadiusX: geometry.hitRadiusX * scale, hitRadiusY: geometry.hitRadiusY * scale,
-			mouthX: geometry.mouthX * scale, mouthY: geometry.mouthY * scale)
+			hitRadiusX: geometry.hitRadiusX * scale,
+			hitRadiusY: geometry.hitRadiusY * scale,
+			mouthX: geometry.mouthX * scale,
+			mouthY: geometry.mouthY * scale
+		)
 	}
 
 	public var isPinching: Bool { cheek.isActive }
@@ -1258,7 +1331,8 @@ public final class PetController: SpriteAnimatorDelegate {
 		let scale = max(0.0001, canvasScale)
 		cheek.drag(
 			x: Double(viewPoint.x - pinchOrigin.x) / scale,
-			y: Double(viewPoint.y - pinchOrigin.y) / scale)
+			y: Double(viewPoint.y - pinchOrigin.y) / scale
+		)
 	}
 
 	public func endPinch() {
@@ -1304,9 +1378,13 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	var debugState: DebugState {
 		DebugState(
-			state: state, velocityY: velocity.y, foot: foot, fallReason: fallReason,
+			state: state,
+			velocityY: velocity.y,
+			foot: foot,
+			fallReason: fallReason,
 			trackedWindowID: perch.flatMap { $0.key.kind == .windowTop ? $0.key.owner : nil },
-			perchKey: perch?.key)
+			perchKey: perch?.key
+		)
 	}
 
 	/// Places her on a known surface and anchors her to it.
@@ -1373,7 +1451,9 @@ public final class PetController: SpriteAnimatorDelegate {
 	var dragOffsetForTesting: PixelPoint { dragOffset }
 
 	private static func describe(surfaceID: UInt32, in surfaces: [Surface]) -> String {
-		guard let surface = surfaces.first(where: { $0.key.owner == surfaceID }) else { return "missing" }
+		guard let surface = surfaces.first(where: { $0.key.owner == surfaceID }) else {
+			return "missing"
+		}
 		let bottom = surface.ownerBounds?.bottom ?? surface.offset
 		return "L\(Int(surface.span.start)) R\(Int(surface.span.end)) B\(Int(bottom))"
 	}
@@ -1402,7 +1482,10 @@ public final class PetController: SpriteAnimatorDelegate {
 		guard isDragging else { return }
 		isDragging = false
 		let release = dragTracker.release(
-			point: cursor, atSeconds: CFAbsoluteTimeGetCurrent(), scale: displayScale)
+			point: cursor,
+			atSeconds: CFAbsoluteTimeGetCurrent(),
+			scale: displayScale
+		)
 		// Through `beginFall`, so the window she was riding stops being tracked —
 		// otherwise it would pull her back to its top once she landed.
 		beginFall(
@@ -1410,7 +1493,8 @@ public final class PetController: SpriteAnimatorDelegate {
 			initialVelocityY: release.velocityY,
 			initialVelocityX: release.velocityX,
 			clip: release.hasInertia && release.velocityY < 0 ? "toss" : "fall",
-			purpose: MovementPurpose.none)
+			purpose: MovementPurpose.none
+		)
 		// A weak release is a drop, not a throw; only a real flick earns the
 		// louder reaction.
 		if release.hasInertia, release.speed > 700 * displayScale {
@@ -1439,7 +1523,10 @@ public final class PetController: SpriteAnimatorDelegate {
 	}
 
 	private func announce(
-		_ cue: DialogueCue, voice: VoiceCue, priority: VoicePriority = .normal, itemName: String? = nil
+		_ cue: DialogueCue,
+		voice: VoiceCue,
+		priority: VoicePriority = .normal,
+		itemName: String? = nil
 	) {
 		speech?.react(cue, voice: voice, priority: priority, itemName: itemName)
 	}
@@ -1470,7 +1557,8 @@ public final class PetController: SpriteAnimatorDelegate {
 	public var footInset: PixelPoint {
 		PixelPoint(
 			x: petSize * profile.geometry.footCanvasX / SpriteGeometry.canvasSize,
-			y: petSize * profile.geometry.footCanvasY / SpriteGeometry.canvasSize)
+			y: petSize * profile.geometry.footCanvasY / SpriteGeometry.canvasSize
+		)
 	}
 
 	/// The panel's top-left corner in global top-left coordinates.

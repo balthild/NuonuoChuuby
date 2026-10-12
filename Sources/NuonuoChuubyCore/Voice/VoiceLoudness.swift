@@ -29,7 +29,8 @@ public struct VoiceLoudness: Sendable {
 	}
 
 	public static func load(from url: URL) -> VoiceLoudness {
-		guard let data = try? Data(contentsOf: url), let index = try? JSONDecoder().decode(Index.self, from: data)
+		guard let data = try? Data(contentsOf: url),
+			let index = try? JSONDecoder().decode(Index.self, from: data)
 		else {
 			// A missing or damaged index must not silence the pet; the recordings
 			// are simply played at their own levels.

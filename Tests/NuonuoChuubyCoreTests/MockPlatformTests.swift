@@ -9,14 +9,23 @@ import Testing
 @Suite("Mock platform surfaces")
 struct MockPlatformTests {
 	private func window(
-		id: UInt32, owner: String = "Safari",
-		x: Double, y: Double, width: Double = 800, height: Double = 500,
-		layer: Int = 0, alpha: Double = 1
+		id: UInt32,
+		owner: String = "Safari",
+		x: Double,
+		y: Double,
+		width: Double = 800,
+		height: Double = 500,
+		layer: Int = 0,
+		alpha: Double = 1
 	) -> PlatformWindow {
 		PlatformWindow(
-			id: id, ownerPID: 900 + Int32(id), ownerName: owner,
+			id: id,
+			ownerPID: 900 + Int32(id),
+			ownerName: owner,
 			bounds: PixelRect(x: x, y: y, width: width, height: height),
-			layer: layer, alpha: alpha)
+			layer: layer,
+			alpha: alpha
+		)
 	}
 
 	@Test("A scripted desktop yields the floor and each eligible window top")
@@ -83,13 +92,22 @@ struct MockPlatformTests {
 		platform.setWindows([
 			// The pet's panel: floating, transparent, exactly where she is.
 			PlatformWindow(
-				id: 10, ownerPID: ProcessInfo.processInfo.processIdentifier,
+				id: 10,
+				ownerPID: ProcessInfo.processInfo.processIdentifier,
 				ownerName: "NuonuoChuuby",
-				bounds: PixelRect(x: 600, y: 700, width: 256, height: 256), layer: 3, alpha: 1),
+				bounds: PixelRect(x: 600, y: 700, width: 256, height: 256),
+				layer: 3,
+				alpha: 1
+			),
 			// A normal window she is falling onto.
 			PlatformWindow(
-				id: 20, ownerPID: 900, ownerName: "Safari",
-				bounds: PixelRect(x: 100, y: 800, width: 1200, height: 400), layer: 0, alpha: 1),
+				id: 20,
+				ownerPID: 900,
+				ownerName: "Safari",
+				bounds: PixelRect(x: 100, y: 800, width: 1200, height: 400),
+				layer: 0,
+				alpha: 1
+			),
 		])
 
 		let provider = SurfaceProvider(platform: platform)

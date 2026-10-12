@@ -30,7 +30,8 @@ public final class GhostIconWindow {
 			contentRect: NSRect(x: 0, y: 0, width: 64, height: 64),
 			styleMask: [.borderless, .nonactivatingPanel],
 			backing: .buffered,
-			defer: false)
+			defer: false
+		)
 		panel.isFloatingPanel = true
 		panel.level = .floating
 		panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
@@ -47,12 +48,18 @@ public final class GhostIconWindow {
 		panel.contentView = imageView
 	}
 
-	public func show(icon: NSImage?, at center: PixelPoint, size: Double, displaySpace: DisplaySpace) {
+	public func show(icon: NSImage?, at center: PixelPoint, size: Double, displaySpace: DisplaySpace)
+	{
 		imageView.image = icon
 		let frame = DisplaySpace.toAppKit(
 			PixelRect(
-				x: center.x - size / 2, y: center.y - size / 2, width: size, height: size),
-			primaryHeight: displaySpace.primaryHeight)
+				x: center.x - size / 2,
+				y: center.y - size / 2,
+				width: size,
+				height: size
+			),
+			primaryHeight: displaySpace.primaryHeight
+		)
 		panel.setFrame(frame, display: true)
 		imageView.frame = NSRect(origin: .zero, size: frame.size)
 		panel.alphaValue = 1

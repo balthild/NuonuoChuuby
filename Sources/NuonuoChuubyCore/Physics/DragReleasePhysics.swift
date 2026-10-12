@@ -8,7 +8,12 @@ public struct DragReleaseMotion: Sendable, Equatable {
 	public var sampleSeconds: Double
 
 	public static let none = DragReleaseMotion(
-		hasInertia: false, velocityX: 0, velocityY: 0, speed: 0, sampleSeconds: 0)
+		hasInertia: false,
+		velocityX: 0,
+		velocityY: 0,
+		speed: 0,
+		sampleSeconds: 0
+	)
 }
 
 /// Keeps only the tail of a drag gesture so release velocity follows the user's
@@ -43,13 +48,17 @@ public struct DragMotionTracker: Sendable {
 
 		samples.append(Sample(point: point, atSeconds: atSeconds))
 		while samples.count > 2,
-			(atSeconds - samples[0].atSeconds > 0.14 || samples.count > 12)
+			atSeconds - samples[0].atSeconds > 0.14 || samples.count > 12
 		{
 			samples.removeFirst()
 		}
 	}
 
-	public mutating func release(point: PixelPoint, atSeconds: Double, scale: Double) -> DragReleaseMotion {
+	public mutating func release(
+		point: PixelPoint,
+		atSeconds: Double,
+		scale: Double
+	) -> DragReleaseMotion {
 		add(point: point, atSeconds: atSeconds)
 		guard samples.count >= 2, let newest = samples.last else {
 			return .none
@@ -62,7 +71,12 @@ public struct DragMotionTracker: Sendable {
 		let sampleSeconds = newest.atSeconds - oldest.atSeconds
 		guard sampleSeconds >= 0.012 else {
 			return DragReleaseMotion(
-				hasInertia: false, velocityX: 0, velocityY: 0, speed: 0, sampleSeconds: sampleSeconds)
+				hasInertia: false,
+				velocityX: 0,
+				velocityY: 0,
+				speed: 0,
+				sampleSeconds: sampleSeconds
+			)
 		}
 
 		let rawX = (newest.point.x - oldest.point.x) / sampleSeconds
@@ -72,7 +86,12 @@ public struct DragMotionTracker: Sendable {
 		let threshold = 430 * safeScale
 		guard rawSpeed >= threshold else {
 			return DragReleaseMotion(
-				hasInertia: false, velocityX: 0, velocityY: 0, speed: rawSpeed, sampleSeconds: sampleSeconds)
+				hasInertia: false,
+				velocityX: 0,
+				velocityY: 0,
+				speed: rawSpeed,
+				sampleSeconds: sampleSeconds
+			)
 		}
 
 		let transfer = min(max((rawSpeed - threshold) / (850 * safeScale), 0.38), 0.82)
@@ -80,7 +99,11 @@ public struct DragMotionTracker: Sendable {
 		let velocityY = min(max(rawY * transfer, -1350 * safeScale), 1100 * safeScale)
 		let speed = (velocityX * velocityX + velocityY * velocityY).squareRoot()
 		return DragReleaseMotion(
-			hasInertia: true, velocityX: velocityX, velocityY: velocityY, speed: speed,
-			sampleSeconds: sampleSeconds)
+			hasInertia: true,
+			velocityX: velocityX,
+			velocityY: velocityY,
+			speed: speed,
+			sampleSeconds: sampleSeconds
+		)
 	}
 }

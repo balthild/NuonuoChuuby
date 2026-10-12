@@ -91,7 +91,8 @@ public struct PetCharacterProfile: Sendable, Equatable, Identifiable {
 	public static let all: [PetCharacterProfile] = [.nuonuo, .feibiJiubi]
 
 	public static func resolve(id: String?) -> PetCharacterProfile {
-		guard let id, let match = all.first(where: { $0.id.caseInsensitiveCompare(id) == .orderedSame }) else {
+		guard let id, let match = all.first(where: { $0.id.caseInsensitiveCompare(id) == .orderedSame })
+		else {
 			return .nuonuo
 		}
 		return match

@@ -18,7 +18,8 @@ public final class AssetSetupWindowController {
 			contentRect: NSRect(x: 0, y: 0, width: 360, height: 132),
 			styleMask: [.titled],
 			backing: .buffered,
-			defer: false)
+			defer: false
+		)
 		panel.title = "糯糯啾比"
 		panel.isReleasedWhenClosed = false
 		panel.level = .floating

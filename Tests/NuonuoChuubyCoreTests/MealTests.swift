@@ -7,8 +7,14 @@ import Testing
 struct MealQueueTests {
 	private func item(_ id: Int, name: String = "a.txt") -> DeletedItem {
 		DeletedItem(
-			id: id, originalPath: "/tmp/\(name)", displayName: name, detectedAt: Date(),
-			cameFromTrash: true, anchor: PixelPoint(x: 100, y: 200), exactAnchor: true)
+			id: id,
+			originalPath: "/tmp/\(name)",
+			displayName: name,
+			detectedAt: Date(),
+			cameFromTrash: true,
+			anchor: PixelPoint(x: 100, y: 200),
+			exactAnchor: true
+		)
 	}
 
 	@Test("Items come out in the order they went in")
@@ -59,8 +65,12 @@ struct DeletionMealDetectorTests {
 
 	private func removal(_ name: String, at offset: Double = 0) -> DeletionMealDetector.Pending {
 		DeletionMealDetector.Pending(
-			name: name, path: "/tmp/\(name)", detectedAt: base.addingTimeInterval(offset),
-			anchor: PixelPoint(x: 10, y: 20), exactAnchor: true)
+			name: name,
+			path: "/tmp/\(name)",
+			detectedAt: base.addingTimeInterval(offset),
+			anchor: PixelPoint(x: 10, y: 20),
+			exactAnchor: true
+		)
 	}
 
 	@Test("A removal is accepted once the Trash confirms it")
@@ -126,8 +136,13 @@ struct DeletionMealDetectorTests {
 struct IconLickTargetSelectorTests {
 	@Test("Nothing is chosen without candidates")
 	func empty() {
-		#expect(IconLickTargetSelector.choose(
-			candidates: [], origin: PixelPoint(x: 0, y: 0), randomUnit: 0.5) == nil)
+		#expect(
+			IconLickTargetSelector.choose(
+				candidates: [],
+				origin: PixelPoint(x: 0, y: 0),
+				randomUnit: 0.5
+			) == nil
+		)
 	}
 
 	@Test("Candidates that are too close are avoided when possible")
@@ -135,8 +150,10 @@ struct IconLickTargetSelectorTests {
 		let candidates = [PixelPoint(x: 5, y: 0), PixelPoint(x: 200, y: 0)]
 		for step in 0..<100 {
 			let chosen = IconLickTargetSelector.choose(
-				candidates: candidates, origin: PixelPoint(x: 0, y: 0),
-				randomUnit: Double(step) / 100)
+				candidates: candidates,
+				origin: PixelPoint(x: 0, y: 0),
+				randomUnit: Double(step) / 100
+			)
 			#expect(chosen == PixelPoint(x: 200, y: 0))
 		}
 	}
@@ -145,7 +162,9 @@ struct IconLickTargetSelectorTests {
 	func fallsBackToNearest() {
 		let chosen = IconLickTargetSelector.choose(
 			candidates: [PixelPoint(x: 5, y: 0), PixelPoint(x: 8, y: 0)],
-			origin: PixelPoint(x: 0, y: 0), randomUnit: 0)
+			origin: PixelPoint(x: 0, y: 0),
+			randomUnit: 0
+		)
 		#expect(chosen != nil)
 	}
 
@@ -153,7 +172,10 @@ struct IconLickTargetSelectorTests {
 	func deduplicates() {
 		let candidates = Array(repeating: PixelPoint(x: 200, y: 0), count: 20)
 		let chosen = IconLickTargetSelector.choose(
-			candidates: candidates, origin: PixelPoint(x: 0, y: 0), randomUnit: 0.9)
+			candidates: candidates,
+			origin: PixelPoint(x: 0, y: 0),
+			randomUnit: 0.9
+		)
 		#expect(chosen == PixelPoint(x: 200, y: 0))
 	}
 }
@@ -179,7 +201,10 @@ struct GhostAnchorLayoutTests {
 	func allDistinct() {
 		var occupied: [PixelPoint] = []
 		for _ in 0..<GhostAnchorLayout.offsets.count {
-			let spot = GhostAnchorLayout.chooseDistinct(preferred: PixelPoint(x: 400, y: 400), occupied: occupied)
+			let spot = GhostAnchorLayout.chooseDistinct(
+				preferred: PixelPoint(x: 400, y: 400),
+				occupied: occupied
+			)
 			for other in occupied {
 				#expect(IconLickTargetSelector.squaredDistance(spot, other).squareRoot() >= 56)
 			}

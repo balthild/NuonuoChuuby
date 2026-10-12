@@ -33,7 +33,8 @@ public final class FileDeletionWatcher {
 			directories.append(downloads)
 		}
 		directories.append(
-			contentsOf: extraFolders.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) })
+			contentsOf: extraFolders.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
+		)
 
 		for directory in directories where manager.fileExists(atPath: directory.path) {
 			let watcher = FolderWatcher(url: directory)
@@ -64,10 +65,13 @@ public final class FileDeletionWatcher {
 		RunLoop.main.add(timer, forMode: .common)
 		pump = timer
 
-		DiagnosticsLog.shared.writeEvent("DeletionWatcherStarted", [
-			("Count", "\(watchers.count)"),
-			("Trash", "\(trashWatcher != nil)"),
-		])
+		DiagnosticsLog.shared.writeEvent(
+			"DeletionWatcherStarted",
+			[
+				("Count", "\(watchers.count)"),
+				("Trash", "\(trashWatcher != nil)"),
+			]
+		)
 	}
 
 	public func stop() {
@@ -89,7 +93,9 @@ public final class FileDeletionWatcher {
 					path: directory.appendingPathComponent(name).path,
 					detectedAt: now,
 					anchor: anchor.point,
-					exactAnchor: anchor.isExact))
+					exactAnchor: anchor.isExact
+				)
+			)
 		}
 	}
 
@@ -116,16 +122,20 @@ public final class FileDeletionWatcher {
 				detectedAt: entry.item.detectedAt,
 				cameFromTrash: entry.cameFromTrash,
 				anchor: anchor,
-				exactAnchor: entry.item.exactAnchor)
+				exactAnchor: entry.item.exactAnchor
+			)
 			nextIdentifier += 1
 			return item
 		}
 
-		DiagnosticsLog.shared.writeEvent("DeletionDetected", [
-			("Count", "\(items.count)"),
-			// A file name is user content, so it is logged as a reference.
-			("Name", items.map(\.displayName).joined(separator: ",")),
-		])
+		DiagnosticsLog.shared.writeEvent(
+			"DeletionDetected",
+			[
+				("Count", "\(items.count)"),
+				// A file name is user content, so it is logged as a reference.
+				("Name", items.map(\.displayName).joined(separator: ",")),
+			]
+		)
 		onMealsReady?(items)
 	}
 }

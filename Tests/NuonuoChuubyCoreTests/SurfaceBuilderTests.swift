@@ -12,21 +12,32 @@ struct SurfaceBuilderTests {
 		id: 99,
 		frame: PixelRect(x: 0, y: 0, width: 1440, height: 900),
 		visibleFrame: PixelRect(x: 0, y: 25, width: 1440, height: 875),
-		scale: 1)
+		scale: 1
+	)
 
 	private func window(id: UInt32, x: Double, y: Double, w: Double, h: Double) -> PlatformWindow {
 		PlatformWindow(
-			id: id, ownerPID: 900, ownerName: "App",
-			bounds: PixelRect(x: x, y: y, width: w, height: h), layer: 0, alpha: 1)
+			id: id,
+			ownerPID: 900,
+			ownerName: "App",
+			bounds: PixelRect(x: x, y: y, width: w, height: h),
+			layer: 0,
+			alpha: 1
+		)
 	}
 
 	private func build(_ windows: [PlatformWindow], monitors: [Monitor]? = nil) -> [Surface] {
 		SurfaceBuilder.build(
-			windows: windows, monitors: monitors ?? [monitor],
+			windows: windows,
+			monitors: monitors ?? [monitor],
 			isEligible: { window, monitor in
 				WindowTerrainEligibilityPolicy.isEligiblePlatform(
-					window, ownPID: 1, workArea: monitor.visibleFrame)
-			})
+					window,
+					ownPID: 1,
+					workArea: monitor.visibleFrame
+				)
+			}
+		)
 	}
 
 	/// The front-to-back list, so index 0 is the occluder.
@@ -67,7 +78,8 @@ struct SurfaceBuilderTests {
 		#expect(
 			top(of: 2, in: graph)?.visible == [
 				Span(start: 100, end: 500), Span(start: 700, end: 1100),
-			])
+			]
+		)
 	}
 
 	@Test("A window with identical bounds to the one in front is fully hidden")
@@ -106,7 +118,8 @@ struct SurfaceBuilderTests {
 		#expect(
 			top(of: 2, in: graph)?.visible == [
 				Span(start: 100, end: 400), Span(start: 700, end: 1100),
-			])
+			]
+		)
 	}
 
 	@Test("A raised overlay in front does not hide the edge")
@@ -115,8 +128,13 @@ struct SurfaceBuilderTests {
 		// pet is. Treating it as an occluder hid the edge she was landing on, so
 		// she fell straight past every window.
 		let overlay = PlatformWindow(
-			id: 1, ownerPID: 900, ownerName: "NuonuoChuuby",
-			bounds: PixelRect(x: 400, y: 200, width: 300, height: 300), layer: 3, alpha: 1)
+			id: 1,
+			ownerPID: 900,
+			ownerName: "NuonuoChuuby",
+			bounds: PixelRect(x: 400, y: 200, width: 300, height: 300),
+			layer: 3,
+			alpha: 1
+		)
 		let behind = window(id: 2, x: 100, y: 200, w: 1000, h: 500)
 		let graph = build([overlay, behind])
 		#expect(top(of: 2, in: graph)?.visible == [Span(start: 100, end: 1100)])
@@ -125,8 +143,13 @@ struct SurfaceBuilderTests {
 	@Test("A fully transparent window in front does not hide the edge")
 	func transparentFrontDoesNotOcclude() {
 		let overlay = PlatformWindow(
-			id: 1, ownerPID: 900, ownerName: "HUD",
-			bounds: PixelRect(x: 400, y: 200, width: 300, height: 300), layer: 0, alpha: 0.01)
+			id: 1,
+			ownerPID: 900,
+			ownerName: "HUD",
+			bounds: PixelRect(x: 400, y: 200, width: 300, height: 300),
+			layer: 0,
+			alpha: 0.01
+		)
 		let behind = window(id: 2, x: 100, y: 200, w: 1000, h: 500)
 		let graph = build([overlay, behind])
 		#expect(top(of: 2, in: graph)?.visible == [Span(start: 100, end: 1100)])
@@ -144,7 +167,8 @@ struct SurfaceBuilderTests {
 			id: 2,
 			frame: PixelRect(x: 1440, y: 0, width: 1920, height: 1080),
 			visibleFrame: PixelRect(x: 1440, y: 25, width: 1920, height: 1055),
-			scale: 1)
+			scale: 1
+		)
 		let graph = build([], monitors: [monitor, second])
 		let floors = graph.filter { $0.key.kind == .floor }
 		#expect(floors.count == 2)

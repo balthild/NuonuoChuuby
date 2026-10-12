@@ -37,11 +37,13 @@ public enum AutonomousBehaviorPlanner {
 		if hasGroundSupport {
 			add(
 				.wander,
-				(1.1 + life.curiosity / 85) * (isFeibi ? 1 + 0.12 * energy : 1) * tiredMovementScale)
+				(1.1 + life.curiosity / 85) * (isFeibi ? 1 + 0.12 * energy : 1) * tiredMovementScale
+			)
 			add(
 				.explore,
 				(0.25 + max(0, life.curiosity - 30) / 13)
-					* (isFeibi ? 1 + 0.45 * energy : 1) * tiredMovementScale)
+					* (isFeibi ? 1 + 0.45 * energy : 1) * tiredMovementScale
+			)
 		}
 
 		// A short nap is also an ordinary idle variation; sleepiness raises its
@@ -55,7 +57,10 @@ public enum AutonomousBehaviorPlanner {
 		}
 
 		if hasGroundSupport {
-			add(.hop, (0.24 + life.curiosity / 180) * (isFeibi ? 1 + 0.75 * energy : 1) * tiredMovementScale)
+			add(
+				.hop,
+				(0.24 + life.curiosity / 180) * (isFeibi ? 1 + 0.75 * energy : 1) * tiredMovementScale
+			)
 		}
 
 		guard !choices.isEmpty else { return .rest }

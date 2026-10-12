@@ -19,7 +19,8 @@ public enum SpeechBubbleLayout {
 		var left = clamp(
 			petFrame.left + petFrame.width / 2 - bubbleWidth / 2,
 			workArea.left,
-			max(workArea.left, workArea.right - bubbleWidth))
+			max(workArea.left, workArea.right - bubbleWidth)
+		)
 
 		// The bubble's bottom edge sits just inside the pet panel's top.
 		var top = petFrame.top + (petFrame.height * 0.16).rounded() - bubbleHeight
@@ -30,7 +31,8 @@ public enum SpeechBubbleLayout {
 			top = clamp(
 				petFrame.top + petFrame.height / 5,
 				workArea.top,
-				max(workArea.top, workArea.bottom - bubbleHeight))
+				max(workArea.top, workArea.bottom - bubbleHeight)
+			)
 			if petFrame.right + bubbleWidth + sideGap <= workArea.right {
 				left = petFrame.right + sideGap
 			} else if petFrame.left - bubbleWidth - sideGap >= workArea.left {

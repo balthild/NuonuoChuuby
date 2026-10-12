@@ -9,13 +9,18 @@ struct SpeechBubbleLayoutTests {
 	private let workArea = PixelRect(x: 0, y: 25, width: 1440, height: 875)
 
 	private func place(
-		petX: Double, petY: Double, petSize: Double = 220,
-		bubbleWidth: Double = 70, bubbleHeight: Double = 34
+		petX: Double,
+		petY: Double,
+		petSize: Double = 220,
+		bubbleWidth: Double = 70,
+		bubbleHeight: Double = 34
 	) -> PixelPoint {
 		SpeechBubbleLayout.topLeft(
 			petFrame: PixelRect(x: petX, y: petY, width: petSize, height: petSize),
-			bubbleWidth: bubbleWidth, bubbleHeight: bubbleHeight,
-			workArea: workArea)
+			bubbleWidth: bubbleWidth,
+			bubbleHeight: bubbleHeight,
+			workArea: workArea
+		)
 	}
 
 	@Test("The bubble is centred on the pet when there is room")
@@ -59,7 +64,10 @@ struct SpeechBubbleLayoutTests {
 		// A pet filling most of the width leaves no side room.
 		let topLeft = SpeechBubbleLayout.topLeft(
 			petFrame: PixelRect(x: 0, y: 25, width: 1440, height: 220),
-			bubbleWidth: 70, bubbleHeight: 34, workArea: workArea)
+			bubbleWidth: 70,
+			bubbleHeight: 34,
+			workArea: workArea
+		)
 		#expect(topLeft.x >= workArea.left)
 		#expect(topLeft.x + 70 <= workArea.right)
 		#expect(topLeft.y >= workArea.top)
@@ -69,7 +77,10 @@ struct SpeechBubbleLayoutTests {
 	func oversizedBubble() {
 		let topLeft = SpeechBubbleLayout.topLeft(
 			petFrame: PixelRect(x: 600, y: 25, width: 220, height: 220),
-			bubbleWidth: 70, bubbleHeight: 2000, workArea: workArea)
+			bubbleWidth: 70,
+			bubbleHeight: 2000,
+			workArea: workArea
+		)
 		#expect(topLeft.y == workArea.top)
 	}
 }

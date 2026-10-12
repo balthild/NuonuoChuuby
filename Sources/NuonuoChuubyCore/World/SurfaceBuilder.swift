@@ -47,8 +47,13 @@ public enum SurfaceBuilder {
 			result.append(
 				Surface(
 					key: SurfaceKey(owner: monitor.id, kind: .floor),
-					span: span, visible: [span], offset: monitor.visibleFrame.bottom,
-					ownerBounds: monitor.frame, isReachable: true))
+					span: span,
+					visible: [span],
+					offset: monitor.visibleFrame.bottom,
+					ownerBounds: monitor.frame,
+					isReachable: true
+				)
+			)
 		}
 
 		let eligible = windows.map { window in monitors.contains { isEligible(window, $0) } }
@@ -67,7 +72,8 @@ public enum SurfaceBuilder {
 	}
 
 	private static func edges(
-		of window: PlatformWindow, occludedBy occluders: [PlatformWindow]
+		of window: PlatformWindow,
+		occludedBy occluders: [PlatformWindow]
 	) -> [Surface] {
 		let bounds = window.bounds
 		// The top edge is the only one the pet may stand on this round (D3); the
@@ -89,7 +95,9 @@ public enum SurfaceBuilder {
 					visible: visibleRuns(of: span, covering: y, along: .horizontal, by: occluders),
 					offset: y,
 					ownerBounds: bounds,
-					isReachable: kind == .windowTop))
+					isReachable: kind == .windowTop
+				)
+			)
 		}
 		for (kind, x) in vertical {
 			let span = Span(start: bounds.top, end: bounds.bottom)
@@ -100,7 +108,9 @@ public enum SurfaceBuilder {
 					visible: visibleRuns(of: span, covering: x, along: .vertical, by: occluders),
 					offset: x,
 					ownerBounds: bounds,
-					isReachable: false))
+					isReachable: false
+				)
+			)
 		}
 		return result
 	}

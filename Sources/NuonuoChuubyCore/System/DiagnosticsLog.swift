@@ -1,5 +1,5 @@
-import Foundation
 import CryptoKit
+import Foundation
 
 /// A local, rotating activity log.
 ///
@@ -53,12 +53,17 @@ public final class DiagnosticsLog: @unchecked Sendable {
 	}
 
 	public func write(_ message: String, error: Error) {
-		append("[\(timestamp())] \(DiagnosticsPrivacy.message(message)) :: \(String(describing: type(of: error)))")
+		append(
+			"[\(timestamp())] \(DiagnosticsPrivacy.message(message)) :: \(String(describing: type(of: error)))"
+		)
 	}
 
 	public func writeEvent(_ name: String, _ fields: [(String, String)] = []) {
-		let rendered = fields
-			.map { "\($0.0)=\"\(DiagnosticsPrivacy.field(key: $0.0, value: $0.1, reference: reference))\" " }
+		let rendered =
+			fields
+			.map {
+				"\($0.0)=\"\(DiagnosticsPrivacy.field(key: $0.0, value: $0.1, reference: reference))\" "
+			}
 			.joined()
 		append("TRACE session=\(sessionID) event=\(name) \(rendered)")
 	}
@@ -82,7 +87,9 @@ public final class DiagnosticsLog: @unchecked Sendable {
 			let manager = FileManager.default
 			if !hasCreatedDirectory {
 				try manager.createDirectory(
-					at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+					at: fileURL.deletingLastPathComponent(),
+					withIntermediateDirectories: true
+				)
 				hasCreatedDirectory = true
 			}
 			rotateIfNeeded(fileURL)
@@ -150,7 +157,9 @@ enum DiagnosticsPrivacy {
 	}
 
 	static func field(key: String, value: String, reference: (String) -> String) -> String {
-		let sensitiveKeys = ["path", "directory", "folder", "title", "caption", "username", "name", "text"]
+		let sensitiveKeys = [
+			"path", "directory", "folder", "title", "caption", "username", "name", "text",
+		]
 		let lower = key.lowercased()
 		if sensitiveKeys.contains(where: { lower.contains($0) }) {
 			return reference(value)
@@ -162,7 +171,11 @@ enum DiagnosticsPrivacy {
 		value.replacingOccurrences(of: "\r", with: " ").replacingOccurrences(of: "\n", with: " ")
 	}
 
-	private static func redact(_ regex: NSRegularExpression, in text: String, reference: (String) -> String)
+	private static func redact(
+		_ regex: NSRegularExpression,
+		in text: String,
+		reference: (String) -> String
+	)
 		-> String
 	{
 		var result = text

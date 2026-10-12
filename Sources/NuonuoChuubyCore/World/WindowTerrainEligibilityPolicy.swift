@@ -34,7 +34,9 @@ public enum WindowTerrainEligibilityPolicy {
 		guard window.layer == 0 else { return false }
 		guard window.alpha >= minimumAlpha else { return false }
 		guard window.ownerPID != ownPID else { return false }
-		guard !window.ownerName.isEmpty, !excludedOwners.contains(window.ownerName) else { return false }
+		guard !window.ownerName.isEmpty, !excludedOwners.contains(window.ownerName) else {
+			return false
+		}
 		guard window.bounds.width >= minimumWidth, window.bounds.height >= minimumHeight else {
 			return false
 		}

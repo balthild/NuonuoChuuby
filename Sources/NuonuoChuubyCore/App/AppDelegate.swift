@@ -28,7 +28,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		let environment = AppEnvironment()
 		self.environment = environment
 		DiagnosticsLog.shared.configure(fileURL: environment.logPath)
-		DiagnosticsLog.shared.writeEvent("ProcessStarted", [("Bundle", AppEnvironment.bundleIdentifier)])
+		DiagnosticsLog.shared.writeEvent(
+			"ProcessStarted",
+			[("Bundle", AppEnvironment.bundleIdentifier)]
+		)
 
 		let settingsStore = SettingsStore(path: environment.settingsPath)
 		self.settingsStore = settingsStore
@@ -52,7 +55,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		guard let store = try? AssetStore(environment: environment) else {
 			presentAlert(
 				title: "缺少素材清单",
-				message: "这个构建里没有素材清单，也没找到随包的素材。请先运行 `make assets`。")
+				message: "这个构建里没有素材清单，也没找到随包的素材。请先运行 `make assets`。"
+			)
 			return nil
 		}
 		if store.isComplete() {
@@ -106,11 +110,18 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		// frame can already speak.
 		let loudness = VoiceLoudness.load(from: locator.file("audio/voice-levels.json"))
 		let voice = VoicePlaybackService(
-			locator: locator, character: character, loudness: loudness,
-			enabled: settings.soundEnabled, volume: settings.voiceVolume)
+			locator: locator,
+			character: character,
+			loudness: loudness,
+			enabled: settings.soundEnabled,
+			volume: settings.voiceVolume
+		)
 		let speech = PetSpeechCoordinator(
-			voice: voice, bubble: SpeechBubbleWindowController(), displaySpace: displaySpace,
-			character: character)
+			voice: voice,
+			bubble: SpeechBubbleWindowController(),
+			displaySpace: displaySpace,
+			character: character
+		)
 		self.voice = voice
 		self.speech = speech
 		controller.speech = speech
@@ -184,7 +195,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 			let progress = Double(step) / Double(steps)
 			let point = CGPoint(
 				x: start.x + CGFloat(46 * progress),
-				y: start.y + CGFloat(6 * progress))
+				y: start.y + CGFloat(6 * progress)
+			)
 			DispatchQueue.main.asyncAfter(deadline: .now() + progress * 1.2) { [weak controller] in
 				controller?.updatePinch(to: point)
 			}
@@ -213,7 +225,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 			icon: ShellIconProvider.icon(forPath: item.originalPath),
 			at: anchor,
 			size: controller.petSize * 0.34,
-			displaySpace: displaySpace ?? DisplaySpace())
+			displaySpace: displaySpace ?? DisplaySpace()
+		)
 		ghostIcons[item.id] = ghost
 	}
 
@@ -262,7 +275,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 					guard let self else { return }
 					do {
 						try StartupRegistrationService.setEnabled(enabled, appPath: self.appPath)
-						DiagnosticsLog.shared.writeEvent("StartupRegistrationChanged", [("Enabled", "\(enabled)")])
+						DiagnosticsLog.shared.writeEvent(
+							"StartupRegistrationChanged",
+							[("Enabled", "\(enabled)")]
+						)
 					} catch {
 						DiagnosticsLog.shared.write("login item change failed", error: error)
 					}
@@ -273,7 +289,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 					return StartupRegistrationService.isEnabled(appPath: self.appPath)
 				},
 				quit: { NSApp.terminate(nil) }
-			))
+			)
+		)
 	}
 
 	/// Applies a settings mutation, persists it, and pushes it into the running

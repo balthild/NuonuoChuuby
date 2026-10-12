@@ -32,7 +32,8 @@ final class FolderWatcher {
 
 		let flags = FSEventStreamCreateFlags(
 			kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes
-				| kFSEventStreamCreateFlagNoDefer)
+				| kFSEventStreamCreateFlagNoDefer
+		)
 
 		guard
 			let created = FSEventStreamCreate(
@@ -42,7 +43,8 @@ final class FolderWatcher {
 				[url.path] as CFArray,
 				FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
 				0.3,
-				flags)
+				flags
+			)
 		else {
 			DiagnosticsLog.shared.write("cannot watch folder for deletions")
 			return
@@ -68,7 +70,13 @@ final class FolderWatcher {
 
 	deinit { stop() }
 
-	private static let eventCallback: FSEventStreamCallback = { _, info, count, eventPaths, eventFlags, _ in
+	private static let eventCallback: FSEventStreamCallback = {
+		_,
+		info,
+		count,
+		eventPaths,
+		eventFlags,
+		_ in
 		guard let info, count > 0 else { return }
 		let watcher = Unmanaged<FolderWatcher>.fromOpaque(info).takeUnretainedValue()
 		// With kFSEventStreamCreateFlagUseCFTypes, eventPaths is a CFArray of

@@ -17,7 +17,9 @@ public final class PetWindowController: NSObject, PetControllerDelegate {
 	public init(controller: PetController, displaySpace: DisplaySpace) {
 		self.controller = controller
 		self.displaySpace = displaySpace
-		self.panel = PetPanel(contentRect: NSRect(x: 0, y: 0, width: controller.petSize, height: controller.petSize))
+		self.panel = PetPanel(
+			contentRect: NSRect(x: 0, y: 0, width: controller.petSize, height: controller.petSize)
+		)
 		self.view = PetView(frame: panel.contentView?.bounds ?? .zero)
 
 		super.init()
@@ -88,7 +90,8 @@ public final class PetWindowController: NSObject, PetControllerDelegate {
 		let topLeft = controller.windowTopLeft
 		let frame = DisplaySpace.toAppKit(
 			PixelRect(x: topLeft.x, y: topLeft.y, width: size, height: size),
-			primaryHeight: displaySpace.primaryHeight)
+			primaryHeight: displaySpace.primaryHeight
+		)
 		panel.setFrame(frame, display: true)
 		view.bodyEllipse = controller.bodyEllipseInView
 		view.facing = controller.facing

@@ -29,7 +29,10 @@ public struct AssetManifest: Sendable, Decodable {
 	public var rawBaseURL: URL? {
 		URL(
 			string: upstream.replacingOccurrences(
-				of: "https://github.com/", with: "https://raw.githubusercontent.com/"))
+				of: "https://github.com/",
+				with: "https://raw.githubusercontent.com/"
+			)
+		)
 	}
 
 	public func rawURL(for entry: Entry) -> URL? {
@@ -125,10 +128,13 @@ public final class AssetStore {
 		let total = missing.count
 		var completed = 0
 		progress(Progress(completed: 0, total: total))
-		DiagnosticsLog.shared.writeEvent("AssetDownloadStarted", [
-			("Count", "\(total)"),
-			("Commit", manifest.commit),
-		])
+		DiagnosticsLog.shared.writeEvent(
+			"AssetDownloadStarted",
+			[
+				("Count", "\(total)"),
+				("Commit", manifest.commit),
+			]
+		)
 
 		// A bounded number of parallel requests keeps the download short without
 		// hammering the server or opening hundreds of sockets.
@@ -183,7 +189,9 @@ public final class AssetStore {
 
 		let destination = directory.appendingPathComponent(entry.path)
 		try FileManager.default.createDirectory(
-			at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+			at: destination.deletingLastPathComponent(),
+			withIntermediateDirectories: true
+		)
 		// Write through a temporary file so an interrupted download never looks
 		// complete on the next launch.
 		let temporary = destination.appendingPathExtension("partial")

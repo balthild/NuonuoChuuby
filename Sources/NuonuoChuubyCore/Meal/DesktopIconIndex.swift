@@ -1,5 +1,5 @@
-import ApplicationServices
 import AppKit
+import ApplicationServices
 
 /// An icon on the desktop, as Finder reports it.
 public struct DesktopIcon: Sendable, Equatable {
@@ -111,7 +111,10 @@ public final class DesktopIconIndex {
 					name: name,
 					position: PixelPoint(
 						x: Double(origin.x + size.width / 2),
-						y: Double(origin.y + size.height / 2))))
+						y: Double(origin.y + size.height / 2)
+					)
+				)
+			)
 		}
 		return icons
 	}
@@ -126,7 +129,10 @@ public final class DesktopIconIndex {
 	/// Walking to it rather than screen-scraping the whole tree keeps the read to
 	/// a few dozen IPC round trips, and avoiding a role/description name match
 	/// keeps it working regardless of the system language.
-	private nonisolated static func iconContainer(under root: AXUIElement, maxDepth: Int = 5) -> AXUIElement? {
+	private nonisolated static func iconContainer(
+		under root: AXUIElement,
+		maxDepth: Int = 5
+	) -> AXUIElement? {
 		var frontier = [root]
 		for _ in 0..<maxDepth {
 			var next: [AXUIElement] = []

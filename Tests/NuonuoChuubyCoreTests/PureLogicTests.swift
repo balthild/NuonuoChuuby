@@ -44,12 +44,20 @@ struct SubpixelMotionTests {
 
 @Suite("Drag release physics")
 struct DragReleasePhysicsTests {
-	private func tracker(fromX: Double, toX: Double, seconds: Double, steps: Int = 8) -> DragMotionTracker {
+	private func tracker(
+		fromX: Double,
+		toX: Double,
+		seconds: Double,
+		steps: Int = 8
+	) -> DragMotionTracker {
 		var tracker = DragMotionTracker()
 		tracker.reset(point: PixelPoint(x: fromX, y: 0), atSeconds: 0)
 		for step in 1...steps {
 			let progress = Double(step) / Double(steps)
-			tracker.add(point: PixelPoint(x: fromX + (toX - fromX) * progress, y: 0), atSeconds: seconds * progress)
+			tracker.add(
+				point: PixelPoint(x: fromX + (toX - fromX) * progress, y: 0),
+				atSeconds: seconds * progress
+			)
 		}
 		return tracker
 	}
@@ -85,7 +93,12 @@ struct AirborneBoundaryPolicyTests {
 	@Test("A foot inside the monitor is untouched")
 	func insideMonitor() {
 		let result = AirborneBoundaryPolicy.resolveHorizontal(
-			proposedFootX: 500, velocityX: 40, monitorLeft: 0, monitorRight: 1000, margin: 8)
+			proposedFootX: 500,
+			velocityX: 40,
+			monitorLeft: 0,
+			monitorRight: 1000,
+			margin: 8
+		)
 		#expect(!result.corrected)
 		#expect(result.velocityX == 40)
 	}
@@ -93,7 +106,12 @@ struct AirborneBoundaryPolicyTests {
 	@Test("Crossing the left edge reflects with retention")
 	func leftEdge() {
 		let result = AirborneBoundaryPolicy.resolveHorizontal(
-			proposedFootX: -20, velocityX: -300, monitorLeft: 0, monitorRight: 1000, margin: 8)
+			proposedFootX: -20,
+			velocityX: -300,
+			monitorLeft: 0,
+			monitorRight: 1000,
+			margin: 8
+		)
 		#expect(result.corrected)
 		#expect(abs(result.nextFootX - 8) < 0.001)
 		#expect(abs(result.velocityX - 138) < 0.001)
@@ -102,7 +120,12 @@ struct AirborneBoundaryPolicyTests {
 	@Test("Crossing the right edge reflects with retention")
 	func rightEdge() {
 		let result = AirborneBoundaryPolicy.resolveHorizontal(
-			proposedFootX: 1200, velocityX: 300, monitorLeft: 0, monitorRight: 1000, margin: 8)
+			proposedFootX: 1200,
+			velocityX: 300,
+			monitorLeft: 0,
+			monitorRight: 1000,
+			margin: 8
+		)
 		#expect(result.corrected)
 		#expect(abs(result.nextFootX - 991) < 0.001)
 		#expect(abs(result.velocityX + 138) < 0.001)
@@ -127,8 +150,22 @@ struct PetSizePolicyTests {
 
 	@Test("A tiny work area shrinks the pet but never below the minimum")
 	func fitToWorkArea() {
-		#expect(PetSizePolicy.fitToWorkArea(preferredSize: 220, workAreaWidth: 400, workAreaHeight: 300, displayScale: 1) == 220)
-		#expect(PetSizePolicy.fitToWorkArea(preferredSize: 220, workAreaWidth: 100, workAreaHeight: 100, displayScale: 1) == 96)
+		#expect(
+			PetSizePolicy.fitToWorkArea(
+				preferredSize: 220,
+				workAreaWidth: 400,
+				workAreaHeight: 300,
+				displayScale: 1
+			) == 220
+		)
+		#expect(
+			PetSizePolicy.fitToWorkArea(
+				preferredSize: 220,
+				workAreaWidth: 100,
+				workAreaHeight: 100,
+				displayScale: 1
+			) == 96
+		)
 	}
 }
 
@@ -222,7 +259,11 @@ struct AutonomousBehaviorPlannerTests {
 		life.fullness = 100
 		for unit in stride(from: 0.0, to: 1.0, by: 0.01) {
 			let action = AutonomousBehaviorPlanner.choose(
-				life: life, hasGroundSupport: true, availableActions: [.rest], randomUnit: unit)
+				life: life,
+				hasGroundSupport: true,
+				availableActions: [.rest],
+				randomUnit: unit
+			)
 			#expect(action == .rest)
 		}
 	}
@@ -237,8 +278,11 @@ struct AutonomousBehaviorPlannerTests {
 		for index in 0..<samples {
 			let unit = Double(index) / Double(samples)
 			if AutonomousBehaviorPlanner.choose(
-				life: life, hasGroundSupport: true, availableActions: allActions(), randomUnit: unit) == .sleep
-			{
+				life: life,
+				hasGroundSupport: true,
+				availableActions: allActions(),
+				randomUnit: unit
+			) == .sleep {
 				naps += 1
 			}
 		}
@@ -250,7 +294,11 @@ struct AutonomousBehaviorPlannerTests {
 		for index in 0..<200 {
 			let unit = Double(index) / 200
 			let action = AutonomousBehaviorPlanner.choose(
-				life: PetLifeState(), hasGroundSupport: false, availableActions: allActions(), randomUnit: unit)
+				life: PetLifeState(),
+				hasGroundSupport: false,
+				availableActions: allActions(),
+				randomUnit: unit
+			)
 			#expect(action != .wander)
 			#expect(action != .explore)
 			#expect(action != .hop)
@@ -277,12 +325,30 @@ struct PetModePolicyTests {
 
 	@Test("The hunger bar hides under fasting or infinite mode")
 	func progressDisplay() {
-		#expect(!PetModePolicy.shouldShowProgressDisplay(
-			character: .nuonuo, fastingMode: false, infiniteMode: true, coexistenceMode: false))
-		#expect(!PetModePolicy.shouldShowProgressDisplay(
-			character: .nuonuo, fastingMode: true, infiniteMode: false, coexistenceMode: false))
-		#expect(PetModePolicy.shouldShowProgressDisplay(
-			character: .nuonuo, fastingMode: false, infiniteMode: false, coexistenceMode: false))
+		#expect(
+			!PetModePolicy.shouldShowProgressDisplay(
+				character: .nuonuo,
+				fastingMode: false,
+				infiniteMode: true,
+				coexistenceMode: false
+			)
+		)
+		#expect(
+			!PetModePolicy.shouldShowProgressDisplay(
+				character: .nuonuo,
+				fastingMode: true,
+				infiniteMode: false,
+				coexistenceMode: false
+			)
+		)
+		#expect(
+			PetModePolicy.shouldShowProgressDisplay(
+				character: .nuonuo,
+				fastingMode: false,
+				infiniteMode: false,
+				coexistenceMode: false
+			)
+		)
 	}
 }
 

@@ -74,14 +74,16 @@ public final class PetSpeechCoordinator {
 	private func bubbleTopLeft() -> PixelPoint? {
 		guard
 			let workArea = displaySpace.display(
-				containing: PixelPoint(x: petFrame.centerX, y: petFrame.centerY))?.visibleFrame
+				containing: PixelPoint(x: petFrame.centerX, y: petFrame.centerY)
+			)?.visibleFrame
 		else { return nil }
 		let size = bubble.bubbleSize
 		return SpeechBubbleLayout.topLeft(
 			petFrame: petFrame,
 			bubbleWidth: size.width,
 			bubbleHeight: size.height,
-			workArea: workArea)
+			workArea: workArea
+		)
 	}
 
 	private func canShowBubble(priority: VoicePriority) -> Bool {

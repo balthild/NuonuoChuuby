@@ -18,7 +18,10 @@ public enum AirborneBoundaryPolicy {
 	) -> AirborneHorizontalCorrection {
 		guard monitorRight > monitorLeft else {
 			return AirborneHorizontalCorrection(
-				corrected: false, nextFootX: proposedFootX, velocityX: velocityX)
+				corrected: false,
+				nextFootX: proposedFootX,
+				velocityX: velocityX
+			)
 		}
 
 		let effectiveMargin = max(0, margin)
@@ -27,7 +30,10 @@ public enum AirborneBoundaryPolicy {
 		let correctedX = min(max(proposedFootX, minimum), maximum)
 		guard abs(correctedX - proposedFootX) >= 0.01 else {
 			return AirborneHorizontalCorrection(
-				corrected: false, nextFootX: proposedFootX, velocityX: velocityX)
+				corrected: false,
+				nextFootX: proposedFootX,
+				velocityX: velocityX
+			)
 		}
 
 		let hitLeft = proposedFootX < minimum
@@ -38,6 +44,9 @@ public enum AirborneBoundaryPolicy {
 			correctedVelocity = velocityX < 0 ? velocityX : -abs(velocityX) * bounceRetention
 		}
 		return AirborneHorizontalCorrection(
-			corrected: true, nextFootX: correctedX, velocityX: correctedVelocity)
+			corrected: true,
+			nextFootX: correctedX,
+			velocityX: correctedVelocity
+		)
 	}
 }

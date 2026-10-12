@@ -20,7 +20,8 @@ struct PetControllerPlacementTests {
 	/// The assets seeded into the resource folder by `make assets`.
 	private static var assetsRoot: URL? {
 		let testFile = URL(fileURLWithPath: #filePath)
-		let repoRoot = testFile
+		let repoRoot =
+			testFile
 			.deletingLastPathComponent()  // NuonuoChuubyCoreTests
 			.deletingLastPathComponent()  // Tests
 			.deletingLastPathComponent()  // repo root

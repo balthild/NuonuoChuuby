@@ -28,7 +28,10 @@ public final class SpeechBubblePanel: NSPanel {
 /// Draws a rounded caption with a small tail pointing down at the pet.
 final class SpeechBubbleView: NSView {
 	var text: String = "" {
-		didSet { needsDisplay = true; invalidateIntrinsicContentSize() }
+		didSet {
+			needsDisplay = true
+			invalidateIntrinsicContentSize()
+		}
 	}
 
 	private let horizontalPadding: CGFloat = 12
@@ -48,7 +51,10 @@ final class SpeechBubbleView: NSView {
 	private var textSize: NSSize {
 		let constraint = NSSize(width: maximumTextWidth, height: .greatestFiniteMagnitude)
 		let bounding = (text as NSString).boundingRect(
-			with: constraint, options: [.usesLineFragmentOrigin], attributes: textAttributes)
+			with: constraint,
+			options: [.usesLineFragmentOrigin],
+			attributes: textAttributes
+		)
 		return NSSize(width: ceil(bounding.width), height: ceil(bounding.height))
 	}
 
@@ -56,14 +62,17 @@ final class SpeechBubbleView: NSView {
 		let size = textSize
 		return NSSize(
 			width: size.width + horizontalPadding * 2,
-			height: size.height + verticalPadding * 2 + tailHeight)
+			height: size.height + verticalPadding * 2 + tailHeight
+		)
 	}
 
 	override func draw(_ dirtyRect: NSRect) {
 		let bubbleRect = NSRect(
-			x: 0, y: 0,
+			x: 0,
+			y: 0,
 			width: bounds.width,
-			height: max(0, bounds.height - tailHeight))
+			height: max(0, bounds.height - tailHeight)
+		)
 
 		let path = NSBezierPath(roundedRect: bubbleRect, xRadius: 9, yRadius: 9)
 		// The tail sits just left of centre so it does not cover the pet's face.
@@ -82,11 +91,16 @@ final class SpeechBubbleView: NSView {
 		path.stroke()
 
 		let inset = NSRect(
-			x: horizontalPadding, y: verticalPadding,
+			x: horizontalPadding,
+			y: verticalPadding,
 			width: bubbleRect.width - horizontalPadding * 2,
-			height: bubbleRect.height - verticalPadding * 2)
+			height: bubbleRect.height - verticalPadding * 2
+		)
 		(text as NSString).draw(
-			with: inset, options: [.usesLineFragmentOrigin], attributes: textAttributes)
+			with: inset,
+			options: [.usesLineFragmentOrigin],
+			attributes: textAttributes
+		)
 	}
 }
 
@@ -111,7 +125,12 @@ public final class SpeechBubbleWindowController {
 
 	/// Shows the bubble with its top-left at `topLeft` (global top-left
 	/// coordinates) and hides it after `duration`.
-	public func show(_ text: String, topLeft: PixelPoint, displaySpace: DisplaySpace, duration: Double = 3.2) {
+	public func show(
+		_ text: String,
+		topLeft: PixelPoint,
+		displaySpace: DisplaySpace,
+		duration: Double = 3.2
+	) {
 		guard !text.isEmpty else { return }
 		view.text = text
 		let size = view.preferredSize
@@ -139,9 +158,13 @@ public final class SpeechBubbleWindowController {
 	private func applyFrame(topLeft: PixelPoint, displaySpace: DisplaySpace) {
 		let frame = DisplaySpace.toAppKit(
 			PixelRect(
-				x: topLeft.x, y: topLeft.y,
-				width: Double(currentSize.width), height: Double(currentSize.height)),
-			primaryHeight: displaySpace.primaryHeight)
+				x: topLeft.x,
+				y: topLeft.y,
+				width: Double(currentSize.width),
+				height: Double(currentSize.height)
+			),
+			primaryHeight: displaySpace.primaryHeight
+		)
 		panel.setFrame(frame, display: true)
 	}
 

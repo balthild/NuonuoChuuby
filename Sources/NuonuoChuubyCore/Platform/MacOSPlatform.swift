@@ -33,11 +33,15 @@ public final class MacOSPlatform: Platform {
 				ownerPID: ownerPID,
 				ownerName: entry[kCGWindowOwnerName as String] as? String ?? "",
 				bounds: PixelRect(
-					x: Double(rect.origin.x), y: Double(rect.origin.y),
-					width: Double(rect.width), height: Double(rect.height)),
+					x: Double(rect.origin.x),
+					y: Double(rect.origin.y),
+					width: Double(rect.width),
+					height: Double(rect.height)
+				),
 				layer: layer,
 				alpha: (entry[kCGWindowAlpha as String] as? Double) ?? 1,
-				zIndex: index)
+				zIndex: index
+			)
 		}
 	}
 
@@ -52,7 +56,8 @@ public final class MacOSPlatform: Platform {
 				id: number.uint32Value,
 				frame: DisplaySpace.toTopLeft(screen.frame, primaryHeight: primaryHeight),
 				visibleFrame: DisplaySpace.toTopLeft(screen.visibleFrame, primaryHeight: primaryHeight),
-				scale: Double(screen.backingScaleFactor))
+				scale: Double(screen.backingScaleFactor)
+			)
 		}
 	}
 }
