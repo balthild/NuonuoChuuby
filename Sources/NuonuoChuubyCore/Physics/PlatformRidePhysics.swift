@@ -36,10 +36,15 @@ public enum PlatformRidePhysics {
 	///
 	/// The Windows original used 3 pt and 360 pt/s, which at 60 fps means a mere
 	/// 6 pt of travel in a frame. An ordinary drag clears that easily, so she was
-	/// flung 400 pt up for no reason. These are deliberately higher: a brisk flick
-	/// throws her, a normal drag just carries her.
-	public static let minimumDisplacement: Double = 6
-	public static let throwSpeedThreshold: Double = 600
+	/// flung 400 pt up for no reason.
+	///
+	/// These are deliberately higher, and the speed is aligned with the figure
+	/// Ledgeling uses to decide that a window was *yanked* rather than dragged
+	/// (`STARTLING_SPEED = 900`): below it she simply rides, above it the move was
+	/// deliberate enough to react to. This is a conscious departure from the
+	/// original's constants.
+	public static let minimumDisplacement: Double = 12
+	public static let throwSpeedThreshold: Double = 900
 
 	public static func evaluate(
 		displacementY: Double,

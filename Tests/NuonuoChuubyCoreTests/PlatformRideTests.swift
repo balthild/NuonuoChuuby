@@ -35,13 +35,26 @@ struct PlatformRidePhysicsTests {
 
 	@Test("A deliberate flick does throw her")
 	func deliberateFlickThrows() {
-		// 18 pt in a frame at 60 fps is a real flick.
+		// ~18 pt in a frame at 60 fps, well past the startle speed.
 		#expect(
-			PlatformRidePhysics.evaluate(displacementY: -18, velocityY: -1080, displayScale: 1)
+			PlatformRidePhysics.evaluate(displacementY: -24, velocityY: -1440, displayScale: 1)
 				.response == .launchUpward)
 		#expect(
-			PlatformRidePhysics.evaluate(displacementY: 18, velocityY: 1080, displayScale: 1)
+			PlatformRidePhysics.evaluate(displacementY: 24, velocityY: 1440, displayScale: 1)
 				.response == .releaseDownward)
+	}
+
+	@Test("A brisk but ordinary drag is still carried")
+	func briskDragIsCarried() {
+		// The reported bug: anything quicker than a crawl threw or dropped her.
+		// 600-800 pt/s is a normal, unhurried drag.
+		for velocity in [-800.0, -700.0, -600.0, 600.0, 700.0, 800.0] {
+			let decision = PlatformRidePhysics.evaluate(
+				displacementY: velocity / 60, velocityY: velocity, displayScale: 1)
+			#expect(
+				decision.response == .follow,
+				"a \(velocity) pt/s drag must be carried, not reacted to")
+		}
 	}
 
 	@Test("A fast upward jerk throws her up")
@@ -79,28 +92,33 @@ struct PlatformRidePhysicsTests {
 	@Test("A gentle downward drag no longer drops her off the ledge")
 	func gentleDownwardFollows() {
 		// The old downward gate was 2 pt and 90 pt/s — 1.5 pt per frame — so simply
-		// lowering a window made her lose contact and stop following it.
-		#expect(
-			PlatformRidePhysics.evaluate(displacementY: 4, velocityY: 240, displayScale: 1)
-				.response == .follow)
+		// lowering a window made her lose contact and stop following it. This is
+		// the reported "occasionally detaches / hangs in mid-air".
+		for velocity in [120.0, 240.0, 400.0, 600.0, 800.0] {
+			let decision = PlatformRidePhysics.evaluate(
+				displacementY: velocity / 60, velocityY: velocity, displayScale: 1)
+			#expect(
+				decision.response == .follow,
+				"lowering a window at \(velocity) pt/s must keep her on the ledge")
+		}
 	}
 
 	@Test("A larger display scale raises the thresholds proportionally")
 	func scalesWithDisplay() {
-		// At scale 2 the gate is 12 pt and 1200 pt/s.
+		// At scale 2 the gate is 24 pt and 1800 pt/s.
 		#expect(
-			PlatformRidePhysics.evaluate(displacementY: -4, velocityY: -800, displayScale: 2)
+			PlatformRidePhysics.evaluate(displacementY: -8, velocityY: -1200, displayScale: 2)
 				.response == .follow)
-		// Twice the movement and a matching speed does launch.
+		// Enough movement and speed does launch.
 		#expect(
-			PlatformRidePhysics.evaluate(displacementY: -20, velocityY: -1400, displayScale: 2)
+			PlatformRidePhysics.evaluate(displacementY: -30, velocityY: -2000, displayScale: 2)
 				.response == .launchUpward)
 	}
 
 	@Test("Launch velocity is clamped at both ends")
 	func launchVelocityClamped() {
 		let gentle = PlatformRidePhysics.evaluate(
-			displacementY: -10, velocityY: -700, displayScale: 1)
+			displacementY: -20, velocityY: -1000, displayScale: 1)
 		#expect(gentle.response == .launchUpward)
 		#expect(gentle.initialPetVelocityY >= -1150)
 		#expect(gentle.initialPetVelocityY <= -300)
@@ -235,9 +253,10 @@ struct ControllerPlatformRideTests {
 			lifeStore: PetLifeStateStore(stateDirectory: directory),
 			displaySpace: space)
 
-		// Standing on a window. The drop is what a dragged window does.
+		// Standing on a window. A hard downward yank is what a deliberate flick
+		// does; an ordinary drag is covered by the physics tests.
 		let ride = PlatformRidePhysics.evaluate(
-			displacementY: 40, velocityY: 600, displayScale: 1)
+			displacementY: 40, velocityY: 1500, displayScale: 1)
 		#expect(ride.response == .releaseDownward)
 		// She keeps her own (zero) velocity, so she falls naturally.
 		#expect(ride.initialPetVelocityY == 0)
