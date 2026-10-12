@@ -30,9 +30,15 @@ enum WindowSurfaceProvider {
 	static func liveBounds(of windowID: UInt32) -> PixelRect? {
 		// Asking about one window is far cheaper than enumerating the list, which
 		// matters because this runs every frame for the window she stands on.
+		//
+		// `CGWindowListCreateDescriptionFromArray` is the documented way to do this,
+		// but it returns an empty array on macOS 14 (verified on this machine: it is
+		// empty for every window, on screen or not, while the full enumeration has
+		// them all). Asking the list for just this window works and is still a
+		// single-window query.
 		guard
-			let list = CGWindowListCreateDescriptionFromArray(
-				[NSNumber(value: windowID)] as CFArray) as? [[String: AnyObject]],
+			let list = CGWindowListCopyWindowInfo([.optionIncludingWindow], windowID)
+				as? [[String: AnyObject]],
 			let entry = list.first,
 			let boundsDict = entry[kCGWindowBounds as String] as? [String: AnyObject],
 			let rect = CGRect(dictionaryRepresentation: boundsDict as CFDictionary)
