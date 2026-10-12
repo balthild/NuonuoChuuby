@@ -83,6 +83,13 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var movementPurpose: MovementPurpose = .none
 	private var fallStartFootY: Double = 0
 	private var fallReason = "support-lost"
+	private var pendingClimb: WindowClimbPlan?
+	private var activeClimb: WindowClimbPlan?
+	private var climbProgress: Double = 0
+	private var climbStart: PixelPoint = .zero
+	private var climbDuration: Double = 3
+	private var climbWillSucceed = true
+	private var climbSlipAt: Double = 1
 
 	/// How long a transient state (landing, curious, waking) lasts before idle.
 	private var transientDuration: Double = 0
@@ -158,11 +165,15 @@ public final class PetController: SpriteAnimatorDelegate {
 
 		life.advance(elapsedSeconds: simulation, sleeping: state == .sleeping)
 		stateElapsed += simulation
+		// Other apps move their windows underneath her, so the terrain map is
+		// re-read on an interval rather than only at startup.
+		surfaceProvider.refreshIfStale(displaySpace: displaySpace, delta: simulation)
 
 		switch state {
 		case .idle: updateIdle(simulation)
 		case .running: updateRunning(simulation)
 		case .falling: updateFalling(simulation)
+		case .climbing: updateClimbing(simulation)
 		case .landing, .curious, .waking:
 			// These play out for a fixed dwell, then return to idle.
 			if stateElapsed >= transientDuration {
@@ -216,6 +227,8 @@ public final class PetController: SpriteAnimatorDelegate {
 		case .sleep:
 			beginSleep()
 		case .wander:
+			// Standing on a window top, she may instead decide to climb higher.
+			if tryBeginClimb() { return }
 			beginGroundMove(purpose: .wander)
 		case .explore:
 			state = .running
@@ -296,6 +309,43 @@ public final class PetController: SpriteAnimatorDelegate {
 	}
 
 	private func finishGroundMove() {
+		let surface = surfaceProvider.support(footX: foot.x, footY: foot.y)
+
+		// Climb and descent approaches hand off to their own routines.
+		if movementPurpose == .climbApproach, let pendingClimb {
+			beginClimb(pendingClimb)
+			return
+		}
+		if movementPurpose == .edgeSlideApproach, let surface {
+			beginSlideDown(from: surface)
+			return
+		}
+		if movementPurpose == .edgeJumpApproach, let surface {
+			beginJumpDown(from: surface)
+			return
+		}
+
+		// On a window top, running out of surface is an edge decision rather than
+		// a plain stop; on the desktop floor she simply looks around.
+		if let surface, !surface.isDesktopFloor,
+			let action = terrainEdgeActionIfAtEdge(surface)
+		{
+			switch action {
+			case .hop:
+				beginHop()
+				return
+			case .slideDown:
+				beginSlideDown(from: surface)
+				return
+			case .jumpDown:
+				beginJumpDown(from: surface)
+				return
+			case .turnAround:
+				beginGroundMove(purpose: .wander)
+				return
+			}
+		}
+
 		state = .curious
 		movementPurpose = .none
 		stateElapsed = 0
@@ -303,6 +353,14 @@ public final class PetController: SpriteAnimatorDelegate {
 		velocity = .zero
 		remainderX = 0
 		animator.play("curious")
+	}
+
+	/// True when the pet has reached an end of its current platform.
+	private func terrainEdgeActionIfAtEdge(_ surface: SupportSurface) -> TerrainEdgeAction? {
+		let atEdge = foot.x <= surface.left + 24 || foot.x >= surface.right - 24
+		guard atEdge else { return nil }
+		return TerrainBehaviorPlanner.chooseAtEdge(
+			isDesktopFloor: false, randomUnit: Double.random(in: 0..<1))
 	}
 
 	// MARK: - Falling
@@ -392,6 +450,125 @@ public final class PetController: SpriteAnimatorDelegate {
 		if shouldReact {
 			announce(.hardLanding, voice: .landing, priority: .important)
 		}
+	}
+
+	// MARK: - Climbing
+
+	/// Returns true when the pet has committed to a climb.
+	private func tryBeginClimb() -> Bool {
+		guard !quietMode, let support = surfaceProvider.support(footX: foot.x, footY: foot.y),
+			let plan = WindowClimbPlanner.choose(
+				surfaces: surfaceProvider.surfaces,
+				currentSupport: support,
+				footX: foot.x,
+				scale: displayScale,
+				randomUnit: Double.random(in: 0..<1))
+		else { return false }
+
+		pendingClimb = plan
+		movementPurpose = .climbApproach
+		state = .running
+		stateElapsed = 0
+		targetX = plan.approachX
+		animator.play("walk")
+		// A taller wall is worth a more cautious line.
+		let cautious = plan.height > 400 * displayScale
+		announce(cautious ? .carefulClimb : .confidentClimb, voice: .positive, priority: .normal)
+		return true
+	}
+
+	private func beginClimb(_ plan: WindowClimbPlan) {
+		pendingClimb = nil
+		activeClimb = plan
+		climbStart = foot
+		climbProgress = 0
+		// The original succeeds most of the time, less often on a very tall wall,
+		// and can slip part way up.
+		let successChance = plan.height > 700 * displayScale ? 0.58 : 0.74
+		climbWillSucceed = Double.random(in: 0..<1) < successChance
+		climbSlipAt = 0.56 + Double.random(in: 0..<0.20)
+		climbDuration = WindowClimbPlanner.climbDuration(
+			height: plan.height, scale: displayScale,
+			speedMultiplier: profile.movementSpeedMultiplier)
+		state = .climbing
+		movementPurpose = .none
+		stateElapsed = 0
+		velocity = .zero
+		remainderX = 0
+		remainderY = 0
+		facing = plan.side == .left ? 1 : -1
+		animator.play("climb")
+	}
+
+	private func updateClimbing(_ delta: Double) {
+		// The window she is climbing can be moved or closed mid-climb.
+		guard let plan = activeClimb,
+			surfaceProvider.surfaces.contains(where: { $0.sourceID == plan.targetSurfaceID })
+		else {
+			activeClimb = nil
+			beginFall(reason: "ClimbSlip")
+			return
+		}
+
+		climbProgress = min(1, climbProgress + delta / max(0.1, climbDuration))
+		if !climbWillSucceed, climbProgress >= climbSlipAt {
+			activeClimb = nil
+			announce(.climbSlip, voice: .aggrieved, priority: .important)
+			beginFall(reason: "ClimbSlip")
+			return
+		}
+
+		// Up the visible side, then step inward onto the top edge.
+		let eased = climbProgress * climbProgress * (3 - 2 * climbProgress)
+		let x = climbStart.x + (plan.landingX - climbStart.x) * eased
+		let y = climbStart.y + (plan.targetTop - climbStart.y) * eased
+		foot = PixelPoint(x: x, y: y)
+
+		if climbProgress >= 1 {
+			activeClimb = nil
+			foot = PixelPoint(x: plan.landingX, y: plan.targetTop)
+			fallStartFootY = foot.y
+			fallReason = "ClimbSuccess"
+			land()
+			announce(.climbSuccess, voice: .affirmative, priority: .normal)
+		}
+	}
+
+	// MARK: - Descending
+
+	/// A controlled descent: faster than walking, slower than a fall, and she
+	/// stays against the wall.
+	private func beginSlideDown(from surface: SupportSurface) {
+		guard let target = surfaceProvider.surfaceBelow(footX: foot.x, currentTop: surface.top) else {
+			beginFall(reason: "EdgeSlide")
+			return
+		}
+		state = .falling
+		movementPurpose = .none
+		stateElapsed = 0
+		fallStartFootY = foot.y
+		fallReason = "EdgeSlide"
+		velocity = PixelPoint(x: 0, y: target.top > foot.y ? 260 : 120)
+		remainderX = 0
+		remainderY = 0
+		animator.play("slide")
+		announce(.edgeSlide, voice: .calm, priority: .ambient)
+	}
+
+	/// A hop off the edge, arcing outwards so she clears the window she was on.
+	private func beginJumpDown(from surface: SupportSurface) {
+		let outward = foot.x <= surface.centerX ? -1.0 : 1.0
+		state = .falling
+		movementPurpose = .none
+		stateElapsed = 0
+		fallStartFootY = foot.y
+		fallReason = "EdgeJump"
+		velocity = PixelPoint(x: outward * 90 * displayScale, y: -120 * displayScale)
+		remainderX = 0
+		remainderY = 0
+		facing = outward
+		animator.play("jump")
+		announce(.terrainJumpDown, voice: .scream, priority: .ambient)
 	}
 
 	// MARK: - Sleep

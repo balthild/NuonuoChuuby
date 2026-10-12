@@ -12,6 +12,7 @@ public struct SupportSurface: Sendable, Equatable {
 	public var sourceID: UInt32?
 
 	public var width: Double { right - left }
+	public var centerX: Double { (left + right) / 2 }
 
 	/// A window whose bottom is above its top edge's usable area still counts as
 	/// a platform, so `effectiveBottom` is used when deciding reachability.
