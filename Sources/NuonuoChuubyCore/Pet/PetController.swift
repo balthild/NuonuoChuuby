@@ -400,7 +400,6 @@ public final class PetController: SpriteAnimatorDelegate {
 		}
 		guard accepted > 0 else { return 0 }
 
-		// A burst reads as a buffet rather than a single snack.
 		if burstTracker.register(detectedAt: Date()) {
 			announce(.buffet, voice: .positive, priority: .important)
 		} else {
@@ -894,8 +893,6 @@ public final class PetController: SpriteAnimatorDelegate {
 			return
 		}
 
-		// On a window top, running out of surface is an edge decision rather than
-		// a plain stop; on the desktop floor she simply looks around.
 		if let surface, surface.key.kind != .floor,
 			let action = terrainEdgeActionIfAtEdge(surface)
 		{

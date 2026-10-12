@@ -106,6 +106,8 @@ public final class AssetStore {
 		missingFiles(in: installDirectory).isEmpty
 	}
 
+	/// Downloads whatever is missing into ``installDirectory``, reporting progress as
+	/// it goes. Throws if a file cannot be fetched or written.
 	public func install(progress: @escaping @Sendable (Progress) -> Void) async throws {
 		let directory = installDirectory
 		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

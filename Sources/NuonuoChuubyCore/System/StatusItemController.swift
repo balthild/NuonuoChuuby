@@ -2,22 +2,18 @@ import AppKit
 
 /// A menu that can carry a slider inline (used for the size control).
 ///
-/// A custom menu-item view replaces the standard rendering, so it has to be built
-/// to match one: the menu's font, the same leading inset as the item titles, and
-/// the standard row height.
+/// A custom menu-item view replaces the standard rendering, so it is built to
+/// match one: the menu's font and colour, the same leading inset as the item
+/// titles, and the standard row height. `rowWidth` is also the knob for the menu's
+/// own width, since a custom view is what sizes the menu.
 final class SliderMenuItemView: NSView {
-	/// The row's width. Also the knob for the slider's width and the menu's, since a
-	/// custom menu-item view is what sizes the menu.
 	static let rowWidth: Double = 280
-	/// The standard menu item height, so this row is not taller than its neighbours.
 	static let rowHeight: Double = 22
-	/// Leading inset of the title, matching where the menu draws its item titles.
 	static let titleInsetLeft: Double = 24
 	static let titleInsetRight: Double = 12
 	static let gap: Double = 12
-	/// Menu item titles are drawn by the menu in its vibrant context, which a plain
-	/// custom view does not share, so `.labelColor` came out lighter than the titles
-	/// around it. `.controlTextColor` is what matches.
+	/// The menu draws its titles in a vibrant context a plain custom view does not
+	/// share, so `.labelColor` came out lighter than the titles around it.
 	static let titleColor: NSColor = .controlTextColor
 
 	let slider: NSSlider

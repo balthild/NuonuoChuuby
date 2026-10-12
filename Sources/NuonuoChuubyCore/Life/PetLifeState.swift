@@ -113,6 +113,8 @@ public struct PetLifeStateStore: Sendable {
 		return fresh
 	}
 
+	/// Writes the state to disk atomically, clamping the needs first. Throws if the
+	/// directory or file cannot be written.
 	public func save(_ state: PetLifeState) throws {
 		var snapshot = state
 		snapshot.clampNeeds()
