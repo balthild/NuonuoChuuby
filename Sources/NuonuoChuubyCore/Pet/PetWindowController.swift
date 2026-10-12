@@ -93,9 +93,20 @@ public final class PetWindowController: NSObject, PetControllerDelegate {
 			primaryHeight: displaySpace.primaryHeight
 		)
 		panel.setFrame(frame, display: true)
+		applyLevel(topLeft: topLeft, size: size)
 		view.bodyEllipse = controller.bodyEllipseInView
 		view.facing = controller.facing
 		onPlacementChanged?(controller.petFrame)
+	}
+
+	/// Her foot stops at the ceiling but the sprite is drawn above it, so her head
+	/// reaches into the menu bar whenever she stands or is thrown high. The menu
+	/// bar is composited above every ordinary window level, so a panel left at
+	/// `.floating` loses that part of the sprite.
+	private func applyLevel(topLeft: PixelPoint, size: Double) {
+		let center = PixelPoint(x: topLeft.x + size / 2, y: topLeft.y + size / 2)
+		guard let workArea = displaySpace.display(containing: center)?.visibleFrame else { return }
+		panel.level = PetPanelLevel.level(panelTop: topLeft.y, workArea: workArea)
 	}
 
 	// MARK: - PetControllerDelegate

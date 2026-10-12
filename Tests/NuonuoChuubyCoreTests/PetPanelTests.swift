@@ -17,4 +17,15 @@ struct PetPanelTests {
 		let constrained = panel.constrainFrameRect(proposed, to: NSScreen.main)
 		#expect(constrained == proposed)
 	}
+
+	/// The menu bar is composited above every ordinary window level, so the panel
+	/// has to rise above it while it reaches into it — and only then, or she
+	/// would cover the Dock too.
+	@Test("The panel rises above the menu bar only while it overlaps it")
+	func levelAboveMenuBar() {
+		let workArea = PixelRect(x: 0, y: 24, width: 1440, height: 876)
+		#expect(PetPanelLevel.level(panelTop: 10, workArea: workArea) == PetPanelLevel.aboveMenuBar)
+		#expect(PetPanelLevel.level(panelTop: 24, workArea: workArea) == .floating)
+		#expect(PetPanelLevel.level(panelTop: 400, workArea: workArea) == .floating)
+	}
 }
