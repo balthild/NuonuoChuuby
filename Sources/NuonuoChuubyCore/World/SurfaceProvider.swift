@@ -3,9 +3,10 @@ import AppKit
 /// Builds the list of surfaces the pet can land on: each display's floor, plus
 /// the top edge of every ordinary window.
 ///
-/// A desktop floor is the bottom of a display's visible area, which already
-/// excludes the Dock and menu bar. Window tops are re-read periodically, because
-/// other apps move their windows underneath the pet.
+/// The window tops come from ``SurfaceBuilder``'s graph, which subtracts
+/// anything a window in front hides — so the pet never stands on an edge that is
+/// covered by another window. The public shape stays `[SupportSurface]`; the
+/// graph is the single source behind it.
 @MainActor
 public final class SurfaceProvider {
 	public private(set) var surfaces: [SupportSurface] = []
@@ -34,25 +35,64 @@ public final class SurfaceProvider {
 	}
 
 	public func refresh(displaySpace: DisplaySpace) {
-		let floors = displaySpace.displays.map { display in
-			SupportSurface(
-				top: display.visibleFrame.bottom,
-				left: display.frame.left,
-				right: display.frame.right,
-				bottom: display.frame.bottom,
-				isDesktopFloor: true,
-				sourceID: nil
-			)
-		}
-		windowSurfaces = WindowSurfaceProvider.surfaces(
-			from: WindowSurfaceProvider.eligibleWindows(
-				from: platform.windows(),
-				ownPID: ProcessInfo.processInfo.processIdentifier,
-				displaySpace: displaySpace),
-			displaySpace: displaySpace)
+		let windows = platform.windows()
+		let monitors = displaySpace.displays
+		let ownPID = ProcessInfo.processInfo.processIdentifier
+
+		let graph = SurfaceBuilder.build(
+			windows: windows, monitors: monitors,
+			isEligible: { window, monitor in
+				WindowTerrainEligibilityPolicy.isEligiblePlatform(
+					window, ownPID: ownPID, workArea: monitor.visibleFrame)
+			})
+		windowSurfaces = supportSurfaces(from: graph, monitors: monitors, windows: windows)
 		// Highest first, floors last: the pet lands on the first surface it
 		// crosses, so ordering keeps the nearest platform on top.
-		surfaces = (windowSurfaces + floors).sorted { $0.top < $1.top }
+		surfaces = windowSurfaces.sorted { $0.top < $1.top }
+	}
+
+	/// Flattens the graph's standable edges (window tops and floors) back into the
+	/// flat surface list the controller still consumes, one entry per visible run
+	/// per monitor.
+	private func supportSurfaces(
+		from graph: [Surface], monitors: [Monitor], windows: [PlatformWindow]
+	) -> [SupportSurface] {
+		let bodies = Dictionary(windows.map { ($0.id, $0.bounds) }, uniquingKeysWith: { first, _ in first })
+		var result: [SupportSurface] = []
+
+		for surface in graph where surface.isReachable {
+			switch surface.key.kind {
+			case .floor:
+				guard let monitor = monitors.first(where: { $0.id == surface.key.owner }) else { continue }
+				result.append(
+					SupportSurface(
+						top: surface.offset, left: surface.span.start, right: surface.span.end,
+						bottom: monitor.frame.bottom, isDesktopFloor: true, sourceID: nil))
+
+			case .windowTop:
+				let bottom = bodies[surface.key.owner]?.bottom ?? surface.offset
+				for run in surface.visible {
+					for monitor in monitors {
+						// The edge itself has to be somewhere she can reach on this monitor.
+						guard surface.offset >= monitor.visibleFrame.top,
+							surface.offset < monitor.visibleFrame.bottom
+						else { continue }
+						let left = max(run.start, monitor.frame.left)
+						let right = min(run.end, monitor.frame.right)
+						guard right - left >= WindowTerrainEligibilityPolicy.minimumWidth else { continue }
+						result.append(
+							SupportSurface(
+								top: surface.offset, left: left, right: right, bottom: bottom,
+								isDesktopFloor: false, sourceID: surface.key.owner))
+					}
+				}
+
+			default:
+				// Vertical and bottom edges are built but not enabled this round (D3).
+				continue
+			}
+		}
+		return result
 	}
 
 	/// Called from the simulation tick; re-enumerates windows only occasionally.

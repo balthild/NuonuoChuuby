@@ -70,24 +70,33 @@ struct WindowTerrainEligibilityTests {
 }
 
 @Suite("Window terrain surfaces")
-@MainActor
 struct WindowSurfaceTests {
-	@Test("A window top becomes a standable surface")
+	private let monitor = Monitor(
+		id: 1,
+		frame: PixelRect(x: 0, y: 0, width: 1440, height: 900),
+		visibleFrame: PixelRect(x: 0, y: 25, width: 1440, height: 875),
+		scale: 1)
+
+	@Test("A window top becomes a standable surface with its whole edge visible")
 	func windowBecomesSurface() {
-		let displaySpace = DisplaySpace()
-		guard let display = displaySpace.displays.first else { return }
-		let area = display.visibleFrame
-		let terrain = PlatformWindow(
+		let window = PlatformWindow(
 			id: 7, ownerPID: 500, ownerName: "Safari",
-			bounds: PixelRect(x: area.left + 100, y: area.top + 200, width: 800, height: 500),
+			bounds: PixelRect(x: 100, y: 225, width: 800, height: 500),
 			layer: 0, alpha: 1)
 
-		let surfaces = WindowSurfaceProvider.surfaces(from: [terrain], displaySpace: displaySpace)
-		let surface = surfaces.first { $0.sourceID == 7 }
+		let graph = SurfaceBuilder.build(
+			windows: [window], monitors: [monitor],
+			isEligible: { window, monitor in
+				WindowTerrainEligibilityPolicy.isEligiblePlatform(
+					window, ownPID: 999, workArea: monitor.visibleFrame)
+			})
+
+		let surface = graph.first { $0.key == SurfaceKey(owner: 7, kind: .windowTop) }
 		#expect(surface != nil)
-		#expect(surface?.isDesktopFloor == false)
-		#expect(surface?.top == area.top + 200)
-		#expect(surface?.bottom == area.top + 700)
+		#expect(surface?.offset == 225)
+		#expect(surface?.span == Span(start: 100, end: 900))
+		#expect(surface?.visible == [Span(start: 100, end: 900)])
+		#expect(surface?.isReachable == true)
 	}
 }
 

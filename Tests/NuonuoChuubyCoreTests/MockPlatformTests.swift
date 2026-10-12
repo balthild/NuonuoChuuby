@@ -56,4 +56,24 @@ struct MockPlatformTests {
 
 		#expect(provider.surfaces.filter { !$0.isDesktopFloor }.isEmpty)
 	}
+
+	@Test("The hidden part of an edge is not standable")
+	func occludedEdgeNotStandable() {
+		let platform = MockPlatform.singleMonitor(width: 1440, height: 900)
+		let space = DisplaySpace(monitors: platform.monitors(), primaryHeight: 900)
+		platform.setWindows([
+			// Front, covering the left of the window behind.
+			window(id: 2, x: 0, y: 300, width: 700, height: 500),
+			// Behind: its top edge runs 100…1100, but only 700…1100 is visible.
+			window(id: 1, x: 100, y: 400, width: 1000, height: 400),
+		])
+
+		let provider = SurfaceProvider(platform: platform)
+		provider.refresh(displaySpace: space)
+
+		let behind = provider.surfaces.first { $0.sourceID == 1 }
+		#expect(behind != nil)
+		#expect(behind?.left == 700)
+		#expect(behind?.right == 1100)
+	}
 }

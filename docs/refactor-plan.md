@@ -398,6 +398,18 @@ public enum SurfaceChange: Sendable, Equatable {
    完全相同的 bounds。
 5. 删 `TerrainWindow.title` 与 `kCGWindowName` 读取（§3.5）。
 
+> **实施修正（2026-10-12，以代码为准）**
+> - `Surface.visible` 实现为 **`[Span]`（列表）而非 `Span?`**：§4.2 说「把遮挡者的
+>   区间减掉，**剩下的**」，而一条边被中间的遮挡者切开后会剩下**两段**，单值表达不了。
+>   空列表 = 完全被盖住。`isFullyOccluded` / `isVisible(t:)` 为便利封装。
+> - `SurfaceBuilder.build` 的签名是 `build(windows:monitors:isEligible:)`：**遮挡者取全部
+>   窗口**（前方的窗口即使本身不是地形也会遮挡），**产出 surface 的才过 `isEligible`**。
+> - `SupportSurface` 的 `bottom`（唯一消费方是 `WindowClimbPlanner.effectiveBottom`）
+>   不在 `Surface` 里，派生时按 `key.owner` 回查窗口矩形取得 —— 该字段在 Phase C 随
+>   `SupportSurface` 一并消失。
+> - 第 5 条（删 `TerrainWindow.title`）**提前到 Phase A 完成**：`TerrainWindow` 被
+>   `PlatformWindow` 取代，若把它带过 Phase A 就得为它写一阶段的死代码。
+
 **验证**
 - `swift test`；移植的边界用例通过。
 - 现有 `TerrainTests`（16 个）**要么原样通过，要么只在 fixture 确实存在被遮挡窗口时调整**

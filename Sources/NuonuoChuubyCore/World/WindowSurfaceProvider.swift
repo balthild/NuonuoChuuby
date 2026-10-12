@@ -1,39 +1,14 @@
 import CoreGraphics
 import Foundation
 
-/// Turns platform windows into the top edges the pet may stand on.
+/// Re-reads a single window's bounds, for the surface the pet is standing on.
+///
+/// The graph is only rebuilt every half second, which would make a dragged
+/// window feel jerky. Asking the window server about the one window the pet is
+/// standing on is cheap enough to do every frame, and is what the original called
+/// its "live tracked surface". Everything else lives in ``SurfaceBuilder``.
 enum WindowSurfaceProvider {
-	/// Keeps only the windows that may be terrain.
-	///
-	/// Each display judges the windows overlapping it, so a window is kept if it
-	/// is reachable on any display.
-	static func eligibleWindows(
-		from windows: [PlatformWindow], ownPID: Int32, displaySpace: DisplaySpace
-	) -> [PlatformWindow] {
-		windows.filter { window in
-			displaySpace.displays.contains { display in
-				WindowTerrainEligibilityPolicy.isEligiblePlatform(
-					window, ownPID: ownPID, workArea: display.visibleFrame)
-			}
-		}
-	}
-
-	/// Turns windows into standable top edges, split per display so a window
-	/// spanning two screens provides a platform on each.
-	static func surfaces(from windows: [PlatformWindow], displaySpace: DisplaySpace) -> [SupportSurface] {
-		var result: [SupportSurface] = []
-		for window in windows {
-			result.append(contentsOf: segments(for: window, displaySpace: displaySpace))
-		}
-		return result
-	}
-
-	/// Re-reads just one window's bounds.
-	///
-	/// The surface map is only rebuilt every half second, which would make a
-	/// dragged window feel jerky. Asking the window server about the single
-	/// window the pet is standing on is cheap enough to do every frame, and is
-	/// what the original called its "live tracked surface".
+	/// The surface under a foot on a specific window, resolved by identity.
 	///
 	/// Unlike discovery, this does **not** re-apply the reachability rules: the
 	/// window is already her support, so if the user drags it up under the menu
@@ -49,8 +24,7 @@ enum WindowSurfaceProvider {
 		let candidates = segments(
 			for: PlatformWindow(
 				id: windowID, ownerPID: 0, ownerName: "", bounds: bounds, layer: 0, alpha: 1),
-			displaySpace: displaySpace,
-			requireReachable: false)
+			displaySpace: displaySpace)
 			.filter { $0.sourceID == windowID }
 		guard !candidates.isEmpty else { return nil }
 
@@ -75,10 +49,12 @@ enum WindowSurfaceProvider {
 	}
 
 	/// A window's standable segments, one per display it overlaps.
+	///
+	/// Reachability is deliberately not checked: the pet is already standing on
+	/// the window, so it stays valid wherever it has been moved to.
 	private static func segments(
 		for window: PlatformWindow,
-		displaySpace: DisplaySpace,
-		requireReachable: Bool = true
+		displaySpace: DisplaySpace
 	) -> [SupportSurface] {
 		let minimumSegmentWidth = WindowTerrainEligibilityPolicy.minimumWidth
 		var result: [SupportSurface] = []
@@ -87,14 +63,6 @@ enum WindowSurfaceProvider {
 			let left = max(window.bounds.left, display.frame.left)
 			let right = min(window.bounds.right, display.frame.right)
 			guard right - left >= minimumSegmentWidth else { continue }
-
-			// Standing under the menu bar or on the Dock is not reachable, but a
-			// window she is already standing on stays valid wherever it is moved.
-			if requireReachable {
-				guard window.bounds.top >= display.visibleFrame.top,
-					window.bounds.top < display.visibleFrame.bottom
-				else { continue }
-			}
 
 			result.append(
 				SupportSurface(
