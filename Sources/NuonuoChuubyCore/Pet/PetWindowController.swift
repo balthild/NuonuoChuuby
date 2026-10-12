@@ -11,6 +11,8 @@ public final class PetWindowController: NSObject, PetControllerDelegate {
 
 	/// Supplied by the menu bar layer; called on a right-click.
 	public var menuProvider: ((NSEvent) -> NSMenu?)?
+	/// Called after every move, so attached panels (the head bubble) can follow.
+	public var onPlacementChanged: ((PixelRect) -> Void)?
 
 	public init(controller: PetController, displaySpace: DisplaySpace) {
 		self.controller = controller
@@ -76,6 +78,7 @@ public final class PetWindowController: NSObject, PetControllerDelegate {
 		panel.setFrame(frame, display: true)
 		view.bodyEllipse = controller.bodyEllipseInView
 		view.facing = controller.facing
+		onPlacementChanged?(controller.petFrame)
 	}
 
 	// MARK: - PetControllerDelegate

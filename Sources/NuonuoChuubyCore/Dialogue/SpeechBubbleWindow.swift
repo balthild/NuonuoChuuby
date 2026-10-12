@@ -102,21 +102,25 @@ public final class SpeechBubbleWindowController {
 
 	public var isVisible: Bool { panel.isVisible }
 
-	/// Places the bubble above `head` (global top-left coordinates) and hides it
-	/// after `duration`.
-	public func show(_ text: String, above head: PixelPoint, displaySpace: DisplaySpace, duration: Double = 3.2) {
+	/// The bubble's current size, needed to re-place it as the pet moves.
+	public var bubbleSize: (width: Double, height: Double) {
+		(width: Double(currentSize.width), height: Double(currentSize.height))
+	}
+
+	private var currentSize: NSSize = .zero
+
+	/// Shows the bubble with its top-left at `topLeft` (global top-left
+	/// coordinates) and hides it after `duration`.
+	public func show(_ text: String, topLeft: PixelPoint, displaySpace: DisplaySpace, duration: Double = 3.2) {
 		guard !text.isEmpty else { return }
 		view.text = text
 		let size = view.preferredSize
+		currentSize = size
 		panel.setContentSize(size)
-
-		let frame = DisplaySpace.toAppKit(
-			PixelRect(x: head.x - Double(size.width) / 2, y: head.y - Double(size.height) - 6,
-				width: Double(size.width), height: Double(size.height)),
-			primaryHeight: displaySpace.primaryHeight)
-		panel.setFrame(frame, display: true)
 		view.frame = NSRect(origin: .zero, size: size)
 		view.needsDisplay = true
+
+		applyFrame(topLeft: topLeft, displaySpace: displaySpace)
 		panel.alphaValue = 1
 		panel.orderFrontRegardless()
 
@@ -124,6 +128,21 @@ public final class SpeechBubbleWindowController {
 		let work = DispatchWorkItem { [weak self] in self?.hide() }
 		hideWorkItem = work
 		DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: work)
+	}
+
+	/// Keeps a visible bubble attached to the pet as it moves.
+	public func reposition(to topLeft: PixelPoint, displaySpace: DisplaySpace) {
+		guard panel.isVisible else { return }
+		applyFrame(topLeft: topLeft, displaySpace: displaySpace)
+	}
+
+	private func applyFrame(topLeft: PixelPoint, displaySpace: DisplaySpace) {
+		let frame = DisplaySpace.toAppKit(
+			PixelRect(
+				x: topLeft.x, y: topLeft.y,
+				width: Double(currentSize.width), height: Double(currentSize.height)),
+			primaryHeight: displaySpace.primaryHeight)
+		panel.setFrame(frame, display: true)
 	}
 
 	public func hide() {

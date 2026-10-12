@@ -1,15 +1,19 @@
 import AppKit
 
-/// Application bootstrap: resolve assets, build the pet, and keep it alive.
+/// Application bootstrap: resolve assets and settings, build the pet, and wire
+/// the menu bar.
 @MainActor
 public final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var environment: AppEnvironment?
+	private var settingsStore: SettingsStore?
+	private var settings = PetSettings()
 	private var displaySpace: DisplaySpace?
 	private var surfaceProvider: SurfaceProvider?
 	private var controller: PetController?
 	private var petWindow: PetWindowController?
 	private var speech: PetSpeechCoordinator?
 	private var voice: VoicePlaybackService?
+	private var statusItem: StatusItemController?
 
 	public func applicationDidFinishLaunching(_ notification: Notification) {
 		// Required when running the executable directly (no bundle to read
@@ -19,7 +23,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 		let environment = AppEnvironment()
 		self.environment = environment
 		DiagnosticsLog.shared.configure(fileURL: environment.logPath)
-		DiagnosticsLog.shared.writeEvent("ProcessStarted", [("Version", AppEnvironment.bundleIdentifier)])
+		DiagnosticsLog.shared.writeEvent("ProcessStarted", [("Bundle", AppEnvironment.bundleIdentifier)])
+
+		let settingsStore = SettingsStore(path: environment.settingsPath)
+		self.settingsStore = settingsStore
+		settings = settingsStore.load()
 
 		guard let locator = resolveAssets(environment: environment) else {
 			presentMissingAssetsAlert()
@@ -34,14 +42,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 		surfaceProvider.refresh(displaySpace: displaySpace)
 		self.surfaceProvider = surfaceProvider
 
+		let character = settings.character
 		let catalog = AssetCatalog(locator: locator)
 		let controller = PetController(
 			catalog: catalog,
 			surfaceProvider: surfaceProvider,
 			lifeStore: PetLifeStateStore(stateDirectory: environment.lifeStateDirectory),
 			displaySpace: displaySpace,
-			profile: .nuonuo,
-			petSize: PetSizePolicy.defaultSize
+			profile: character,
+			petSize: settings.petSize
 		)
 		self.controller = controller
 
@@ -49,17 +58,30 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 		// frame can already speak.
 		let loudness = VoiceLoudness.load(from: locator.file("audio/voice-levels.json"))
 		let voice = VoicePlaybackService(
-			locator: locator, character: .nuonuo, loudness: loudness)
+			locator: locator, character: character, loudness: loudness,
+			enabled: settings.soundEnabled, volume: settings.voiceVolume)
 		let speech = PetSpeechCoordinator(
-			voice: voice, bubble: SpeechBubbleWindowController(), displaySpace: displaySpace)
+			voice: voice, bubble: SpeechBubbleWindowController(), displaySpace: displaySpace,
+			character: character)
 		self.voice = voice
 		self.speech = speech
 		controller.speech = speech
 
 		let petWindow = PetWindowController(controller: controller, displaySpace: displaySpace)
-		petWindow.menuProvider = { [weak self] event in self?.makeContextMenu() }
+		petWindow.menuProvider = { [weak self] _ in
+			// The status item owns the menu; borrow it for a right-click on the pet.
+			self?.statusItem?.popUpMenu(atScreenPoint: NSEvent.mouseLocation)
+			return nil
+		}
+		// Keep the bubble glued to the pet as it walks, falls and is dragged.
+		petWindow.onPlacementChanged = { [weak speech] frame in
+			speech?.updatePetFrame(frame)
+		}
 		self.petWindow = petWindow
 
+		statusItem = makeStatusItem(character: character)
+
+		applySettings()
 		petWindow.show()
 		controller.start()
 		controller.announceStartup()
@@ -85,30 +107,74 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 		petWindow?.updateDisplaySpace(space)
 	}
 
+	// MARK: - Settings
+
+	private var appPath: String { Bundle.main.bundlePath }
+
+	private func makeStatusItem(character: PetCharacterProfile) -> StatusItemController {
+		StatusItemController(
+			characterName: character.displayName,
+			callbacks: .init(
+				bringHome: { [weak self] in self?.controller?.bringHome() },
+				setSize: { [weak self] size in
+					self?.update { $0.petSize = size }
+				},
+				setFasting: { [weak self] on in
+					self?.update { $0.fastingMode = on }
+				},
+				setQuiet: { [weak self] on in
+					self?.update { $0.quietMode = on }
+				},
+				setBubbles: { [weak self] on in
+					self?.update { $0.showSpeechBubbles = on }
+				},
+				setMuted: { [weak self] soundEnabled in
+					// The item reports the current sound setting, so toggling inverts it.
+					self?.update { $0.soundEnabled = !soundEnabled }
+				},
+				setLaunchAtLogin: { [weak self] enabled in
+					guard let self else { return }
+					do {
+						try StartupRegistrationService.setEnabled(enabled, appPath: self.appPath)
+						DiagnosticsLog.shared.writeEvent("StartupRegistrationChanged", [("Enabled", "\(enabled)")])
+					} catch {
+						DiagnosticsLog.shared.write("login item change failed", error: error)
+					}
+					self.statusItem?.settings = self.settings
+				},
+				isLaunchAtLogin: { [weak self] in
+					guard let self else { return false }
+					return StartupRegistrationService.isEnabled(appPath: self.appPath)
+				},
+				quit: { NSApp.terminate(nil) }
+			))
+	}
+
+	/// Applies a settings mutation, persists it, and pushes it into the running
+	/// pet. Every menu action funnels through here so nothing drifts.
+	private func update(_ mutate: (inout PetSettings) -> Void) {
+		mutate(&settings)
+		settings.normalize()
+		settingsStore?.save(settings)
+		applySettings()
+		statusItem?.settings = settings
+	}
+
+	private func applySettings() {
+		controller?.fastingMode = settings.fastingMode
+		controller?.quietMode = settings.quietMode
+		controller?.setSize(settings.petSize)
+		speech?.showBubbles = settings.showSpeechBubbles
+		speech?.isVoiceEnabled = settings.soundEnabled
+		speech?.voiceVolume = settings.voiceVolume
+	}
+
+	// MARK: - Assets
+
 	private func resolveAssets(environment: AppEnvironment) -> AssetLocator? {
 		// A development build seeds assets into the bundle; a release build has
 		// them downloaded into Application Support.
 		AssetLocator.bundled() ?? AssetLocator.installed(environment: environment)
-	}
-
-	private func makeContextMenu() -> NSMenu {
-		let menu = NSMenu()
-		menu.addItem(
-			withTitle: "让她回家", action: #selector(bringHome), keyEquivalent: ""
-		).target = self
-		menu.addItem(.separator())
-		menu.addItem(
-			withTitle: "退出桌宠", action: #selector(quit), keyEquivalent: ""
-		).target = self
-		return menu
-	}
-
-	@objc private func bringHome() {
-		controller?.bringHome()
-	}
-
-	@objc private func quit() {
-		NSApp.terminate(nil)
 	}
 
 	private func presentMissingAssetsAlert() {

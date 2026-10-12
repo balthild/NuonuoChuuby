@@ -32,6 +32,8 @@ public struct PixelRect: Sendable, Equatable {
 		self.height = height
 	}
 
+	public static let zero = PixelRect(x: 0, y: 0, width: 0, height: 0)
+
 	public var left: Double { x }
 	public var top: Double { y }
 	public var right: Double { x + width }

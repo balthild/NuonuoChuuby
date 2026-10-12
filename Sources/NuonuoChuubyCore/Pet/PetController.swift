@@ -40,12 +40,30 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// Optional speech; when absent the pet stays silent.
 	public weak var speech: PetSpeechCoordinator?
 
-	public private(set) var state: PetState = .idle
+	public private(set) var state: PetState = .idle {
+		didSet {
+			guard state != oldValue else { return }
+			DiagnosticsLog.shared.writeEvent("StateTransition", [
+				("From", oldValue.rawValue),
+				("To", state.rawValue),
+				("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
+			])
+		}
+	}
 	public private(set) var life: PetLifeState
 	public private(set) var petSize: Double
 	public private(set) var foot: PixelPoint
 	/// -1 faces left, +1 faces right.
 	public private(set) var facing: Double = 1
+
+	/// Mode flags, kept in step with ``PetSettings``.
+	public var fastingMode = false
+	public var quietMode = false {
+		didSet {
+			// Turning quiet mode on mid-walk should stop the pet where it is.
+			if quietMode, state == .running { returnToIdle() }
+		}
+	}
 
 	private let catalog: AssetCatalog
 	private let animator: SpriteAnimator
@@ -136,6 +154,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		let simulation = timing.simulationSeconds
 		guard simulation > 0 else { return }
 
+		let startingFoot = foot
 		life.advance(elapsedSeconds: simulation, sleeping: state == .sleeping)
 		stateElapsed += simulation
 
@@ -154,6 +173,12 @@ public final class PetController: SpriteAnimatorDelegate {
 		}
 
 		animator.tick(timing.animationSeconds)
+
+		// The simulation owns the foot position; the panel only follows. Notifying
+		// solely on change avoids moving the window 60 times a second while idle.
+		if foot != startingFoot {
+			delegate?.petControllerDidChangePlacement(self)
+		}
 	}
 
 	// MARK: - Idle & autonomy
@@ -171,7 +196,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		}
 
 		let available = Self.implementedActions.filter {
-			PetModePolicy.allowsAutonomousAction($0, fastingMode: false, quietMode: false)
+			PetModePolicy.allowsAutonomousAction($0, fastingMode: fastingMode, quietMode: quietMode)
 		}
 		let action = AutonomousBehaviorPlanner.choose(
 			life: life,
@@ -453,7 +478,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	}
 
 	private func announce(_ cue: DialogueCue, voice: VoiceCue, priority: VoicePriority = .normal) {
-		speech?.react(cue, voice: voice, priority: priority, head: headPoint)
+		speech?.react(cue, voice: voice, priority: priority)
 	}
 
 	public func setSize(_ size: Double) {
@@ -490,10 +515,10 @@ public final class PetController: SpriteAnimatorDelegate {
 		PixelPoint(x: foot.x - footInset.x, y: foot.y - footInset.y)
 	}
 
-	/// Where the head bubble should sit: just above the sprite's crown.
-	public var headPoint: PixelPoint {
-		let top = windowTopLeft.y
-		return PixelPoint(x: foot.x, y: top + petSize * 0.18)
+	/// The pet panel's full frame, in global top-left coordinates.
+	public var petFrame: PixelRect {
+		let topLeft = windowTopLeft
+		return PixelRect(x: topLeft.x, y: topLeft.y, width: petSize, height: petSize)
 	}
 
 	/// The interactive body ellipse, in the view's own (flipped, Y-down) space.
