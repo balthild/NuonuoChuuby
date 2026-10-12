@@ -142,6 +142,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	private let displayScale: Double = 1
 	private var timer: Timer?
 	private var lastTick: CFAbsoluteTime = 0
+	private var heartbeatRemaining: Double = 10
 	private var lastNotifiedFoot: PixelPoint?
 	private var lastNotifiedSize: Double?
 
@@ -240,6 +241,34 @@ public final class PetController: SpriteAnimatorDelegate {
 		// A pinch runs on its own spring, independent of the walk cycle.
 		updatePinchFrame(simulation)
 		notifyPlacementIfChanged()
+		logHeartbeat(simulation)
+	}
+
+	/// A periodic snapshot of state, position and support.
+	///
+	/// "She is stuck in mid-air" is otherwise only diagnosable from a report: the
+	/// state log only fires on transitions, so a pet that has settled somewhere
+	/// wrong logs nothing at all. This makes that case self-evident.
+	private func logHeartbeat(_ delta: Double) {
+		heartbeatRemaining -= delta
+		guard heartbeatRemaining <= 0 else { return }
+		heartbeatRemaining = 10
+
+		let support: String
+		switch standSurface {
+		case nil: support = "none"
+		case .some(let surface): support = surface.isDesktopFloor ? "floor" : "window"
+		}
+		let tracked = standSurface?.sourceID.map(String.init) ?? "none"
+		let position = "\(Int(foot.x)),\(Int(foot.y))"
+
+		DiagnosticsLog.shared.writeEvent("StatusHeartbeat", [
+			("State", state.rawValue),
+			("Foot", position),
+			("Support", support),
+			("Tracked", tracked),
+			("VelocityY", String(format: "%.0f", velocity.y)),
+		])
 	}
 
 	/// The panel follows the simulation, so every place that moves the foot or
@@ -1007,7 +1036,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		{
 			foot.x = nextFootX
 			foot.y = landing.top
-			land()
+			land(on: landing)
 			return
 		}
 
@@ -1031,7 +1060,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		remainderY = 0
 	}
 
-	private func land() {
+	private func land(on surface: SupportSurface?) {
 		let fallDistance = max(0, foot.y - fallStartFootY)
 		let impactSpeed = max(0, velocity.y)
 		let shouldReact = LandingVoicePolicy.shouldReact(
@@ -1039,6 +1068,19 @@ public final class PetController: SpriteAnimatorDelegate {
 			downwardImpactSpeed: impactSpeed,
 			reason: fallReason,
 			displayScale: displayScale)
+
+		// Adopt what she landed on straight away. Until now she was airborne with
+		// nothing tracked, so for the first frame back on a *moving* window the
+		// ride would fall back to a proximity lookup, miss the window as it moved,
+		// and read its own landing as losing support — dropping her again.
+		standSurface = surface
+		if let surface, surface.sourceID != nil {
+			beginTrackingSupport(surface)
+		} else {
+			// A floor is not a window: anything previously tracked is now wrong.
+			stopTrackingSupport()
+		}
+
 		state = .landing
 		stateElapsed = 0
 		transientDuration = animator.durationSeconds
@@ -1160,9 +1202,10 @@ public final class PetController: SpriteAnimatorDelegate {
 		if climbProgress >= 1 {
 			activeClimb = nil
 			foot = PixelPoint(x: plan.landingX, y: plan.targetTop)
+			transientDuration = animator.durationSeconds
 			fallStartFootY = foot.y
 			fallReason = "ClimbSuccess"
-			land()
+			land(on: surfaceProvider.surfaces.first { $0.sourceID == plan.targetSurfaceID })
 			announce(.climbSuccess, voice: .affirmative, priority: .normal)
 		}
 	}
@@ -1337,6 +1380,13 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// Triggers a hop, which is normally chosen by the autonomy planner.
 	func debugBeginHop() {
 		beginHop()
+	}
+
+	/// Lands on a surface, as a completed fall would.
+	func debugLand(on surface: SupportSurface) {
+		standSurface = nil
+		foot = PixelPoint(x: surface.centerX, y: surface.top)
+		land(on: surface)
 	}
 
 	// MARK: - Dragging

@@ -214,4 +214,32 @@ struct PlatformRideIntegrationTests {
 		rig.controller.debugMaintainGroundSupport(delta: Self.frame)
 		#expect(rig.controller.debugState.trackedWindowID == 9999)
 	}
+
+	@Test("Landing on a window adopts it straight away")
+	func landingAdoptsWindow() throws {
+		let rig = try makeRig(windowTop: 800)
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		// Landed on a window that is *not* in the periodic map yet, as happens the
+		// moment she touches down on one being dragged. Before this was fixed she
+		// had nothing tracked for that frame, fell back to a proximity lookup,
+		// missed the moving window, and read her own landing as losing support.
+		let fresh = makeWindow(top: 500, id: 7777)
+		rig.controller.debugLand(on: fresh)
+		#expect(rig.controller.debugState.trackedWindowID == 7777)
+		#expect(rig.controller.debugState.state == .landing)
+	}
+
+	@Test("Landing on the floor tracks nothing")
+	func landingOnFloorTracksNothing() throws {
+		let rig = try makeRig(windowTop: 800)
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		let floor = SupportSurface(
+			top: 1117, left: 0, right: 1728, bottom: 1117,
+			isDesktopFloor: true, sourceID: nil)
+		rig.controller.debugLand(on: floor)
+		#expect(rig.controller.debugState.trackedWindowID == nil)
+		#expect(rig.controller.debugState.state == .landing)
+	}
 }
