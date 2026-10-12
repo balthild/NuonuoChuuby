@@ -883,10 +883,18 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	// MARK: - Falling
 
+	/// The single way into the airborne state.
+	///
+	/// Everything that leaves the ground must come through here, because this is
+	/// what stops the window she just left from being tracked: a stale tracked
+	/// window is resolved *by identity*, so it would yank her back to its top the
+	/// moment she landed somewhere else.
 	private func beginFall(
 		reason: String = "support-lost",
 		initialVelocityY: Double = 0,
-		initialVelocityX: Double = 0
+		initialVelocityX: Double = 0,
+		clip: String? = nil,
+		purpose: MovementPurpose? = nil
 	) {
 		state = .falling
 		stateElapsed = 0
@@ -895,6 +903,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		velocity = PixelPoint(x: initialVelocityX, y: initialVelocityY)
 		remainderX = 0
 		remainderY = 0
+		if let purpose { movementPurpose = purpose }
 		// Remember which window she left, so a rising edge can catch her again.
 		airborneSourceID = supportSourceID
 		if let airborneSourceID,
@@ -905,17 +914,14 @@ public final class PetController: SpriteAnimatorDelegate {
 			airborneSourceID = nil
 		}
 		stopTrackingSupport()
-		animator.play(initialVelocityY < 0 ? "toss" : "fall")
+		standSurface = nil
+		animator.play(clip ?? (initialVelocityY < 0 ? "toss" : "fall"))
 	}
 
 	private func beginHop() {
-		velocity.y = -Motion.hopVelocity * displayScale
-		fallStartFootY = foot.y
-		fallReason = "TerrainHop"
-		state = .falling
-		movementPurpose = .wander
-		stateElapsed = 0
-		animator.play("jump")
+		beginFall(
+			reason: "TerrainHop", initialVelocityY: -Motion.hopVelocity * displayScale,
+			clip: "jump", purpose: .wander)
 		announce(.terrainHop, voice: .positive, priority: .ambient)
 	}
 
@@ -1147,34 +1153,25 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// stays against the wall.
 	private func beginSlideDown(from surface: SupportSurface) {
 		guard let target = surfaceProvider.surfaceBelow(footX: foot.x, currentTop: surface.top) else {
-			beginFall(reason: "EdgeSlide")
+			beginFall(reason: "EdgeSlide", clip: "slide")
 			return
 		}
-		state = .falling
-		movementPurpose = .none
-		stateElapsed = 0
-		fallStartFootY = foot.y
-		fallReason = "EdgeSlide"
-		velocity = PixelPoint(x: 0, y: target.top > foot.y ? 260 : 120)
-		remainderX = 0
-		remainderY = 0
-		animator.play("slide")
+		beginFall(
+			reason: "EdgeSlide",
+			initialVelocityY: target.top > foot.y ? 260 : 120,
+			clip: "slide")
 		announce(.edgeSlide, voice: .calm, priority: .ambient)
 	}
 
 	/// A hop off the edge, arcing outwards so she clears the window she was on.
 	private func beginJumpDown(from surface: SupportSurface) {
 		let outward = foot.x <= surface.centerX ? -1.0 : 1.0
-		state = .falling
-		movementPurpose = .none
-		stateElapsed = 0
-		fallStartFootY = foot.y
-		fallReason = "EdgeJump"
-		velocity = PixelPoint(x: outward * 90 * displayScale, y: -120 * displayScale)
-		remainderX = 0
-		remainderY = 0
+		beginFall(
+			reason: "EdgeJump",
+			initialVelocityY: -120 * displayScale,
+			initialVelocityX: outward * 90 * displayScale,
+			clip: "jump")
 		facing = outward
-		animator.play("jump")
 		announce(.terrainJumpDown, voice: .scream, priority: .ambient)
 	}
 
@@ -1288,10 +1285,14 @@ public final class PetController: SpriteAnimatorDelegate {
 		var velocityY: Double
 		var foot: PixelPoint
 		var fallReason: String
+		/// The window currently being ridden, if any.
+		var trackedWindowID: UInt32?
 	}
 
 	var debugState: DebugState {
-		DebugState(state: state, velocityY: velocity.y, foot: foot, fallReason: fallReason)
+		DebugState(
+			state: state, velocityY: velocity.y, foot: foot, fallReason: fallReason,
+			trackedWindowID: supportSourceID)
 	}
 
 	/// Places her on a known surface and begins tracking it.
@@ -1306,6 +1307,11 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// Advances only the ground-support handling, as one frame would.
 	func debugMaintainGroundSupport(delta: Double) {
 		maintainGroundSupport(delta)
+	}
+
+	/// Triggers a hop, which is normally chosen by the autonomy planner.
+	func debugBeginHop() {
+		beginHop()
 	}
 
 	// MARK: - Dragging
@@ -1351,14 +1357,14 @@ public final class PetController: SpriteAnimatorDelegate {
 		isDragging = false
 		let release = dragTracker.release(
 			point: cursor, atSeconds: CFAbsoluteTimeGetCurrent(), scale: displayScale)
-		velocity = PixelPoint(x: release.velocityX, y: release.velocityY)
-		remainderX = 0
-		remainderY = 0
-		fallStartFootY = foot.y
-		fallReason = release.hasInertia ? "DragThrow" : "released"
-		state = .falling
-		stateElapsed = 0
-		animator.play(release.hasInertia && velocity.y < 0 ? "toss" : "fall")
+		// Through `beginFall`, so the window she was riding stops being tracked —
+		// otherwise it would pull her back to its top once she landed.
+		beginFall(
+			reason: release.hasInertia ? "DragThrow" : "released",
+			initialVelocityY: release.velocityY,
+			initialVelocityX: release.velocityX,
+			clip: release.hasInertia && release.velocityY < 0 ? "toss" : "fall",
+			purpose: MovementPurpose.none)
 		// A weak release is a drop, not a throw; only a real flick earns the
 		// louder reaction.
 		if release.hasInertia, release.speed > 700 * displayScale {

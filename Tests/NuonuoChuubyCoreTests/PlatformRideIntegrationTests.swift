@@ -165,4 +165,53 @@ struct PlatformRideIntegrationTests {
 		rig.controller.debugMaintainGroundSupport(delta: Self.frame)
 		#expect(rig.controller.debugState.fallReason == "PlatformLaunch")
 	}
+
+	@Test("Leaving the ground stops tracking the window she was on")
+	func leavingGroundStopsTracking() throws {
+		let rig = try makeRig(windowTop: 800)
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		// Standing on the window, so it is being ridden.
+		rig.controller.debugMaintainGroundSupport(delta: Self.frame)
+		#expect(rig.controller.debugState.trackedWindowID == 4242)
+
+		// Picked up and released far below it.
+		rig.controller.beginDrag(at: PixelPoint(x: 700, y: 800))
+		rig.controller.updateDrag(to: PixelPoint(x: 700, y: 1200))
+		rig.controller.endDrag(at: PixelPoint(x: 700, y: 1200))
+
+		// This is the regression: the window she was dragged off must be
+		// forgotten. If it is still tracked, then once she lands the ride snaps
+		// her straight back up to its top, which looks like a teleport.
+		#expect(rig.controller.debugState.trackedWindowID == nil)
+		#expect(rig.controller.debugState.state == .falling)
+	}
+
+	@Test("A hop also stops tracking the window she jumped from")
+	func hopStopsTracking() throws {
+		let rig = try makeRig(windowTop: 800)
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		rig.controller.debugMaintainGroundSupport(delta: Self.frame)
+		#expect(rig.controller.debugState.trackedWindowID == 4242)
+
+		// A hop leaves the ground, so the only way in must clear the tracking.
+		rig.controller.debugBeginHop()
+		#expect(rig.controller.debugState.trackedWindowID == nil)
+		#expect(rig.controller.debugState.fallReason == "TerrainHop")
+	}
+
+	@Test("Landing on a different window adopts it")
+	func landingAdoptsNewWindow() throws {
+		let rig = try makeRig(windowTop: 800)
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		rig.controller.debugMaintainGroundSupport(delta: Self.frame)
+		#expect(rig.controller.debugState.trackedWindowID == 4242)
+
+		// Move her onto a second window by hand, as a landing would.
+		rig.controller.debugPlaceOnSurface(makeWindow(top: 400, id: 9999))
+		rig.controller.debugMaintainGroundSupport(delta: Self.frame)
+		#expect(rig.controller.debugState.trackedWindowID == 9999)
+	}
 }
