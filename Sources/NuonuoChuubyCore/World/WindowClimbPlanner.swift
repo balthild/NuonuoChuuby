@@ -19,8 +19,8 @@ public struct WindowClimbPlan: Sendable, Equatable {
 
 public enum WindowClimbPlanner {
 	public static func choose(
-		surfaces: [SupportSurface],
-		currentSupport: SupportSurface,
+		surfaces: [Surface],
+		currentSupport: Surface,
 		footX: Double,
 		scale: Double,
 		randomUnit: Double
@@ -37,36 +37,39 @@ public enum WindowClimbPlanner {
 		var candidates: [(plan: WindowClimbPlan, score: Double)] = []
 
 		for target in surfaces {
-			guard !target.isDesktopFloor, let targetID = target.sourceID else { continue }
-			guard targetID != currentSupport.sourceID else { continue }
+			guard target.key.kind == .windowTop else { continue }
+			let targetID = target.key.owner
+			guard targetID != currentSupport.key.owner else { continue }
 
-			let height = currentSupport.top - target.top
+			let bottom = target.ownerBounds?.bottom ?? target.offset
+			let height = currentSupport.offset - target.offset
 			guard height >= minimumHeight, height <= maximumHeight else { continue }
-			guard target.effectiveBottom >= currentSupport.top - floorReachTolerance else { continue }
+			guard bottom >= currentSupport.offset - floorReachTolerance else { continue }
 
 			addSide(
 				id: targetID, target: target, side: .left,
-				approachX: target.left - sideGap, landingX: target.left + landingInset,
+				approachX: target.span.start - sideGap, landingX: target.span.start + landingInset,
 				height: height)
 			addSide(
 				id: targetID, target: target, side: .right,
-				approachX: target.right + sideGap, landingX: target.right - landingInset,
+				approachX: target.span.end + sideGap, landingX: target.span.end - landingInset,
 				height: height)
 		}
 
 		func addSide(
-			id: UInt32, target: SupportSurface, side: WindowClimbSide,
+			id: UInt32, target: Surface, side: WindowClimbSide,
 			approachX: Double, landingX: Double, height: Double
 		) {
-			guard currentSupport.containsX(approachX, inset: 18) else { return }
-			guard target.containsX(landingX, inset: 8) else { return }
+			guard currentSupport.isVisible(atCoordinate: approachX, inset: 18) else { return }
+			guard target.isVisible(atCoordinate: landingX, inset: 8) else { return }
 
 			let horizontalDistance = abs(approachX - footX)
 			let score = horizontalDistance + height * 0.16
 			candidates.append((
 				WindowClimbPlan(
 					targetSurfaceID: id, side: side, approachX: approachX, landingX: landingX,
-					targetTop: target.top, targetBottom: target.effectiveBottom, height: height),
+					targetTop: target.offset, targetBottom: target.ownerBounds?.bottom ?? target.offset,
+					height: height),
 				score))
 		}
 

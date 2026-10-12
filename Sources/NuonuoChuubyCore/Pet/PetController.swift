@@ -34,6 +34,10 @@ public final class PetController: SpriteAnimatorDelegate {
 		static let hopVelocity: Double = 420
 		static let arrivalTolerance: Double = 5
 		static let movementTimeout: Double = 8
+		/// How far a surface may move in a single tick before it is yanked out from
+		/// under her. 15 pt per 60 Hz frame is the 900 pt/s the original read as a
+		/// deliberate flick rather than a drag (Ledgeling's `STARTLING_SPEED`).
+		static let releaseDisplacement: Double = 15
 	}
 
 	/// Actions whose behaviour exists in this build.
@@ -109,22 +113,19 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// Where the pinch started, in view points, so the drag is measured from it.
 	private var pinchOrigin: CGPoint = .zero
 
-	// Support motion: a window under her can move, and she responds to it.
-	/// The window she is standing on, absent for a desktop floor.
-	private var supportSourceID: UInt32?
-	/// The surface she is currently standing on, refreshed every frame.
-	private var standSurface: SupportSurface?
-	private var lastSupportTop: Double = 0
-	private var supportMotionInitialized = false
-	/// How long her support has been missing, for the recovery grace.
-	private var supportUnavailableSeconds: Double = 0
+	// Support: she is anchored to a point along an edge, not to a world coordinate.
+	/// Where along which edge she is standing; absent mid-air or mid-drag.
+	private var perch: Perch?
+	/// The surface the perch resolved to this frame.
+	private var perchSurface: Surface?
+	/// The surface's offset in the previous tick, to measure how far it moved.
+	private var lastPerchOffset: Double?
+	/// How long the perch has failed to resolve, for the recovery grace.
+	private var perchUnavailableSeconds: Double = 0
 	/// Set while the grace is being held, so it is logged once not per frame.
-	private var isInSupportGrace = false
+	private var isInPerchGrace = false
 	/// Collapses a run of identical ride responses into one log line.
-	private var rideLogGate = ChangeGate<PlatformMotionResponse>()
-	// The window she was launched from, so a rising edge can catch her again.
-	private var airborneSourceID: UInt32?
-	private var lastAirbornePlatformTop: Double = 0
+	private var perchLogGate = ChangeGate<PlatformMotionResponse>()
 	private var pendingClimb: WindowClimbPlan?
 	private var activeClimb: WindowClimbPlan?
 	private var climbProgress: Double = 0
@@ -257,11 +258,13 @@ public final class PetController: SpriteAnimatorDelegate {
 		heartbeatRemaining = 10
 
 		let support: String
-		switch standSurface {
+		switch perchSurface?.key.kind {
 		case nil: support = "none"
-		case .some(let surface): support = surface.isDesktopFloor ? "floor" : "window"
+		case .some(.floor): support = "floor"
+		default: support = "window"
 		}
-		let tracked = standSurface?.sourceID.map(String.init) ?? "none"
+		let tracked =
+			perch.flatMap { $0.key.kind == .windowTop ? String($0.key.owner) : nil } ?? "none"
 		let position = "\(Int(foot.x)),\(Int(foot.y))"
 
 		DiagnosticsLog.shared.writeEvent("StatusHeartbeat", [
@@ -289,7 +292,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		idleRemaining -= delta
 		guard idleRemaining <= 0 else { return }
 
-		let hasSupport = surfaceProvider.support(footX: foot.x, footY: foot.y) != nil
+		let hasSupport = surfaceProvider.support(at: foot) != nil
 
 		// A strongly sleepy pet naps regardless of the weighted draw.
 		if life.sleepiness >= LifeBehaviorPolicy.sleepInterruptionThreshold {
@@ -596,13 +599,14 @@ public final class PetController: SpriteAnimatorDelegate {
 	// MARK: - Ground movement
 
 	private func beginGroundMove(purpose: MovementPurpose) {
-		guard let surface = surfaceProvider.support(footX: foot.x, footY: foot.y) else {
+		guard let surface = surfaceProvider.support(at: foot) else {
 			beginFall()
 			return
 		}
+		let run = perch.flatMap { surface.visibleRun(containingT: $0.t) } ?? surface.span
 		let inset = 20 * displayScale
-		let minimum = surface.left + inset
-		let maximum = max(minimum, surface.right - inset)
+		let minimum = run.start + inset
+		let maximum = max(minimum, run.end - inset)
 		targetX = Double.random(in: minimum...maximum)
 		movementPurpose = purpose
 		state = .running
@@ -617,14 +621,16 @@ public final class PetController: SpriteAnimatorDelegate {
 			return
 		}
 
-		guard let surface = standSurface else {
+		guard let surface = perchSurface, let perched = perch,
+			let run = surface.visibleRun(containingT: perched.t)
+		else {
 			beginFall()
 			return
 		}
 
 		// Her feet are already on the ledge: the ride snaps her to it every frame,
 		// so nothing further is needed here for vertical movement.
-		targetX = min(max(targetX, surface.left + 20), surface.right - 20)
+		targetX = min(max(targetX, run.start + 20), run.end - 20)
 		let deltaX = targetX - foot.x
 		if abs(deltaX) <= Motion.arrivalTolerance || stateElapsed > Motion.movementTimeout {
 			foot.x += deltaX
@@ -643,6 +649,9 @@ public final class PetController: SpriteAnimatorDelegate {
 			movementX = Int(deltaX.rounded())
 		}
 		foot.x += Double(movementX)
+		// Fold her own walking back into the anchor, so the next tick's ride starts
+		// from where she actually is.
+		self.perch?.t = surface.t(atCoordinate: foot.x)
 		facing = deltaX < 0 ? -1 : 1
 	}
 
@@ -664,216 +673,156 @@ public final class PetController: SpriteAnimatorDelegate {
 		}
 	}
 
-	/// Keeps her attached to her support: follows it, is thrown by it, or falls
+	/// Keeps her attached to her support: follows it, is released by it, or falls
 	/// when it goes away.
 	private func maintainGroundSupport(_ delta: Double) {
 		guard ridesSupport else { return }
 
-		guard let surface = resolveStandingSurface() else {
-			// `standSurface` is deliberately left alone while the grace holds, so
-			// a window that briefly vanishes from the window server's list does
-			// not drop her mid-drag.
-			handleSupportLost(delta: delta)
+		guard let perch else {
+			acquirePerch()
 			return
 		}
-		adoptSurfaceIfChanged(surface)
-		supportUnavailableSeconds = 0
-		isInSupportGrace = false
-		standSurface = surface
-		_ = respondToSupportMotion(surface: surface, delta: delta)
-	}
 
-	private enum SupportMotionOutcome {
-		case keepStanding
-		/// The pet has left the ground; the caller must stop touching `foot.y`.
-		case stopped
-	}
-
-	/// The surface under her.
-	///
-	/// While she is standing on a window it is resolved **by identity**, never by
-	/// proximity: a dragged window's top leaves her feet behind within a frame,
-	/// and a proximity lookup would read that as losing her support instead of
-	/// riding it. The live read comes first because the periodic map lags by up
-	/// to half a second, which would make a dragged window feel jerky.
-	private func resolveStandingSurface() -> SupportSurface? {
-		guard let supportSourceID else {
-			// Not tracking a window: she is on a floor, or finding her footing.
-			return surfaceProvider.support(footX: foot.x, footY: foot.y)
+		// A missing, unreachable, or now-hidden surface is a lost perch. The grace
+		// covers a window that briefly vanishes from the window server's list.
+		guard let surface = currentSurface(for: perch),
+			surface.isReachable,
+			surface.isVisible(at: perch.position(in: surface))
+		else {
+			handlePerchLost(delta: delta)
+			return
 		}
 
-		if let live = WindowSurfaceProvider.liveSurface(
-			windowID: supportSourceID, displaySpace: displaySpace, footX: foot.x)
-		{
-			return live
-		}
-		// The window server had nothing to say about it this frame; the map's
-		// entry for the same window is still better than a proximity guess.
-		return surfaceProvider.surfaces.first { $0.sourceID == supportSourceID }
-	}
+		perchUnavailableSeconds = 0
+		isInPerchGrace = false
+		perchSurface = surface
 
-	private func adoptSurfaceIfChanged(_ surface: SupportSurface?) {
-		guard let surface, let sourceID = surface.sourceID, sourceID != supportSourceID else { return }
-		// She has moved onto a different window; track it from here.
-		beginTrackingSupport(surface)
-	}
+		// The one explicit release rule: a surface that moves further than
+		// `releaseDisplacement` in a single tick is yanked out from under her.
+		let displacement = lastPerchOffset.map { surface.offset - $0 } ?? 0
+		lastPerchOffset = surface.offset
 
-	/// Applies the window's motion to the pet. Returns whether she is still
-	/// standing afterwards.
-	private func respondToSupportMotion(
-		surface: SupportSurface, delta: Double
-	) -> SupportMotionOutcome {
-		// A desktop floor never moves, but it is still where her feet belong.
-		guard let sourceID = surface.sourceID, !surface.isDesktopFloor else {
-			stopTrackingSupport()
-			followSurface(surface)
-			return .keepStanding
-		}
-
-		if !supportMotionInitialized || supportSourceID != sourceID {
-			beginTrackingSupport(surface)
-			followSurface(surface)
-			return .keepStanding
-		}
-
-		let displacementY = surface.top - lastSupportTop
-		let rawVelocityY = displacementY / max(delta, 1.0 / 240)
-		lastSupportTop = surface.top
-		guard abs(displacementY) >= 0.5 else {
-			followSurface(surface)
-			return .keepStanding
-		}
-
-		let decision = PlatformRidePhysics.evaluate(
-			displacementY: displacementY, velocityY: rawVelocityY, displayScale: displayScale)
-		// A dragged window moves on every frame, so log the response once per change
-		// rather than once per frame.
-		if rideLogGate.emits(decision.response) {
-			DiagnosticsLog.shared.writeEvent("PlatformRide", [
-				("Response", "\(decision.response)"),
-				("DisplacementY", String(format: "%.1f", displacementY)),
-				("VelocityY", String(format: "%.0f", rawVelocityY)),
-				("Top", String(format: "%.1f", surface.top)),
-				("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
-			])
-		}
-
-		switch decision.response {
-		case .launchUpward:
-			followSurface(surface)
-			DiagnosticsLog.shared.writeEvent("PlatformLaunch", [
-				("PetVelocityY", String(format: "%.0f", decision.initialPetVelocityY))
-			])
-			announce(.platformLaunch, voice: .scream, priority: .critical)
-			beginFall(reason: "PlatformLaunch", initialVelocityY: decision.initialPetVelocityY)
-			return .stopped
-
-		case .releaseDownward:
-			DiagnosticsLog.shared.writeEvent("PlatformDownwardRelease", [
-				("DisplacementY", String(format: "%.1f", displacementY))
-			])
-			// No initial velocity: she is left behind, not thrown, so she lands
-			// back on the ledge as it comes up to meet her.
-			beginFall(reason: "PlatformDownwardRelease")
-			return .stopped
-
-		case .follow:
-			// The ledge carries her, whether she is walking, standing or asleep.
-			followSurface(surface)
-			return .keepStanding
-		}
-	}
-
-	/// Puts her feet on the ledge she is standing on. The tolerance stops a
-	/// sub-pixel wobble from turning into visible jitter.
-	private func followSurface(_ surface: SupportSurface) {
-		let gap = surface.top - foot.y
-		if abs(gap) >= 0.5 {
-			foot.y = surface.top
-		}
-	}
-
-	private func beginTrackingSupport(_ surface: SupportSurface) {
-		supportSourceID = surface.sourceID
-		rideLogGate.reset()
-		// Seed from the live reading, not the map's. The map can be half a second
-		// old, and mixing a stale baseline with the live sample on the next frame
-		// reads as one enormous jump, which would launch her the instant she
-		// stepped onto a window that had moved.
-		if let sourceID = surface.sourceID,
-			let live = WindowSurfaceProvider.liveBounds(of: sourceID)
-		{
-			lastSupportTop = live.top
-		} else {
-			lastSupportTop = surface.top
-		}
-		supportMotionInitialized = surface.sourceID != nil
-	}
-
-	private func stopTrackingSupport() {
-		supportSourceID = nil
-		supportMotionInitialized = false
-		rideLogGate.reset()
-	}
-
-	/// Her support is gone. A window being dragged can vanish from the map for a
-	/// moment, so she is only dropped once the grace expires; a window that
-	/// maximised instead throws her clear.
-	private func handleSupportLost(delta: Double) {
-		supportUnavailableSeconds += delta
-
-		if supportSourceID != nil {
-			// A dragged window can briefly drop out of the window server's list.
-			// Holding her for a moment avoids a spurious fall mid-drag.
-			if PlatformRidePhysics.shouldPreserveTransientSupport(
-				unavailableSeconds: supportUnavailableSeconds)
-			{
-				// Logged once per grace period rather than every frame.
-				if !isInSupportGrace {
-					isInSupportGrace = true
-					DiagnosticsLog.shared.writeEvent("PlatformSupportGrace", [
-						("Footnote", "\(Int(foot.x)),\(Int(foot.y))"),
-						("Top", String(format: "%.1f", lastSupportTop)),
-					])
-				}
-				return
-			}
-
-			if let supportSourceID, maximizedWindow(id: supportSourceID),
-				let bounce = WindowExpansionPhysics.evaluate(
-					supportUnavailable: true,
-					windowMaximized: true,
-					footX: foot.x,
-					monitorCenterX: displaySpace.display(containing: foot)?.visibleFrame.centerX ?? foot.x,
-					displayScale: displayScale)
-			{
-				DiagnosticsLog.shared.writeEvent("WindowMaximizeBounce", [
-					("VelocityX", String(format: "%.0f", bounce.velocityX)),
-					("VelocityY", String(format: "%.0f", bounce.velocityY)),
+		if abs(displacement) >= Motion.releaseDisplacement {
+			let velocityY = displacement / max(delta, 1.0 / 240)
+			let upward = displacement < 0
+			logRide(
+				upward ? .launchUpward : .releaseDownward, displacement: displacement,
+				velocityY: velocityY, surface: surface)
+			releasePerch()
+			if upward {
+				// Thrown up, inheriting a fraction of the surface's speed.
+				let initial = min(max(velocityY * 0.88, -1150 * displayScale), -300 * displayScale)
+				DiagnosticsLog.shared.writeEvent("PlatformLaunch", [
+					("PetVelocityY", String(format: "%.0f", initial))
 				])
-				announce(.windowMaximized, voice: .scream, priority: .critical)
-				beginFall(
-					reason: "WindowMaximized", initialVelocityY: bounce.velocityY,
-					initialVelocityX: bounce.velocityX)
-				return
+				announce(.platformLaunch, voice: .scream, priority: .critical)
+				beginFall(reason: "PlatformLaunch", initialVelocityY: initial)
+			} else {
+				// Left behind rather than thrown down: she falls from rest and lands
+				// on the ledge as it comes back up.
+				beginFall(reason: "PlatformDownwardRelease")
 			}
+			return
 		}
 
-		stopTrackingSupport()
+		if abs(displacement) >= 0.5 {
+			logRide(
+				.follow, displacement: displacement,
+				velocityY: displacement / max(delta, 1.0 / 240), surface: surface)
+		}
+
+		// The ledge carries her, whether she is walking, standing or asleep.
+		foot = perch.position(in: surface)
+	}
+
+	private func logRide(
+		_ response: PlatformMotionResponse, displacement: Double, velocityY: Double, surface: Surface
+	) {
+		guard perchLogGate.emits(response) else { return }
+		DiagnosticsLog.shared.writeEvent("PlatformRide", [
+			("Response", "\(response)"),
+			("DisplacementY", String(format: "%.1f", displacement)),
+			("VelocityY", String(format: "%.0f", velocityY)),
+			("Top", String(format: "%.1f", surface.offset)),
+			("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
+		])
+	}
+
+	/// The surface a perch points at, read fresh.
+	///
+	/// A window is resolved **by identity** from the window server, never by
+	/// proximity: a dragged window leaves a proximity lookup behind within a frame,
+	/// which would read as losing her support instead of riding it. The live read
+	/// also comes first because the graph lags by up to half a second. A floor never
+	/// moves, so the graph is the truth for it.
+	private func currentSurface(for perch: Perch) -> Surface? {
+		switch perch.key.kind {
+		case .windowTop:
+			// The live read gives the drag its precision; the graph is the authority
+			// on whether the surface still exists at all.
+			if let live = WindowSurfaceProvider.liveWindowSurface(
+				windowID: perch.key.owner, monitors: displaySpace.displays)
+			{
+				return live
+			}
+			return surfaceProvider.surfaces.first { $0.key == perch.key }
+		default:
+			return surfaceProvider.surfaces.first { $0.key == perch.key }
+		}
+	}
+
+	/// Picks up a perch for wherever her feet are, or starts a fall.
+	private func acquirePerch() {
+		guard let surface = surfaceProvider.support(at: foot) else {
+			beginFall()
+			return
+		}
+		adopt(surface)
+	}
+
+	/// Anchors her to a surface, working out `t` from her feet.
+	private func adopt(_ surface: Surface) {
+		let perch = Perch.at(foot, on: surface)
+		self.perch = perch
+		perchSurface = surface
+		lastPerchOffset = surface.offset
+		perchLogGate.reset()
+		foot = perch.position(in: surface)
+	}
+
+	private func releasePerch() {
+		perch = nil
+		perchSurface = nil
+		lastPerchOffset = nil
+		perchLogGate.reset()
+	}
+
+	/// Her perch is gone: the surface vanished, became unreachable, or she is over
+	/// a part of it another window now hides. Held briefly while the grace lasts,
+	/// because a dragged window can blink out of the window server's list.
+	private func handlePerchLost(delta: Double) {
+		perchUnavailableSeconds += delta
+
+		if PlatformRidePhysics.shouldPreserveTransientSupport(
+			unavailableSeconds: perchUnavailableSeconds)
+		{
+			// Logged once per grace period rather than every frame.
+			if !isInPerchGrace {
+				isInPerchGrace = true
+				DiagnosticsLog.shared.writeEvent("PlatformSupportGrace", [
+					("Footnote", "\(Int(foot.x)),\(Int(foot.y))"),
+					("Top", lastPerchOffset.map { String(format: "%.1f", $0) } ?? "none"),
+				])
+			}
+			return
+		}
+
+		releasePerch()
 		beginFall()
 	}
 
-	/// Whether a window now fills its display, the macOS reading of "maximised".
-	private func maximizedWindow(id: UInt32) -> Bool {
-		guard let bounds = WindowSurfaceProvider.liveBounds(of: id),
-			let display = displaySpace.display(containing: PixelPoint(x: foot.x, y: bounds.top))
-		else { return false }
-		let area = display.visibleFrame
-		return bounds.width >= area.width * 0.92 && bounds.height >= area.height * 0.92
-	}
-
 	private func finishGroundMove() {
-		let surface = surfaceProvider.support(footX: foot.x, footY: foot.y)
+		let surface = surfaceProvider.support(at: foot)
 
 		// Climb and descent approaches hand off to their own routines.
 		if movementPurpose == .climbApproach, let pendingClimb {
@@ -891,7 +840,7 @@ public final class PetController: SpriteAnimatorDelegate {
 
 		// On a window top, running out of surface is an edge decision rather than
 		// a plain stop; on the desktop floor she simply looks around.
-		if let surface, !surface.isDesktopFloor,
+		if let surface, surface.key.kind != .floor,
 			let action = terrainEdgeActionIfAtEdge(surface)
 		{
 			switch action {
@@ -920,8 +869,9 @@ public final class PetController: SpriteAnimatorDelegate {
 	}
 
 	/// True when the pet has reached an end of its current platform.
-	private func terrainEdgeActionIfAtEdge(_ surface: SupportSurface) -> TerrainEdgeAction? {
-		let atEdge = foot.x <= surface.left + 24 || foot.x >= surface.right - 24
+	private func terrainEdgeActionIfAtEdge(_ surface: Surface) -> TerrainEdgeAction? {
+		guard let perch, let run = surface.visibleRun(containingT: perch.t) else { return nil }
+		let atEdge = foot.x <= run.start + 24 || foot.x >= run.end - 24
 		guard atEdge else { return nil }
 		return TerrainBehaviorPlanner.chooseAtEdge(
 			isDesktopFloor: false, randomUnit: Double.random(in: 0..<1))
@@ -932,9 +882,8 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// The single way into the airborne state.
 	///
 	/// Everything that leaves the ground must come through here, because this is
-	/// what stops the window she just left from being tracked: a stale tracked
-	/// window is resolved *by identity*, so it would yank her back to its top the
-	/// moment she landed somewhere else.
+	/// what clears the perch: a perch is resolved *by identity*, so a stale one
+	/// would pull her back to its edge the moment she landed somewhere else.
 	private func beginFall(
 		reason: String = "support-lost",
 		initialVelocityY: Double = 0,
@@ -950,17 +899,9 @@ public final class PetController: SpriteAnimatorDelegate {
 		remainderX = 0
 		remainderY = 0
 		if let purpose { movementPurpose = purpose }
-		// Remember which window she left, so a rising edge can catch her again.
-		airborneSourceID = supportSourceID
-		if let airborneSourceID,
-			let top = WindowSurfaceProvider.liveBounds(of: airborneSourceID)?.top
-		{
-			lastAirbornePlatformTop = top
-		} else {
-			airborneSourceID = nil
-		}
-		stopTrackingSupport()
-		standSurface = nil
+		// She is airborne, so nothing holds her: the perch is dropped so a stale
+		// surface cannot pull her back to its edge when she lands.
+		releasePerch()
 		animator.play(clip ?? (initialVelocityY < 0 ? "toss" : "fall"))
 	}
 
@@ -971,45 +912,12 @@ public final class PetController: SpriteAnimatorDelegate {
 		announce(.terrainHop, voice: .positive, priority: .ambient)
 	}
 
-	/// A window edge that rises through her feet catches her mid-air.
-	private func applyAirbornePlatformContact(delta: Double) {
-		guard let airborneSourceID,
-			let top = WindowSurfaceProvider.liveBounds(of: airborneSourceID)?.top
-		else { return }
-
-		let contact = PlatformRidePhysics.resolveAirborneContact(
-			footY: foot.y,
-			petVelocityY: velocity.y,
-			previousPlatformTop: lastAirbornePlatformTop,
-			currentPlatformTop: top,
-			deltaSeconds: delta,
-			displayScale: displayScale)
-
-		lastAirbornePlatformTop = top
-		guard contact.pushesPet else { return }
-
-		DiagnosticsLog.shared.writeEvent("AirbornePlatformPush", [
-			("PlatformTop", String(format: "%.1f", top)),
-			("PlatformVelocityY", String(format: "%.0f", contact.platformVelocityY)),
-			("PetVelocityY", String(format: "%.0f", contact.petVelocityY)),
-		])
-		foot.y = contact.correctedFootY
-		velocity.y = contact.petVelocityY
-		remainderY = 0
-		animator.play("toss")
-		announce(.platformLaunch, voice: .scream, priority: .important)
-	}
-
 	private func updateFalling(_ delta: Double) {
 		let scale = displayScale
 		velocity.x *= exp(-Motion.horizontalAirDrag * delta)
 		velocity.y = min(
 			Motion.terminalVelocity * scale,
 			velocity.y + Motion.gravity * scale * delta)
-
-		// A window edge rising under her feet pushes her up again, rather than
-		// letting her fall straight through the window she just left.
-		applyAirbornePlatformContact(delta: delta)
 
 		// The toss sheet covers the rising half; the fall sheet the rest.
 		if velocity.y >= 0, animator.currentClip == "toss" {
@@ -1042,7 +950,7 @@ public final class PetController: SpriteAnimatorDelegate {
 				footX: nextFootX, fromY: foot.y, toY: nextFootY, inset: Motion.landingInset)
 		{
 			foot.x = nextFootX
-			foot.y = landing.top
+			foot.y = landing.offset
 			land(on: landing)
 			return
 		}
@@ -1067,7 +975,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		remainderY = 0
 	}
 
-	private func land(on surface: SupportSurface?) {
+	private func land(on surface: Surface?) {
 		let fallDistance = max(0, foot.y - fallStartFootY)
 		let impactSpeed = max(0, velocity.y)
 		let shouldReact = LandingVoicePolicy.shouldReact(
@@ -1076,16 +984,12 @@ public final class PetController: SpriteAnimatorDelegate {
 			reason: fallReason,
 			displayScale: displayScale)
 
-		// Adopt what she landed on straight away. Until now she was airborne with
-		// nothing tracked, so for the first frame back on a *moving* window the
-		// ride would fall back to a proximity lookup, miss the window as it moved,
-		// and read its own landing as losing support — dropping her again.
-		standSurface = surface
-		if let surface, surface.sourceID != nil {
-			beginTrackingSupport(surface)
+		// Adopt what she landed on straight away, so the first frame back on a
+		// moving window is already anchored to it rather than to nothing.
+		if let surface {
+			adopt(surface)
 		} else {
-			// A floor is not a window: anything previously tracked is now wrong.
-			stopTrackingSupport()
+			releasePerch()
 		}
 
 		state = .landing
@@ -1104,7 +1008,7 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	/// Returns true when the pet has committed to a climb.
 	private func tryBeginClimb() -> Bool {
-		guard !quietMode, let support = surfaceProvider.support(footX: foot.x, footY: foot.y),
+		guard !quietMode, let support = surfaceProvider.support(at: foot),
 			let plan = WindowClimbPlanner.choose(
 				surfaces: surfaceProvider.surfaces,
 				currentSupport: support,
@@ -1172,7 +1076,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	private func updateClimbing(_ delta: Double) {
 		// The window she is climbing can be moved or closed mid-climb.
 		guard let plan = activeClimb,
-			surfaceProvider.surfaces.contains(where: { $0.sourceID == plan.targetSurfaceID })
+			surfaceProvider.surfaces.contains(where: { $0.key.owner == plan.targetSurfaceID })
 		else {
 			activeClimb = nil
 			beginFall(reason: "ClimbSlip")
@@ -1212,7 +1116,7 @@ public final class PetController: SpriteAnimatorDelegate {
 			transientDuration = animator.durationSeconds
 			fallStartFootY = foot.y
 			fallReason = "ClimbSuccess"
-			land(on: surfaceProvider.surfaces.first { $0.sourceID == plan.targetSurfaceID })
+			land(on: surfaceProvider.surfaces.first { $0.key.owner == plan.targetSurfaceID })
 			announce(.climbSuccess, voice: .affirmative, priority: .normal)
 		}
 	}
@@ -1226,21 +1130,21 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	/// A controlled descent: faster than walking, slower than a fall, and she
 	/// stays against the wall.
-	private func beginSlideDown(from surface: SupportSurface) {
-		guard let target = surfaceProvider.surfaceBelow(footX: foot.x, currentTop: surface.top) else {
+	private func beginSlideDown(from surface: Surface) {
+		guard let target = surfaceProvider.surfaceBelow(footX: foot.x, currentTop: surface.offset) else {
 			beginFall(reason: "EdgeSlide", clip: "slide")
 			return
 		}
 		beginFall(
 			reason: "EdgeSlide",
-			initialVelocityY: target.top > foot.y ? 260 : 120,
+			initialVelocityY: target.offset > foot.y ? 260 : 120,
 			clip: "slide")
 		announce(.edgeSlide, voice: .calm, priority: .ambient)
 	}
 
 	/// A hop off the edge, arcing outwards so she clears the window she was on.
-	private func beginJumpDown(from surface: SupportSurface) {
-		let outward = foot.x <= surface.centerX ? -1.0 : 1.0
+	private func beginJumpDown(from surface: Surface) {
+		let outward = foot.x <= surface.span.start + surface.span.length / 2 ? -1.0 : 1.0
 		beginFall(
 			reason: "EdgeJump",
 			initialVelocityY: -120 * displayScale,
@@ -1362,21 +1266,23 @@ public final class PetController: SpriteAnimatorDelegate {
 		var fallReason: String
 		/// The window currently being ridden, if any.
 		var trackedWindowID: UInt32?
+		/// The edge she is anchored to, if any.
+		var perchKey: SurfaceKey?
 	}
 
 	var debugState: DebugState {
 		DebugState(
 			state: state, velocityY: velocity.y, foot: foot, fallReason: fallReason,
-			trackedWindowID: supportSourceID)
+			trackedWindowID: perch.flatMap { $0.key.kind == .windowTop ? $0.key.owner : nil },
+			perchKey: perch?.key)
 	}
 
-	/// Places her on a known surface and begins tracking it.
-	func debugPlaceOnSurface(_ surface: SupportSurface) {
+	/// Places her on a known surface and anchors her to it.
+	func debugPlaceOnSurface(_ surface: Surface) {
 		state = .idle
 		movementPurpose = .none
-		foot = PixelPoint(x: surface.centerX, y: surface.top)
-		standSurface = surface
-		beginTrackingSupport(surface)
+		foot = PixelPoint(x: surface.span.start + surface.span.length / 2, y: surface.offset)
+		adopt(surface)
 	}
 
 	/// Advances only the ground-support handling, as one frame would.
@@ -1390,9 +1296,9 @@ public final class PetController: SpriteAnimatorDelegate {
 	}
 
 	/// Lands on a surface, as a completed fall would.
-	func debugLand(on surface: SupportSurface) {
-		standSurface = nil
-		foot = PixelPoint(x: surface.centerX, y: surface.top)
+	func debugLand(on surface: Surface) {
+		releasePerch()
+		foot = PixelPoint(x: surface.span.start + surface.span.length / 2, y: surface.offset)
 		land(on: surface)
 	}
 
@@ -1422,9 +1328,10 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// Exposed for tests: the offset between the foot and the grab point.
 	var dragOffsetForTesting: PixelPoint { dragOffset }
 
-	private static func describe(surfaceID: UInt32, in surfaces: [SupportSurface]) -> String {
-		guard let surface = surfaces.first(where: { $0.sourceID == surfaceID }) else { return "missing" }
-		return "L\(Int(surface.left)) R\(Int(surface.right)) B\(Int(surface.bottom))"
+	private static func describe(surfaceID: UInt32, in surfaces: [Surface]) -> String {
+		guard let surface = surfaces.first(where: { $0.key.owner == surfaceID }) else { return "missing" }
+		let bottom = surface.ownerBounds?.bottom ?? surface.offset
+		return "L\(Int(surface.span.start)) R\(Int(surface.span.end)) B\(Int(bottom))"
 	}
 
 	public func updateDrag(to cursor: PixelPoint) {

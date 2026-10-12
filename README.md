@@ -47,7 +47,8 @@ make run                        # 构建、打包、签名并启动
 
 | 能力 | Windows | macOS |
 | --- | --- | --- |
-| 窗口地形（站在窗口上） | `EnumWindows` + Win32 style 位 | `CGWindowListCopyWindowInfo`，**无需任何权限**（bounds 不需要屏幕录制） |
+| 窗口地形（站在窗口上） | `EnumWindows` + Win32 style 位 | `CGWindowListCopyWindowInfo`，**无需任何权限**（bounds 不需要屏幕录制）；被别的窗口盖住的那段窗沿不可站立 |
+| 窗口最大化顶飞 | 最大化时把桌宠顶飞（专门的反弹规则） | **已移除**：没有专门的反弹判定。窗口最大化只是让窗沿快速上移，是否被甩出只取决于通用的「单 tick 位移超过阈值」释放规则 |
 | 删除文件进食 | 回收站 `$I*` 元数据 + 桌面 ListView 跨进程读取 | FSEvents 监听桌面/下载目录，与 `~/.Trash` 新增项按文件名比对；`rm` 删除的文件等一小段窗口后也接受 |
 | 桌面图标位置 | 跨进程读取 ListView 真实坐标 | **系统没有公开 API**，用 Finder 默认布局近似（见 `DesktopIconGrid`），不是图标真实位置 |
 | 全局按键（Delete） | `WH_KEYBOARD_LL` 钩子 | **不做**：FSEvents 已覆盖删除检测，按键钩子只是冗余的提前量；权限本身不是障碍 |

@@ -455,6 +455,20 @@ public enum SurfaceChange: Sendable, Equatable {
 
 > **不得静默删除。** 每一条删除都要在提交信息里说明「为什么这个行为不再存在」。
 
+> **Phase C 实施修正（2026-10-12，以代码为准）**
+> - `Surface` 增加 `ownerBounds`（拥有者的完整矩形）。攀爬需要窗口**底边**，单条边表达不了；
+>   `SupportSurface.bottom` 的唯一消费方是 `WindowClimbPlanner`，该字段已随 `SupportSurface`
+>   一起删除。
+> - `currentSurface(for:)` 对窗口**先用每帧实时读，实时读不到再退回图里同 key 的条目**
+>   （与旧行为一致）。因此真正的释放条件是「**surface 从图里消失**」；实时读失败 ≠ 释放。
+> - 释放阈值实现为 `Motion.releaseDisplacement = 15`：**单个 tick 的位移**（≈ 900 pt/s @60fps）。
+> - 三种结构性失效（surface 缺失 / 不可达 / 她所在处已被遮挡）**共用** 0.35 s 宽限，之后才
+>   `releasePerch()` + `beginFall()`。
+> - `Perch.t` 是沿整条 `span` 的**归一化**值（0…1）。原表述「`span` 不再包含 `t`」对归一化
+>   `t` 无意义，实现取其实意：**由 `t` 推导出的世界坐标不再落在任何可见片段内**。
+> - 测试账本：删除 17、保留 11、重写 2、**新增 3**（`monitorUnplug` / `unreachableDrops` /
+>   `neverFloating`）。总数 173 → 159。
+
 **验证**
 - `swift test` 全绿。
 - **新增 mock 驱动的时间线回放测试**：

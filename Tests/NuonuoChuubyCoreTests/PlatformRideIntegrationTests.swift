@@ -3,11 +3,12 @@ import Testing
 
 @testable import NuonuoChuubyCore
 
-/// Drives the platform ride frame by frame.
+/// Drives the ride frame by frame against a scripted surface graph.
 ///
 /// A real drag cannot be scripted — AppleScript's `set bounds` teleports a
-/// window, which is a single huge jump rather than a gesture — so the ride is
-/// exercised here by moving a known surface and stepping one frame at a time.
+/// window, a single huge jump rather than a gesture — so the ride is exercised
+/// here by moving a known surface and stepping one frame at a time. The window is
+/// resolved from the graph because the window server has no such window.
 @MainActor
 @Suite("Platform ride integration", .serialized)
 struct PlatformRideIntegrationTests {
@@ -23,98 +24,104 @@ struct PlatformRideIntegrationTests {
 	enum TestSkip: Error { case missingAssets }
 
 	private static let frame = 1.0 / 60
+	private static let windowID: UInt32 = 4242
 
-	/// A window whose top can be moved, plus the desktop floor beneath it.
-	private func makeRig(
-		windowTop: Double = 800, windowID: UInt32 = 4242
-	) throws -> (controller: PetController, provider: SurfaceProvider, directory: URL) {
+	private struct Rig {
+		var controller: PetController
+		var provider: SurfaceProvider
+		var floor: Surface
+		var directory: URL
+	}
+
+	private func windowSurface(top: Double, reachable: Bool = true) -> Surface {
+		Surface(
+			key: SurfaceKey(owner: Self.windowID, kind: .windowTop),
+			span: Span(start: 200, end: 1400),
+			visible: [Span(start: 200, end: 1400)],
+			offset: top,
+			ownerBounds: PixelRect(x: 200, y: top, width: 1200, height: 400),
+			isReachable: reachable)
+	}
+
+	private func makeRig(windowTop: Double = 800) throws -> Rig {
 		guard let root = Self.assetsRoot else { throw TestSkip.missingAssets }
 		let directory = URL(fileURLWithPath: NSTemporaryDirectory())
 			.appendingPathComponent("nuonuo-ride-\(UUID().uuidString)")
 
 		let space = DisplaySpace()
-		let floor = SupportSurface(
-			top: space.displays.first?.visibleFrame.bottom ?? 1117,
-			left: 0, right: space.displays.first?.frame.right ?? 1728,
-			bottom: space.displays.first?.frame.bottom ?? 1117,
-			isDesktopFloor: true, sourceID: nil)
-		let provider = SurfaceProvider(
-			surfaces: [makeWindow(top: windowTop, id: windowID), floor])
+		let monitor = space.displays.first
+		let monitorFrame = monitor?.frame ?? PixelRect(x: 0, y: 0, width: 1728, height: 1117)
+		let floor = Surface(
+			key: SurfaceKey(owner: monitor?.id ?? 1, kind: .floor),
+			span: Span(start: monitorFrame.left, end: monitorFrame.right),
+			visible: [Span(start: monitorFrame.left, end: monitorFrame.right)],
+			offset: monitor?.visibleFrame.bottom ?? 1117,
+			ownerBounds: monitorFrame,
+			isReachable: true)
 
+		let provider = SurfaceProvider(surfaces: [windowSurface(top: windowTop), floor])
 		let controller = PetController(
 			catalog: AssetCatalog(locator: AssetLocator(root: root)),
 			surfaceProvider: provider,
 			lifeStore: PetLifeStateStore(stateDirectory: directory),
 			displaySpace: space)
-		controller.debugPlaceOnSurface(makeWindow(top: windowTop, id: windowID))
-		return (controller, provider, directory)
+		controller.debugPlaceOnSurface(windowSurface(top: windowTop))
+		return Rig(controller: controller, provider: provider, floor: floor, directory: directory)
 	}
 
-	private func makeWindow(top: Double, id: UInt32 = 4242) -> SupportSurface {
-		SupportSurface(
-			top: top, left: 200, right: 1400, bottom: top + 400,
-			isDesktopFloor: false, sourceID: id)
+	private func setWindow(_ rig: Rig, to top: Double?, reachable: Bool = true) {
+		var surfaces = [rig.floor]
+		if let top { surfaces.insert(windowSurface(top: top, reachable: reachable), at: 0) }
+		rig.provider.setSurfaces(surfaces)
 	}
 
-	private func moveWindow(_ provider: SurfaceProvider, to top: Double) {
-		provider.setSurfaces([
-			makeWindow(top: top),
-			SupportSurface(
-				top: provider.surfaces.first(where: \.isDesktopFloor)?.top ?? 1117,
-				left: 0, right: 1728, bottom: 1117, isDesktopFloor: true, sourceID: nil),
-		])
-	}
-
-	@Test("A fast upward drag throws her off the window")
+	@Test("A fast upward yank releases the perch and throws her up")
 	func fastUpwardLaunch() throws {
 		let rig = try makeRig(windowTop: 800)
 		defer { try? FileManager.default.removeItem(at: rig.directory) }
 
-		// A drag carries the window up 200 pt in a single frame, which is far past
-		// the threshold that should fling her rather than carry her.
-		moveWindow(rig.provider, to: 600)
+		// 200 pt in a single frame is far past what a drag does.
+		setWindow(rig, to: 600)
 		rig.controller.debugMaintainGroundSupport(delta: Self.frame)
 
 		let state = rig.controller.debugState
 		#expect(state.state == .falling)
 		#expect(state.fallReason == "PlatformLaunch")
+		#expect(state.perchKey == nil, "the perch is cleared on release")
 		// Thrown upward, so her velocity is negative (Y grows downward).
 		#expect(state.velocityY < 0)
-		// She leaves from the ledge, so her feet are at the window's new top.
-		#expect(abs(state.foot.y - 600) < 1)
 	}
 
-	@Test("A fast downward drag leaves her behind")
+	@Test("A fast downward yank releases the perch and leaves her behind")
 	func fastDownwardRelease() throws {
 		let rig = try makeRig(windowTop: 800)
 		defer { try? FileManager.default.removeItem(at: rig.directory) }
 
-		moveWindow(rig.provider, to: 1000)
+		setWindow(rig, to: 1000)
 		rig.controller.debugMaintainGroundSupport(delta: Self.frame)
 
 		let state = rig.controller.debugState
 		#expect(state.state == .falling)
 		#expect(state.fallReason == "PlatformDownwardRelease")
+		#expect(state.perchKey == nil)
 		// Left behind rather than thrown down, so she starts from rest.
 		#expect(state.velocityY == 0)
 	}
 
-	@Test("A slow drag is ridden, not thrown")
+	@Test("A slow drag carries her exactly, not approximately")
 	func slowDragIsRidden() throws {
 		let rig = try makeRig(windowTop: 800)
 		defer { try? FileManager.default.removeItem(at: rig.directory) }
 
-		// 0.5 pt per frame moving up: well under the launch threshold.
 		var top = 800.0
-		for _ in 0..<20 {
+		for _ in 0..<40 {
 			top -= 0.5
-			moveWindow(rig.provider, to: top)
+			setWindow(rig, to: top)
 			rig.controller.debugMaintainGroundSupport(delta: Self.frame)
+			#expect(rig.controller.debugState.state != .falling)
+			// The perch is recomputed, so there is no lag to be "approximately".
+			#expect(rig.controller.debugState.foot.y == top)
 		}
-
-		let state = rig.controller.debugState
-		#expect(state.state != .falling, "a slow drag must be followed")
-		#expect(abs(state.foot.y - top) < 2, "her feet stay on the ledge")
 	}
 
 	@Test("A slow downward drag keeps her on the ledge")
@@ -123,13 +130,13 @@ struct PlatformRideIntegrationTests {
 		defer { try? FileManager.default.removeItem(at: rig.directory) }
 
 		var top = 800.0
-		for _ in 0..<20 {
+		for _ in 0..<40 {
 			top += 0.5
-			moveWindow(rig.provider, to: top)
+			setWindow(rig, to: top)
 			rig.controller.debugMaintainGroundSupport(delta: Self.frame)
+			#expect(rig.controller.debugState.state != .falling)
+			#expect(rig.controller.debugState.foot.y == top)
 		}
-
-		#expect(rig.controller.debugState.state != .falling)
 	}
 
 	@Test("Losing the window drops her only after the grace expires")
@@ -137,12 +144,8 @@ struct PlatformRideIntegrationTests {
 		let rig = try makeRig(windowTop: 800)
 		defer { try? FileManager.default.removeItem(at: rig.directory) }
 
-		// The window disappears from the map entirely.
-		rig.provider.setSurfaces([
-			SupportSurface(
-				top: 1117, left: 0, right: 1728, bottom: 1117,
-				isDesktopFloor: true, sourceID: nil)
-		])
+		// The window is closed: it leaves the graph entirely.
+		setWindow(rig, to: nil)
 
 		// Within the grace she is held, so a window that blinks out of the window
 		// server's list mid-drag does not drop her.
@@ -154,6 +157,7 @@ struct PlatformRideIntegrationTests {
 			rig.controller.debugMaintainGroundSupport(delta: 0.1)
 		}
 		#expect(rig.controller.debugState.state == .falling)
+		#expect(rig.controller.debugState.perchKey == nil)
 	}
 
 	@Test("A window moving while she walks still throws her")
@@ -161,9 +165,41 @@ struct PlatformRideIntegrationTests {
 		let rig = try makeRig(windowTop: 800)
 		defer { try? FileManager.default.removeItem(at: rig.directory) }
 
-		moveWindow(rig.provider, to: 550)
+		setWindow(rig, to: 550)
 		rig.controller.debugMaintainGroundSupport(delta: Self.frame)
 		#expect(rig.controller.debugState.fallReason == "PlatformLaunch")
+	}
+
+	@Test("Losing every display drops her")
+	func monitorUnplug() throws {
+		let rig = try makeRig(windowTop: 800)
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		// She stands on the floor, and the monitor goes away.
+		rig.controller.debugMaintainGroundSupport(delta: Self.frame)
+		rig.provider.setSurfaces([])
+
+		for _ in 0..<30 {
+			rig.controller.debugMaintainGroundSupport(delta: Self.frame)
+		}
+		#expect(rig.controller.debugState.state == .falling)
+	}
+
+	@Test("A window she stands on becoming unreachable drops her")
+	func unreachableDrops() throws {
+		let rig = try makeRig(windowTop: 800)
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		// Dragged up under the menu bar: the same edge, no longer a place she can
+		// stand.
+		setWindow(rig, to: 800, reachable: false)
+		rig.controller.debugMaintainGroundSupport(delta: Self.frame)
+		#expect(rig.controller.debugState.state != .falling, "held through the grace")
+
+		for _ in 0..<30 {
+			rig.controller.debugMaintainGroundSupport(delta: Self.frame)
+		}
+		#expect(rig.controller.debugState.state == .falling)
 	}
 
 	@Test("Leaving the ground stops tracking the window she was on")
@@ -171,9 +207,8 @@ struct PlatformRideIntegrationTests {
 		let rig = try makeRig(windowTop: 800)
 		defer { try? FileManager.default.removeItem(at: rig.directory) }
 
-		// Standing on the window, so it is being ridden.
 		rig.controller.debugMaintainGroundSupport(delta: Self.frame)
-		#expect(rig.controller.debugState.trackedWindowID == 4242)
+		#expect(rig.controller.debugState.trackedWindowID == Self.windowID)
 
 		// Picked up and released far below it.
 		rig.controller.beginDrag(at: PixelPoint(x: 700, y: 800))
@@ -193,9 +228,9 @@ struct PlatformRideIntegrationTests {
 		defer { try? FileManager.default.removeItem(at: rig.directory) }
 
 		rig.controller.debugMaintainGroundSupport(delta: Self.frame)
-		#expect(rig.controller.debugState.trackedWindowID == 4242)
+		#expect(rig.controller.debugState.trackedWindowID == Self.windowID)
 
-		// A hop leaves the ground, so the only way in must clear the tracking.
+		// A hop leaves the ground, so the only way in must clear the perch.
 		rig.controller.debugBeginHop()
 		#expect(rig.controller.debugState.trackedWindowID == nil)
 		#expect(rig.controller.debugState.fallReason == "TerrainHop")
@@ -207,10 +242,15 @@ struct PlatformRideIntegrationTests {
 		defer { try? FileManager.default.removeItem(at: rig.directory) }
 
 		rig.controller.debugMaintainGroundSupport(delta: Self.frame)
-		#expect(rig.controller.debugState.trackedWindowID == 4242)
+		#expect(rig.controller.debugState.trackedWindowID == Self.windowID)
 
 		// Move her onto a second window by hand, as a landing would.
-		rig.controller.debugPlaceOnSurface(makeWindow(top: 400, id: 9999))
+		let second = Surface(
+			key: SurfaceKey(owner: 9999, kind: .windowTop),
+			span: Span(start: 200, end: 1400), visible: [Span(start: 200, end: 1400)],
+			offset: 400, ownerBounds: PixelRect(x: 200, y: 400, width: 1200, height: 400),
+			isReachable: true)
+		rig.controller.debugPlaceOnSurface(second)
 		rig.controller.debugMaintainGroundSupport(delta: Self.frame)
 		#expect(rig.controller.debugState.trackedWindowID == 9999)
 	}
@@ -220,11 +260,11 @@ struct PlatformRideIntegrationTests {
 		let rig = try makeRig(windowTop: 800)
 		defer { try? FileManager.default.removeItem(at: rig.directory) }
 
-		// Landed on a window that is *not* in the periodic map yet, as happens the
-		// moment she touches down on one being dragged. Before this was fixed she
-		// had nothing tracked for that frame, fell back to a proximity lookup,
-		// missed the moving window, and read her own landing as losing support.
-		let fresh = makeWindow(top: 500, id: 7777)
+		let fresh = Surface(
+			key: SurfaceKey(owner: 7777, kind: .windowTop),
+			span: Span(start: 200, end: 1400), visible: [Span(start: 200, end: 1400)],
+			offset: 500, ownerBounds: PixelRect(x: 200, y: 500, width: 1200, height: 400),
+			isReachable: true)
 		rig.controller.debugLand(on: fresh)
 		#expect(rig.controller.debugState.trackedWindowID == 7777)
 		#expect(rig.controller.debugState.state == .landing)
@@ -235,11 +275,27 @@ struct PlatformRideIntegrationTests {
 		let rig = try makeRig(windowTop: 800)
 		defer { try? FileManager.default.removeItem(at: rig.directory) }
 
-		let floor = SupportSurface(
-			top: 1117, left: 0, right: 1728, bottom: 1117,
-			isDesktopFloor: true, sourceID: nil)
-		rig.controller.debugLand(on: floor)
+		rig.controller.debugLand(on: rig.floor)
 		#expect(rig.controller.debugState.trackedWindowID == nil)
 		#expect(rig.controller.debugState.state == .landing)
+	}
+
+	/// The invariant the whole refactor is for: a grounded pet is never without a
+	/// surface. Before the perch model, "landed but unsupported" was reachable.
+	@Test("A grounded pet is never floating, over a long slow ride")
+	func neverFloating() throws {
+		let rig = try makeRig(windowTop: 800)
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		var top = 800.0
+		for tick in 0..<4000 {
+			// A slow, wobbly drift: well under the release threshold every frame.
+			top += sin(Double(tick) * 0.05) * 0.4
+			setWindow(rig, to: top)
+			rig.controller.debugMaintainGroundSupport(delta: Self.frame)
+			let state = rig.controller.debugState
+			#expect(state.state != .falling, "released during a slow drift at tick \(tick)")
+			#expect(state.perchKey != nil, "grounded but unperched at tick \(tick)")
+		}
 	}
 }

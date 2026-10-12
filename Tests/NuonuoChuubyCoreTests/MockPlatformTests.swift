@@ -34,12 +34,12 @@ struct MockPlatformTests {
 		let provider = SurfaceProvider(platform: platform)
 		provider.refresh(displaySpace: space)
 
-		let windowSurfaces = provider.surfaces.filter { !$0.isDesktopFloor }
+		let windowSurfaces = provider.surfaces.filter { $0.key.kind == .windowTop }
 		#expect(windowSurfaces.count == 1)
-		#expect(windowSurfaces.first?.sourceID == 1)
-		#expect(windowSurfaces.first?.top == 200)
-		#expect(provider.desktopFloors.count == 1)
-		#expect(provider.desktopFloors.first?.top == space.displays[0].visibleFrame.bottom)
+		#expect(windowSurfaces.first?.key.owner == 1)
+		#expect(windowSurfaces.first?.offset == 200)
+		#expect(provider.floors.count == 1)
+		#expect(provider.floors.first?.offset == space.displays[0].visibleFrame.bottom)
 	}
 
 	@Test("Chrome and raised windows are not terrain")
@@ -54,7 +54,7 @@ struct MockPlatformTests {
 		let provider = SurfaceProvider(platform: platform)
 		provider.refresh(displaySpace: space)
 
-		#expect(provider.surfaces.filter { !$0.isDesktopFloor }.isEmpty)
+		#expect(provider.surfaces.filter { $0.key.kind == .windowTop }.isEmpty)
 	}
 
 	@Test("The hidden part of an edge is not standable")
@@ -71,9 +71,8 @@ struct MockPlatformTests {
 		let provider = SurfaceProvider(platform: platform)
 		provider.refresh(displaySpace: space)
 
-		let behind = provider.surfaces.first { $0.sourceID == 1 }
+		let behind = provider.surfaces.first { $0.key == SurfaceKey(owner: 1, kind: .windowTop) }
 		#expect(behind != nil)
-		#expect(behind?.left == 700)
-		#expect(behind?.right == 1100)
+		#expect(behind?.visible == [Span(start: 700, end: 1100)])
 	}
 }

@@ -4,27 +4,28 @@
 
 ---
 
-## 1. 窗口骑乘：弹起后停在高处（**未解决**，待复现确诊）
+## 1. 窗口骑乘：弹起后停在高处（**已由重构根除**，2026-10-12）
 
-**现象**（用户报告）：快速上甩窗口后，桌宠弹起并停在一个较高的位置不再下落；用户认为那个高度「应该没有窗沿」。
+**原现象**（用户报告）：快速上甩窗口后，桌宠弹起并停在一个较高的位置不再下落；用户认为那个高度「应该没有窗沿」。
 
-**已有的证据**：日志显示一次弹起后她在 `falling` 中落到 `Foot=1036,38`，而当时 `Brave Browser` 窗口的顶边恰好是 `y=38`（`x=126..1621`，紧贴菜单栏下方）。所以**那一次**是落在真实窗沿上。
+**根因**：旧模型用「世界坐标 + 速度匹配 + 一个可按 id 追踪的窗口」表达支撑，这套机制允许出现「处于落地/待机状态、但没有任何支撑」这一状态 —— 那就是真正的悬空。
 
-**仍未解释的部分**：用户反馈当时那几个 Brave 窗口都**高于她脚的位置**。若属实，说明她在低于窗口顶边的地方就停住了，那就不是「落在窗沿」能解释的 —— 需要确诊。
+**为什么现在不可能再发生**：重构 Phase C 把支撑换成参数化棲位 `(SurfaceKey, t)`（见
+`docs/refactor-plan.md`）。`maintainGroundSupport` 每 tick 对 `idle / running / sleeping /
+landing / curious` 五种落地状态运行，且只有两条路：
 
-**如何确诊**：复现后读
-`~/Library/Application Support/NuonuoChuuby/activity.log`
-里的 `StatusHeartbeat`（每 10 秒一条）：
+- 已有棲位 → 解析出当前 surface；解析不到则走 0.35 s 宽限，宽限过期即 `releasePerch()` + `beginFall()`；
+- 没有棲位 → `acquirePerch()`：要么找到 surface 并锚定，要么 `beginFall()`。
 
-| 日志内容 | 结论 |
-| --- | --- |
-| `Support="none"` 且 `State` 不是 `falling` | **真悬空**（bug）：她处于落地/待机状态却没有任何支撑 |
-| `Support="window"` | 她站在某窗口顶边上（行为正常，只是那个边缘不好认） |
-| `Support="floor"` | 她在地面上 |
+即：**落地状态与「没有支撑」不能并存**。新增的 `neverFloating` 测试（4000 tick 慢速拖拽）
+逐 tick 断言这条不变量。
 
-若为「真悬空」，可疑方向：`land(on:)` 之后窗口在 `landing` 动画期间移走或关闭，导致她以「有支撑」的状态进入 idle。
+**验证状态（诚实说明）**：本条**没有**重做手工拖拽复现 —— 真实拖拽无法脚本化
+（AppleScript 的 `set bounds` 是瞬移，不是手势）。依据是**结构性不变量** + 4000 tick 测试
++ 实测日志中 **0 条**非 `falling` 的 `Support="none"` 心跳。若再次观察到该现象，按新问题处理。
 
-**建议用 LaunchServices 启动**（`make run`），否则授权请求不会正常弹出。
+**如何确诊（保留）**：读 `~/Library/Application Support/NuonuoChuuby/activity.log` 里的
+`StatusHeartbeat`（每 10 秒一条）：`Support="none"` 且 `State` 不是 `falling` = 真悬空。
 
 ---
 

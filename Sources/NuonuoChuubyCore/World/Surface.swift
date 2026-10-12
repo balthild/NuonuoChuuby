@@ -61,21 +61,60 @@ public struct Surface: Sendable, Equatable {
 	/// The edge's fixed coordinate: its y for a horizontal edge, its x for a
 	/// vertical one.
 	public var offset: Double
+	/// The owning window's full rectangle (a monitor's for a floor). Climbing needs
+	/// the window's bottom edge, which the edge alone does not carry.
+	public var ownerBounds: PixelRect?
 	/// Whether the pet may currently stand on it. Only window tops and floors are
 	/// enabled this round (decision D3); the vertical edges are built but unused.
 	public var isReachable: Bool
 
+	/// True for the edges whose `span` runs along x.
+	public var isHorizontal: Bool { key.kind != .windowLeft && key.kind != .windowRight }
+
 	public init(
-		key: SurfaceKey, span: Span, visible: [Span], offset: Double, isReachable: Bool
+		key: SurfaceKey,
+		span: Span,
+		visible: [Span],
+		offset: Double,
+		ownerBounds: PixelRect? = nil,
+		isReachable: Bool
 	) {
 		self.key = key
 		self.span = span
 		self.visible = visible
 		self.offset = offset
+		self.ownerBounds = ownerBounds
 		self.isReachable = isReachable
 	}
 
 	public var isFullyOccluded: Bool { visible.isEmpty }
 
-	public func isVisible(_ t: Double) -> Bool { visible.contains { $0.contains(t) } }
+	/// A `t` position (0…1 along `span`) mapped to its coordinate in world space.
+	public func coordinate(atT t: Double) -> Double { span.start + t * span.length }
+
+	/// The inverse: a world coordinate mapped to `t`, unclamped.
+	public func t(atCoordinate coordinate: Double) -> Double {
+		span.length > 0 ? (coordinate - span.start) / span.length : 0
+	}
+
+	public func isVisible(atCoordinate coordinate: Double, inset: Double = 0) -> Bool {
+		visible.contains { coordinate >= $0.start + inset && coordinate <= $0.end - inset }
+	}
+
+	/// The visible run a `t` position falls in, if any.
+	public func visibleRun(containingT t: Double) -> Span? {
+		let coordinate = coordinate(atT: t)
+		return visible.first { $0.contains(coordinate) }
+	}
+
+	/// The visible run holding a world point, measured along the edge's axis.
+	public func visibleRun(containing point: PixelPoint) -> Span? {
+		let coordinate = isHorizontal ? point.x : point.y
+		return visible.first { $0.contains(coordinate) }
+	}
+
+	public func isVisible(at point: PixelPoint, inset: Double = 0) -> Bool {
+		let coordinate = isHorizontal ? point.x : point.y
+		return isVisible(atCoordinate: coordinate, inset: inset)
+	}
 }

@@ -8,27 +8,22 @@ import Foundation
 /// standing on is cheap enough to do every frame, and is what the original called
 /// its "live tracked surface". Everything else lives in ``SurfaceBuilder``.
 enum WindowSurfaceProvider {
-	/// The surface under a foot on a specific window, resolved by identity.
+	/// The window's top edge as a surface, read fresh this frame.
 	///
-	/// Unlike discovery, this does **not** re-apply the reachability rules: the
-	/// window is already her support, so if the user drags it up under the menu
-	/// bar or off the edge of the screen she should keep riding it rather than
-	/// being dropped.
-	static func liveSurface(
-		windowID: UInt32,
-		displaySpace: DisplaySpace,
-		footX: Double
-	) -> SupportSurface? {
+	/// Its occlusion is *not* recomputed — the graph is the authority for that, and
+	/// the window she rides is in front of whatever it overlaps. Reachability **is**
+	/// recomputed: a window dragged up under the menu bar is no longer somewhere she
+	/// can stand, and she is dropped rather than carried out of reach.
+	static func liveWindowSurface(windowID: UInt32, monitors: [Monitor]) -> Surface? {
 		guard let bounds = liveBounds(of: windowID) else { return nil }
-
-		let candidates = segments(
-			for: PlatformWindow(
-				id: windowID, ownerPID: 0, ownerName: "", bounds: bounds, layer: 0, alpha: 1),
-			displaySpace: displaySpace)
-			.filter { $0.sourceID == windowID }
-		guard !candidates.isEmpty else { return nil }
-
-		return candidates.first { $0.containsX(footX, inset: 0) } ?? candidates[0]
+		let span = Span(start: bounds.left, end: bounds.right)
+		let reachable = monitors.contains {
+			bounds.top >= $0.visibleFrame.top && bounds.top < $0.visibleFrame.bottom
+		}
+		return Surface(
+			key: SurfaceKey(owner: windowID, kind: .windowTop),
+			span: span, visible: [span], offset: bounds.top, ownerBounds: bounds,
+			isReachable: reachable)
 	}
 
 	/// The window's current bounds, queried directly.
@@ -46,34 +41,5 @@ enum WindowSurfaceProvider {
 		return PixelRect(
 			x: Double(rect.origin.x), y: Double(rect.origin.y),
 			width: Double(rect.width), height: Double(rect.height))
-	}
-
-	/// A window's standable segments, one per display it overlaps.
-	///
-	/// Reachability is deliberately not checked: the pet is already standing on
-	/// the window, so it stays valid wherever it has been moved to.
-	private static func segments(
-		for window: PlatformWindow,
-		displaySpace: DisplaySpace
-	) -> [SupportSurface] {
-		let minimumSegmentWidth = WindowTerrainEligibilityPolicy.minimumWidth
-		var result: [SupportSurface] = []
-
-		for display in displaySpace.displays {
-			let left = max(window.bounds.left, display.frame.left)
-			let right = min(window.bounds.right, display.frame.right)
-			guard right - left >= minimumSegmentWidth else { continue }
-
-			result.append(
-				SupportSurface(
-					top: window.bounds.top,
-					left: left,
-					right: right,
-					bottom: window.bounds.bottom,
-					isDesktopFloor: false,
-					sourceID: window.id
-				))
-		}
-		return result
 	}
 }

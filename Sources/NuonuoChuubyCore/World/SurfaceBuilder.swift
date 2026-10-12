@@ -48,7 +48,7 @@ public enum SurfaceBuilder {
 				Surface(
 					key: SurfaceKey(owner: monitor.id, kind: .floor),
 					span: span, visible: [span], offset: monitor.visibleFrame.bottom,
-					isReachable: true))
+					ownerBounds: monitor.frame, isReachable: true))
 		}
 
 		for (index, window) in windows.enumerated() {
@@ -84,6 +84,7 @@ public enum SurfaceBuilder {
 					span: span,
 					visible: visibleRuns(of: span, covering: y, along: .horizontal, by: occluders),
 					offset: y,
+					ownerBounds: bounds,
 					isReachable: kind == .windowTop))
 		}
 		for (kind, x) in vertical {
@@ -94,6 +95,7 @@ public enum SurfaceBuilder {
 					span: span,
 					visible: visibleRuns(of: span, covering: x, along: .vertical, by: occluders),
 					offset: x,
+					ownerBounds: bounds,
 					isReachable: false))
 		}
 		return result

@@ -135,8 +135,13 @@ struct TerrainBehaviorPlannerTests {
 struct WindowClimbPlannerTests {
 	private func surface(
 		id: UInt32?, top: Double, left: Double = 200, right: Double = 900, floor: Bool = false
-	) -> SupportSurface {
-		SupportSurface(top: top, left: left, right: right, bottom: top + 500, isDesktopFloor: floor, sourceID: id)
+	) -> Surface {
+		let span = Span(start: left, end: right)
+		return Surface(
+			key: SurfaceKey(owner: id ?? 1, kind: floor ? .floor : .windowTop),
+			span: span, visible: [span], offset: top,
+			ownerBounds: PixelRect(x: left, y: top, width: right - left, height: 500),
+			isReachable: true)
 	}
 
 	@Test("A higher window directly above is climbable")
