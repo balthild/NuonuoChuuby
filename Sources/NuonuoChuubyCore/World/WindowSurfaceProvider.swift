@@ -63,6 +63,11 @@ enum WindowSurfaceProvider {
 	/// dragged window feel jerky. Asking the window server about the single
 	/// window the pet is standing on is cheap enough to do every frame, and is
 	/// what the original called its "live tracked surface".
+	///
+	/// Unlike discovery, this does **not** re-apply the reachability rules: the
+	/// window is already her support, so if the user drags it up under the menu
+	/// bar or off the edge of the screen she should keep riding it rather than
+	/// being dropped.
 	static func liveSurface(
 		windowID: UInt32,
 		displaySpace: DisplaySpace,
@@ -70,12 +75,11 @@ enum WindowSurfaceProvider {
 	) -> SupportSurface? {
 		guard let bounds = liveBounds(of: windowID) else { return nil }
 
-		// Reuse the same splitting and reachability rules as the periodic map, so
-		// a live read can never disagree with it.
-		let window = TerrainWindow(
-			number: windowID, ownerPID: 0, ownerName: "",
-			bounds: bounds, layer: 0, alpha: 1)
-		let candidates = segments(for: window, displaySpace: displaySpace)
+		let candidates = segments(
+			for: TerrainWindow(
+				number: windowID, ownerPID: 0, ownerName: "", bounds: bounds, layer: 0, alpha: 1),
+			displaySpace: displaySpace,
+			requireReachable: false)
 			.filter { $0.sourceID == windowID }
 		guard !candidates.isEmpty else { return nil }
 
@@ -100,7 +104,11 @@ enum WindowSurfaceProvider {
 	}
 
 	/// A window's standable segments, one per display it overlaps.
-	private static func segments(for window: TerrainWindow, displaySpace: DisplaySpace) -> [SupportSurface] {
+	private static func segments(
+		for window: TerrainWindow,
+		displaySpace: DisplaySpace,
+		requireReachable: Bool = true
+	) -> [SupportSurface] {
 		let minimumSegmentWidth = WindowTerrainEligibilityPolicy.minimumWidth
 		var result: [SupportSurface] = []
 
@@ -109,10 +117,13 @@ enum WindowSurfaceProvider {
 			let right = min(window.bounds.right, display.frame.right)
 			guard right - left >= minimumSegmentWidth else { continue }
 
-			// Standing under the menu bar or on the Dock is not reachable.
-			guard window.bounds.top >= display.visibleFrame.top,
-				window.bounds.top < display.visibleFrame.bottom
-			else { continue }
+			// Standing under the menu bar or on the Dock is not reachable, but a
+			// window she is already standing on stays valid wherever it is moved.
+			if requireReachable {
+				guard window.bounds.top >= display.visibleFrame.top,
+					window.bounds.top < display.visibleFrame.bottom
+				else { continue }
+			}
 
 			result.append(
 				SupportSurface(

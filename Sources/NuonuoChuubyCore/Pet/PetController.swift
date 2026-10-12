@@ -761,7 +761,17 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	private func beginTrackingSupport(_ surface: SupportSurface) {
 		supportSourceID = surface.sourceID
-		lastSupportTop = surface.top
+		// Seed from the live reading, not the map's. The map can be half a second
+		// old, and mixing a stale baseline with the live sample on the next frame
+		// reads as one enormous jump, which would launch her the instant she
+		// stepped onto a window that had moved.
+		if let sourceID = surface.sourceID,
+			let live = WindowSurfaceProvider.liveBounds(of: sourceID)
+		{
+			lastSupportTop = live.top
+		} else {
+			lastSupportTop = surface.top
+		}
 		supportMotionInitialized = surface.sourceID != nil
 	}
 
@@ -1003,7 +1013,22 @@ public final class PetController: SpriteAnimatorDelegate {
 
 		foot.x = nextFootX
 		foot.y = nextFootY
+		applyCeiling()
 		if abs(velocity.x) > 8 { facing = velocity.x < 0 ? -1 : 1 }
+	}
+
+	/// She must not fly out of the top of the screen.
+	///
+	/// A fast upward drag can throw her further than the sky above her: at the
+	/// launch ceiling she rises about 400 pt, which from a high window is off the
+	/// display entirely. Bouncing off that ceiling reads better than vanishing.
+	private func applyCeiling() {
+		guard velocity.y < 0, let display = displaySpace.display(containing: foot) else { return }
+		let ceiling = display.visibleFrame.top
+		guard foot.y <= ceiling else { return }
+		foot.y = ceiling
+		velocity.y = 0
+		remainderY = 0
 	}
 
 	private func land() {
