@@ -8,6 +8,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var surfaceProvider: SurfaceProvider?
 	private var controller: PetController?
 	private var petWindow: PetWindowController?
+	private var speech: PetSpeechCoordinator?
+	private var voice: VoicePlaybackService?
 
 	public func applicationDidFinishLaunching(_ notification: Notification) {
 		// Required when running the executable directly (no bundle to read
@@ -16,6 +18,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
 		let environment = AppEnvironment()
 		self.environment = environment
+		DiagnosticsLog.shared.configure(fileURL: environment.logPath)
+		DiagnosticsLog.shared.writeEvent("ProcessStarted", [("Version", AppEnvironment.bundleIdentifier)])
 
 		guard let locator = resolveAssets(environment: environment) else {
 			presentMissingAssetsAlert()
@@ -41,12 +45,24 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 		)
 		self.controller = controller
 
+		// Voice and the head bubble are wired before the pet starts so the first
+		// frame can already speak.
+		let loudness = VoiceLoudness.load(from: locator.file("audio/voice-levels.json"))
+		let voice = VoicePlaybackService(
+			locator: locator, character: .nuonuo, loudness: loudness)
+		let speech = PetSpeechCoordinator(
+			voice: voice, bubble: SpeechBubbleWindowController(), displaySpace: displaySpace)
+		self.voice = voice
+		self.speech = speech
+		controller.speech = speech
+
 		let petWindow = PetWindowController(controller: controller, displaySpace: displaySpace)
 		petWindow.menuProvider = { [weak self] event in self?.makeContextMenu() }
 		self.petWindow = petWindow
 
 		petWindow.show()
 		controller.start()
+		controller.announceStartup()
 
 		NotificationCenter.default.addObserver(
 			self,

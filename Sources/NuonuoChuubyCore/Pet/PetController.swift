@@ -37,6 +37,8 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	public let profile: PetCharacterProfile
 	public weak var delegate: PetControllerDelegate?
+	/// Optional speech; when absent the pet stays silent.
+	public weak var speech: PetSpeechCoordinator?
 
 	public private(set) var state: PetState = .idle
 	public private(set) var life: PetLifeState
@@ -62,6 +64,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var targetX: Double = 0
 	private var movementPurpose: MovementPurpose = .none
 	private var fallStartFootY: Double = 0
+	private var fallReason = "support-lost"
 
 	/// How long a transient state (landing, curious, waking) lasts before idle.
 	private var transientDuration: Double = 0
@@ -142,7 +145,10 @@ public final class PetController: SpriteAnimatorDelegate {
 		case .falling: updateFalling(simulation)
 		case .landing, .curious, .waking:
 			// These play out for a fixed dwell, then return to idle.
-			if stateElapsed >= transientDuration { returnToIdle() }
+			if stateElapsed >= transientDuration {
+				if state == .waking { announce(.wakeNormally, voice: .calm) }
+				returnToIdle()
+			}
 		case .sleeping: updateSleeping(simulation)
 		default: break
 		}
@@ -273,18 +279,20 @@ public final class PetController: SpriteAnimatorDelegate {
 	private func beginFall(reason: String = "support-lost") {
 		state = .falling
 		stateElapsed = 0
+		fallReason = reason
 		fallStartFootY = foot.y
 		animator.play("fall")
-		_ = reason
 	}
 
 	private func beginHop() {
 		velocity.y = -Motion.hopVelocity * displayScale
 		fallStartFootY = foot.y
+		fallReason = "TerrainHop"
 		state = .falling
 		movementPurpose = .wander
 		stateElapsed = 0
 		animator.play("jump")
+		announce(.terrainHop, voice: .positive, priority: .ambient)
 	}
 
 	private func updateFalling(_ delta: Double) {
@@ -336,6 +344,13 @@ public final class PetController: SpriteAnimatorDelegate {
 	}
 
 	private func land() {
+		let fallDistance = max(0, foot.y - fallStartFootY)
+		let impactSpeed = max(0, velocity.y)
+		let shouldReact = LandingVoicePolicy.shouldReact(
+			fallDistancePixels: fallDistance,
+			downwardImpactSpeed: impactSpeed,
+			reason: fallReason,
+			displayScale: displayScale)
 		state = .landing
 		stateElapsed = 0
 		transientDuration = animator.durationSeconds
@@ -343,6 +358,9 @@ public final class PetController: SpriteAnimatorDelegate {
 		remainderX = 0
 		remainderY = 0
 		animator.play("land")
+		if shouldReact {
+			announce(.hardLanding, voice: .landing, priority: .important)
+		}
 	}
 
 	// MARK: - Sleep
@@ -353,6 +371,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		velocity = .zero
 		sleepRemaining = min(60, max(LifeBehaviorPolicy.minimumNapSeconds, life.sleepiness / 36 * 60))
 		animator.play("sleep_enter")
+		announce(.sleep, voice: .calm, priority: .important)
 	}
 
 	private var sleepRemaining: Double = 0
@@ -385,6 +404,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		dragOffset = PixelPoint(x: foot.x - cursor.x, y: foot.y - cursor.y)
 		dragTracker.reset(point: cursor, atSeconds: CFAbsoluteTimeGetCurrent())
 		animator.play("drag")
+		announce(.pickedUp, voice: .question, priority: .normal)
 	}
 
 	public func updateDrag(to cursor: PixelPoint) {
@@ -402,9 +422,17 @@ public final class PetController: SpriteAnimatorDelegate {
 		remainderX = 0
 		remainderY = 0
 		fallStartFootY = foot.y
+		fallReason = release.hasInertia ? "DragThrow" : "released"
 		state = .falling
 		stateElapsed = 0
 		animator.play(release.hasInertia && velocity.y < 0 ? "toss" : "fall")
+		// A weak release is a drop, not a throw; only a real flick earns the
+		// louder reaction.
+		if release.hasInertia, release.speed > 700 * displayScale {
+			announce(.dragThrow, voice: .scream, priority: .important)
+		} else {
+			announce(.released, voice: .aggrieved, priority: .normal)
+		}
 	}
 
 	// MARK: - External commands
@@ -416,6 +444,16 @@ public final class PetController: SpriteAnimatorDelegate {
 		remainderX = 0
 		remainderY = 0
 		returnToIdle()
+		announce(.home, voice: .affirmative, priority: .normal)
+	}
+
+	/// Announces the startup line once, after the first frame is on screen.
+	public func announceStartup() {
+		announce(.startup, voice: .neutral, priority: .normal)
+	}
+
+	private func announce(_ cue: DialogueCue, voice: VoiceCue, priority: VoicePriority = .normal) {
+		speech?.react(cue, voice: voice, priority: priority, head: headPoint)
 	}
 
 	public func setSize(_ size: Double) {
@@ -450,6 +488,12 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// The panel's top-left corner in global top-left coordinates.
 	public var windowTopLeft: PixelPoint {
 		PixelPoint(x: foot.x - footInset.x, y: foot.y - footInset.y)
+	}
+
+	/// Where the head bubble should sit: just above the sprite's crown.
+	public var headPoint: PixelPoint {
+		let top = windowTopLeft.y
+		return PixelPoint(x: foot.x, y: top + petSize * 0.18)
 	}
 
 	/// The interactive body ellipse, in the view's own (flipped, Y-down) space.
