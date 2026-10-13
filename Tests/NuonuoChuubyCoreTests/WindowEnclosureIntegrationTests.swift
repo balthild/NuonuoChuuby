@@ -559,6 +559,121 @@ struct WindowEnclosureIntegrationTests {
 		#expect(rig.controller.debugState.enclosureWindowID == Self.windowID)
 	}
 
+	// MARK: - Dragging the box up and down
+
+	/// Lets her settle on the box's floor, with the box where it is.
+	private func settle(_ rig: Rig, seconds: Double = 5) {
+		advance(rig, seconds: seconds)
+	}
+
+	/// Moves the scripted box and steps one frame, as dragging it would.
+	private func dragBox(_ rig: Rig, byY delta: Double, frames: Int) {
+		var box = Self.box
+		for _ in 0..<frames {
+			box = PixelRect(x: box.x, y: box.y + delta, width: box.width, height: box.height)
+			rig.controller.debugLiveWindowBoundsOverride = { _ in box }
+			_ = rig.controller.debugUpdateEnclosure(delta: Self.frame)
+		}
+	}
+
+	@Test("Dragging the box slowly up carries her with it, without bouncing her")
+	func slowUpwardDragCarriesHer() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		drop(rig, at: PixelPoint(x: 900, y: 900))
+		settle(rig)
+		#expect(rig.controller.debugState.state == .idle, "she should be resting before the drag")
+		let settled = rig.controller.debugState.foot.y
+
+		// 5 pt a frame is 300 pt/s: an ordinary drag, well under the yank.
+		var box = Self.box
+		for tick in 0..<30 {
+			box = PixelRect(x: box.x, y: box.y - 5, width: box.width, height: box.height)
+			rig.controller.debugLiveWindowBoundsOverride = { _ in box }
+			_ = rig.controller.debugUpdateEnclosure(delta: Self.frame)
+
+			#expect(
+				rig.controller.debugState.state == .idle,
+				"bounced her on a slow drag at tick \(tick)"
+			)
+			#expect(
+				rig.controller.debugState.velocityY <= 0,
+				"kicked her upward at tick \(tick) instead of carrying her"
+			)
+		}
+
+		// Carried the whole way, so her foot rose by the same 150 pt the box did.
+		let risen = settled - rig.controller.debugState.foot.y
+		#expect(abs(risen - 150) < 2, "expected to ride up with the floor, but rose \(risen) pt")
+	}
+
+	@Test("Yanking the box up throws her inside it")
+	func yankingTheBoxUpThrowsHer() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		drop(rig, at: PixelPoint(x: 900, y: 900))
+		settle(rig)
+
+		// 20 pt a frame is 1200 pt/s: past the threshold, so it is a throw.
+		dragBox(rig, byY: -20, frames: 3)
+
+		#expect(rig.controller.debugState.state == .falling)
+		#expect(
+			rig.controller.debugState.velocityY < -500,
+			"flung up rather than carried: \(rig.controller.debugState.velocityY)"
+		)
+		#expect(rig.controller.debugState.enclosureWindowID == Self.windowID)
+	}
+
+	@Test("Dragging the box slowly down carries her down with it")
+	func slowDownwardDragCarriesHer() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		drop(rig, at: PixelPoint(x: 900, y: 900))
+		settle(rig)
+		let settled = rig.controller.debugState.foot.y
+
+		var box = Self.box
+		for tick in 0..<30 {
+			box = PixelRect(x: box.x, y: box.y + 5, width: box.width, height: box.height)
+			rig.controller.debugLiveWindowBoundsOverride = { _ in box }
+			_ = rig.controller.debugUpdateEnclosure(delta: Self.frame)
+
+			// The floor moving away from her must not leave her airborne: being left
+			// behind here is what showed a fall animation on a slow downward drag.
+			#expect(
+				rig.controller.debugState.state == .idle,
+				"she was dropped by a slow downward drag at tick \(tick)"
+			)
+		}
+
+		// Carried the whole way, so her foot went down with the box.
+		let fallen = rig.controller.debugState.foot.y - settled
+		#expect(abs(fallen - 150) < 2, "expected to ride down with the floor, fell \(fallen) pt")
+	}
+
+	@Test("Letting go of the drag does not bounce her")
+	func stoppingTheDragDoesNotBounceHer() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		drop(rig, at: PixelPoint(x: 900, y: 900))
+		settle(rig)
+
+		// Drag up, then hold still: the floor stops under her. She must stop with it
+		// rather than keeping the speed it had and flying off it.
+		dragBox(rig, byY: -5, frames: 20)
+		for tick in 0..<30 {
+			_ = rig.controller.debugUpdateEnclosure(delta: Self.frame)
+			let state = rig.controller.debugState
+			#expect(state.state == .idle, "thrown off the floor at tick \(tick) after the drag stopped")
+			#expect(state.velocityY <= 0, "kicked upward at tick \(tick)")
+		}
+	}
+
 	// MARK: - Side impact
 
 	@Test("A window edge sweeping sideways through her throws her clear")

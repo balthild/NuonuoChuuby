@@ -34,6 +34,7 @@ struct WindowEnclosureTests {
 		to current: PixelRect,
 		velocityX: Double = 0,
 		velocityY: Double = 0,
+		wasOnFloor: Bool = false,
 		elapsed: Double? = nil,
 		scale: Double = 1
 	) -> WindowEnclosureStep {
@@ -43,6 +44,7 @@ struct WindowEnclosureTests {
 			currentBox: current,
 			velocityX: velocityX,
 			velocityY: velocityY,
+			wasOnFloor: wasOnFloor,
 			elapsedSeconds: elapsed ?? frame,
 			scale: scale
 		)
@@ -66,7 +68,140 @@ struct WindowEnclosureTests {
 		#expect(result.isResting)
 		#expect(result.velocityY == 0)
 		#expect(abs(result.offsetY) < 1e-9, "she is placed exactly on the wall")
-		#expect(abs(result.impactSpeed - 77.5) < 1e-9)
+		// Being held up is not an impact. Reporting one here also outranked
+		// `isResting` in the controller, which reads `impactSpeed` to decide whether
+		// to scream, so a settle used to shout and switch to falling instead.
+		#expect(result.impactSpeed == 0)
+	}
+
+	@Test("A floor rising slowly under her carries her instead of bouncing her")
+	func slowFloorRiseCarriesHer() {
+		// 5 pt in a frame is 300 pt/s: an ordinary drag, well under the 900 pt/s
+		// that counts as a yank. She is standing on the floor, so it takes her up
+		// with it.
+		let result = step(
+			pet: pet(left: 400, top: 466),
+			from: box(),
+			to: box(y: 195),
+			velocityY: 0,
+			wasOnFloor: true
+		)
+		#expect(result.hitBottom)
+		#expect(result.isResting, "carried, not bounced")
+		#expect(result.velocityY == -300, "she moves up with the floor")
+		#expect(result.impactSpeed == 0)
+	}
+
+	@Test("A floor falling slowly under her carries her down instead of dropping her")
+	func slowFloorFallCarriesHer() {
+		// The mirror of the rise: the floor moves away from her, and she must follow
+		// it rather than being left airborne. Being left behind here is what made a
+		// slow downward drag show a fall animation.
+		let result = step(
+			pet: pet(left: 400, top: 466),
+			from: box(),
+			to: box(y: 205),
+			velocityY: 0,
+			wasOnFloor: true
+		)
+		#expect(result.hitBottom)
+		#expect(result.isResting)
+		#expect(result.velocityY == 300, "she moves down with the floor")
+		#expect(result.impactSpeed == 0)
+	}
+
+	@Test("A drag that stops does not leave her with the speed it had")
+	func stoppingTheDragDoesNotReleaseHer() {
+		// She was carried at 300 pt/s and the box has now stopped. She must stop
+		// with it: keeping the speed would fling her off the floor, and she would
+		// come back down hard enough to be read as a landing — with the fall
+		// animation and the line that goes with it.
+		let result = step(
+			pet: pet(left: 400, top: 466),
+			from: box(y: 195),
+			to: box(y: 195),
+			velocityY: -300,
+			wasOnFloor: true
+		)
+		#expect(result.hitBottom)
+		#expect(result.isResting)
+		#expect(result.velocityY == 0, "stopped with the floor, not thrown off it")
+		#expect(result.impactSpeed == 0, "and not reported as a landing")
+	}
+
+	@Test("A floor yanked up throws her instead of carrying her")
+	func yankedFloorThrowsHer() {
+		// The same move, four times as fast: past the threshold, so it is a throw.
+		let result = step(
+			pet: pet(left: 400, top: 466),
+			from: box(),
+			to: box(y: 180),
+			velocityY: 0,
+			wasOnFloor: true
+		)
+		#expect(result.hitBottom)
+		#expect(!result.isResting)
+		#expect(result.velocityY < -500, "flung up at the wall's own (clamped) speed")
+		#expect(result.impactSpeed > 800)
+	}
+
+	@Test("A floor yanked down leaves her behind")
+	func yankedFloorDownLeavesHer() {
+		let result = step(
+			pet: pet(left: 400, top: 466),
+			from: box(),
+			to: box(y: 220),
+			velocityY: 0,
+			wasOnFloor: true
+		)
+		#expect(result.hitBottom)
+		#expect(!result.isResting)
+		#expect(result.velocityY == 0, "left behind rather than pulled down")
+		#expect(result.impactSpeed == 0, "and nothing to be startled by")
+	}
+
+	@Test("The threshold is the one the perch uses")
+	func thresholdMatchesThePerch() {
+		// Just under, then just over: the two must fall either side of the boundary.
+		let nearly = step(
+			pet: pet(left: 400, top: 466),
+			from: box(),
+			to: box(y: 200 - PlatformRidePhysics.releaseDisplacement + 0.5),
+			velocityY: 0,
+			wasOnFloor: true
+		)
+		#expect(nearly.isResting, "just under the threshold is still a carry")
+
+		let past = step(
+			pet: pet(left: 400, top: 466),
+			from: box(),
+			to: box(y: 200 - PlatformRidePhysics.releaseDisplacement),
+			velocityY: 0,
+			wasOnFloor: true
+		)
+		#expect(!past.isResting, "past it is a throw")
+	}
+
+	@Test("She still bounces off a ceiling she ran into")
+	func ceilingSheRanIntoStillBounces() {
+		let result = step(pet: pet(left: 400, top: 206), to: box(), velocityY: -400)
+		#expect(result.hitTop)
+		#expect(abs(result.velocityY - 372.5 * 0.58) < 1e-9)
+		#expect(abs(result.impactSpeed - 372.5) < 1e-9)
+	}
+
+	@Test("A ceiling coming down onto her carries her down instead of kicking her")
+	func descendingCeilingCarriesHer() {
+		// 5 pt in a frame: the mirror of the floor case, and the mirror of its fix.
+		let result = step(
+			pet: pet(left: 400, top: 206),
+			from: box(),
+			to: box(y: 205),
+			velocityY: 0
+		)
+		#expect(result.hitTop)
+		#expect(result.velocityY == 300, "she is pushed down at the ceiling's speed")
+		#expect(result.impactSpeed == 0)
 	}
 
 	@Test("A hard landing on the floor bounces at 0.48 of the impact")
@@ -91,7 +226,10 @@ struct WindowEnclosureTests {
 	@Test("An opening wall pushes her along rather than passing through her")
 	func openingWallPushesHer() {
 		// The box slides 5 pt right in one frame, so its left wall moves at
-		// 300 pt/s. She is sitting against where that wall used to be.
+		// 300 pt/s. She is sitting against where that wall used to be. That is an
+		// ordinary drag, not a yank, so the wall **carries** her: a wall that only
+		// pushes should not register as a hit, which the controller reads as a reason
+		// to scream.
 		let result = step(
 			pet: pet(left: 306, top: 300),
 			from: box(),
@@ -101,15 +239,14 @@ struct WindowEnclosureTests {
 		#expect(result.hitLeft)
 		#expect(!result.hitRight)
 		#expect(abs(result.offsetX - 5) < 1e-9, "she is carried out to the new wall")
-		// Thrown relative to the wall, which is the whole point of the bounce
-		// being relative: 300 + 300 * 0.68.
-		#expect(abs(result.velocityX - 504) < 1e-9)
-		#expect(abs(result.impactSpeed - 300) < 1e-9)
+		#expect(abs(result.velocityX - 300) < 1e-9, "she moves with the wall, not faster")
+		#expect(result.impactSpeed == 0)
 	}
 
-	@Test("A wall dragging faster than the clamp is treated as the clamp")
-	func wallVelocityIsClamped() {
-		// 100 pt in a frame would be 6000 pt/s; the wall is clamped to 900.
+	@Test("A side wall yanked sideways knocks her clear of it")
+	func yankedSideWallKnocksHer() {
+		// 100 pt in a frame would be 6000 pt/s; the wall is clamped to 900. Past the
+		// threshold, so it is a knock rather than a push, and the clamp applies.
 		let result = step(
 			pet: pet(left: 306, top: 300),
 			from: box(),

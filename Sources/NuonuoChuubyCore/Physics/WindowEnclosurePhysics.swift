@@ -38,9 +38,8 @@ public enum WindowEnclosurePhysics {
 		static let horizontalRestitution: Double = 0.68
 		static let topRestitution: Double = 0.58
 		static let bottomRestitution: Double = 0.48
-		/// Below this the landing is a settle; above it, a bounce worth hearing.
+		/// Below this she is settling onto a floor rather than hitting one.
 		static let restRelativeSpeed: Double = 115
-		static let restWallSpeed: Double = 90
 		static let restDamping: Double = 2.2
 		static let maximumVelocityX: Double = 1350
 		static let maximumVelocityY: Double = 1200
@@ -83,6 +82,7 @@ public enum WindowEnclosurePhysics {
 		currentBox: PixelRect,
 		velocityX: Double,
 		velocityY: Double,
+		wasOnFloor: Bool,
 		elapsedSeconds: Double,
 		scale: Double
 	) -> WindowEnclosureStep {
@@ -148,6 +148,19 @@ public enum WindowEnclosurePhysics {
 			maximum: Motion.maximumWallVelocityY * scale
 		)
 
+		// A box dragged further in one tick than a perch may move is thrown rather
+		// than carried, so a quick jerk flings her while an ordinary drag takes her
+		// along. Same displacement threshold as the ride, so the two surfaces cannot
+		// disagree about what counts as a yank.
+		let minimumYank = PlatformRidePhysics.releaseDisplacement
+		let horizontalYank =
+			abs(currentBox.left - previousBox.left) >= minimumYank
+			|| abs(currentBox.right - previousBox.right) >= minimumYank
+		let verticalYank = abs(currentBox.top - previousBox.top) >= minimumYank
+		// A box too shallow to hold her never lets her stand, so the floor rules
+		// below do not apply and she is carried by both walls instead.
+		let boxHoldsHer = bottomBoundary - topBoundary >= petHeight
+
 		var hitLeft = false
 		var hitTop = false
 		var hitRight = false
@@ -168,52 +181,95 @@ public enum WindowEnclosurePhysics {
 			if nextLeft < leftBoundary {
 				offsetX += leftBoundary - nextLeft
 				let relativeVelocity = velocityX - leftWallVelocity
-				impactSpeed = max(impactSpeed, abs(relativeVelocity))
-				if relativeVelocity < 0 {
+				// A jerked wall knocks her; a dragged one only pushes her along, at its
+				// own speed. Reporting an impact for the push made every ordinary drag
+				// count as a hit, which the controller reads as a reason to scream.
+				if horizontalYank, relativeVelocity < 0 {
+					impactSpeed = max(impactSpeed, abs(relativeVelocity))
 					velocityX = leftWallVelocity - relativeVelocity * Motion.horizontalRestitution
+				} else {
+					velocityX = leftWallVelocity
 				}
 				hitLeft = true
 			} else if nextRight > rightBoundary {
 				offsetX -= nextRight - rightBoundary
 				let relativeVelocity = velocityX - rightWallVelocity
-				impactSpeed = max(impactSpeed, abs(relativeVelocity))
-				if relativeVelocity > 0 {
+				if horizontalYank, relativeVelocity > 0 {
+					impactSpeed = max(impactSpeed, abs(relativeVelocity))
 					velocityX = rightWallVelocity - relativeVelocity * Motion.horizontalRestitution
+				} else {
+					velocityX = rightWallVelocity
 				}
 				hitRight = true
 			}
 		}
 
-		if bottomBoundary - topBoundary < petHeight {
+		if !boxHoldsHer {
 			offsetY = (topBoundary + bottomBoundary - pet.top - pet.bottom) / 2
 			velocityY = (topWallVelocity + bottomWallVelocity) / 2
 			hitTop = true
 			hitBottom = true
+		} else if wasOnFloor, !verticalYank {
+			// She is standing on the floor, and it is not being yanked, so it
+			// carries her — rising or falling — exactly as a ledge carries her
+			// outside a box: her feet stay on it and her speed is its speed.
+			//
+			// Handing her the floor's speed and then letting her keep it was the
+			// bug behind "a bounce on every drag": when the drag stopped or
+			// reversed, she went on travelling at the speed the floor *used* to
+			// have, left the floor, and came back down hard enough to be read as a
+			// landing — a fall animation and a startled line on every slow drag.
+			offsetY = bottomBoundary - pet.bottom
+			velocityY = bottomWallVelocity
+			hitBottom = true
+			isResting = true
+		} else if wasOnFloor, verticalYank {
+			// The floor was yanked out from under her: a rising one throws her, a
+			// falling one leaves her behind. The rule the perch already follows.
+			offsetY = bottomBoundary - pet.bottom
+			hitBottom = true
+			if bottomWallVelocity < 0 {
+				velocityY = bottomWallVelocity
+				impactSpeed = abs(bottomWallVelocity)
+			} else {
+				velocityY = 0
+			}
 		} else {
 			let nextTop = pet.top + offsetY
 			let nextBottom = pet.bottom + offsetY
 			if nextTop < topBoundary {
 				offsetY += topBoundary - nextTop
 				let relativeVelocity = velocityY - topWallVelocity
-				impactSpeed = max(impactSpeed, abs(relativeVelocity))
 				if relativeVelocity < 0 {
-					velocityY = topWallVelocity - relativeVelocity * Motion.topRestitution
+					// She ran into the ceiling, so she bounces off it — unless it is the
+					// ceiling that came down onto her, in which case it only carries her
+					// down with it.
+					if velocityY <= -Motion.restRelativeSpeed * scale {
+						impactSpeed = max(impactSpeed, abs(relativeVelocity))
+						velocityY = topWallVelocity - relativeVelocity * Motion.topRestitution
+					} else {
+						velocityY = topWallVelocity
+					}
 				}
 				hitTop = true
 			} else if nextBottom > bottomBoundary {
 				offsetY -= nextBottom - bottomBoundary
 				let relativeVelocity = velocityY - bottomWallVelocity
-				impactSpeed = max(impactSpeed, abs(relativeVelocity))
-				if relativeVelocity > 0,
-					relativeVelocity < Motion.restRelativeSpeed * scale,
-					abs(bottomWallVelocity) < Motion.restWallSpeed * scale
-				{
-					// A gentle touch on a nearly still floor settles her instead of
-					// bouncing her forever.
-					velocityY = bottomWallVelocity
-					isResting = true
-				} else if relativeVelocity > 0 {
-					velocityY = bottomWallVelocity - relativeVelocity * Motion.bottomRestitution
+				if relativeVelocity > 0 {
+					// She is airborne, so the floor is judged by how fast *she* is
+					// coming down onto it, not by how fast the floor itself moves. A
+					// floor arriving at 300 pt/s under something standing still is
+					// still just a floor: it takes her with it.
+					let settling =
+						velocityY < Motion.restRelativeSpeed * scale
+						&& abs(bottomWallVelocity) < Motion.restRelativeSpeed * scale
+					if settling {
+						velocityY = bottomWallVelocity
+						isResting = true
+					} else {
+						impactSpeed = max(impactSpeed, abs(relativeVelocity))
+						velocityY = bottomWallVelocity - relativeVelocity * Motion.bottomRestitution
+					}
 				}
 				hitBottom = true
 			}

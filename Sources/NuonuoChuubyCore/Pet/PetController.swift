@@ -31,9 +31,6 @@ public final class PetController: SpriteAnimatorDelegate {
 		static let hopVelocity: Double = 420
 		static let arrivalTolerance: Double = 5
 		static let movementTimeout: Double = 8
-		/// How far a surface may move in one tick before it is yanked out from under
-		/// her. 15 pt at 60 Hz is the 900 pt/s the original read as a deliberate flick.
-		static let releaseDisplacement: Double = 15
 	}
 
 	private static let implementedActions: Set<AutonomousAction> = [
@@ -489,6 +486,7 @@ public final class PetController: SpriteAnimatorDelegate {
 			currentBox: box,
 			velocityX: velocity.x,
 			velocityY: velocity.y,
+			wasOnFloor: current.isResting,
 			elapsedSeconds: delta,
 			scale: scale
 		)
@@ -1147,7 +1145,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		let displacement = lastPerchOffset.map { surface.offset - $0 } ?? 0
 		lastPerchOffset = surface.offset
 
-		if abs(displacement) >= Motion.releaseDisplacement {
+		if abs(displacement) >= PlatformRidePhysics.releaseDisplacement {
 			let velocityY = displacement / max(delta, 1.0 / 240)
 			let upward = displacement < 0
 			logRide(
