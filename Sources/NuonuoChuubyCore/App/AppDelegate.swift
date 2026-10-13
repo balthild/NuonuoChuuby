@@ -107,6 +107,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		)
 		self.controller = controller
 
+		// Self-labelling, so a performance trace can be told apart from one taken at
+		// another rate without guessing from the launch command.
+		DiagnosticsLog.shared.writeEvent(
+			"PetFallRefresh",
+			[("Rate", controller.fallRefreshDescription)]
+		)
+
 		// The voice is wired up before the pet starts so the first frame can already
 		// speak.
 		let loudness = VoiceLoudness.load(from: locator.file("audio/voice-levels.json"))

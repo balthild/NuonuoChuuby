@@ -163,6 +163,17 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// A window that has just thrown her must not catch her again on its own top
 	/// edge in the same instant: at a corner the side hit and the platform top are
 	/// the same window.
+	/// The window top just below her, as the graph last described it, tracked by
+	/// identity so its real position can be read live.
+	///
+	/// A window that rises into her path has to be caught by **state** — "its top is
+	/// now at or above my feet, and it is still coming up" — because a window can
+	/// cross her inside a single frame, and a test for the crossing itself only fires
+	/// when a sample happens to land inside it. The graph is rebuilt at 30 Hz while she
+	/// falls, so a window rising faster than about 700 pt/s steps clean over the whole
+	/// band the landing test looks in, and she used to go straight through it.
+	private var catcherWindowID: UInt32?
+	private var catcherTop: Double?
 	private var ignoredLandingWindow: UInt32?
 	private var ignoredLandingSeconds: Double = 0
 	/// Simulated seconds the window holding her has been covered by one in front
@@ -201,8 +212,42 @@ public final class PetController: SpriteAnimatorDelegate {
 	private static let dragSurfaceRefreshInterval: Double = 2
 	private var fallRefreshRemaining: Double = 0
 	private var lastFallRefreshFootY: Double = 0
-	private static let fallSurfaceRefreshInterval: Double = 1.0 / 30.0
-	private static let fallSurfaceRefreshDistance: Double = 26
+	/// How often the terrain graph is rebuilt while she is airborne, and how far she
+	/// has to fall before it is rebuilt regardless of the clock.
+	///
+	/// A rebuild enumerates every window, which is the most expensive thing in the
+	/// falling loop, so lowering this is worth real CPU: measured over twelve seconds of
+	/// repeated throws, the graph rebuild went from **29% to 6%** of main-thread time when
+	/// the rate dropped from 25 Hz to under 3, about 2% of a core.
+	///
+	/// It can be lowered only because the landing no longer depends on it: which window
+	/// she is heading for comes from the body sample, and where that window is comes from
+	/// the live read. What the graph is still needed for is **occlusion**, and occlusion
+	/// that is too old is not harmless — a spot it wrongly calls clear puts her down
+	/// somewhere she is covered, and the perch is rejected on the next frame.
+	private var fallRefreshInterval: Double = 0.25
+	private var fallRefreshDistance: Double = 100
+	/// How many simulation ticks and graph rebuilds the current fall has cost.
+	///
+	/// Sampling counts cannot be used as a denominator — a symbol that is cheap is
+	/// under-sampled, so the denominator moves with the thing being measured. These are
+	/// exact, and the rebuild count is what says whether a lower rate was actually
+	/// achieved.
+	private var fallTickCount = 0
+	private var fallRefreshCount = 0
+	/// Collapses a run of catches by one window into a single line.
+	///
+	/// A window rising into her is caught **every frame** while it keeps rising, and a log
+	/// line costs about 45 us — measured, not guessed — so a run of them is worth real
+	/// CPU. What is worth recording is that the catch happened, by which window and at
+	/// what speed, and that is the same for every frame of the run.
+	private var caughtLogGate = ChangeGate<UInt32>()
+
+	/// The rate the graph is rebuilt at while she is airborne, for a trace to be told
+	/// apart from one taken at another rate without guessing from the launch command.
+	public var fallRefreshDescription: String {
+		String(format: "%.3fs / %.0fpt", fallRefreshInterval, fallRefreshDistance)
+	}
 
 	public init(
 		catalog: AssetCatalog,
@@ -1280,11 +1325,35 @@ public final class PetController: SpriteAnimatorDelegate {
 		}
 
 		// A missing, unreachable, or now-covered spot is a lost perch. The grace
-		// covers a window that briefly vanishes from the window server's list.
-		guard let surface = currentSurface(for: perch), surface.isReachable,
-			isPerchSpotVisible(perch)
-		else {
-			handlePerchLost(delta: delta)
+		// covers a window that briefly vanishes from the window server's list. Each
+		// condition is told apart here because they mean different things when a perch
+		// is lost unexpectedly.
+		guard let surface = currentSurface(for: perch) else {
+			handlePerchLost(delta: delta, reason: "surface-gone")
+			return
+		}
+		guard surface.isReachable else {
+			handlePerchLost(delta: delta, reason: "unreachable")
+			return
+		}
+		guard isPerchSpotVisible(perch) else {
+			// Logged with the graph's own answer, because "covered" is the one perch
+			// failure that cannot be seen from the outside: she is drawn over everything,
+			// so a spot the graph calls covered and a spot nothing covers look identical
+			// on screen. The runs and the windows in front are the only way to tell which
+			// window the graph thinks is over her, and whether the edge it measured is the
+			// one she is actually on.
+			DiagnosticsLog.shared.writeEvent(
+				"PerchCovered",
+				[
+					("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
+					("PerchT", String(format: "%.3f", perch.t)),
+					("GraphTop", String(format: "%.1f", lastPerchOffset ?? -1)),
+					("GraphSpan", Self.describe(surfaceProvider.surfaces, id: perch.key.owner)),
+					("InFront", Self.describeBodies(surfaceProvider, inFrontOf: perch.key.owner)),
+				]
+			)
+			handlePerchLost(delta: delta, reason: "covered")
 			return
 		}
 
@@ -1398,11 +1467,60 @@ public final class PetController: SpriteAnimatorDelegate {
 		}
 	}
 
+	/// Whether the graph says a spot on an edge is clear of anything in front of it.
+	///
+	/// A live read cannot answer this: it reports the whole edge and does not recompute
+	/// occlusion, so it would call every spot clear.
+	private func isSpotVisible(
+		for key: SurfaceKey,
+		atCoordinate x: Double,
+		inset: Double
+	) -> Bool {
+		// Not in the graph yet (a window that just appeared). Nothing says it is
+		// covered, so let her stand until the next rebuild decides.
+		guard let graphSurface = surfaceProvider.surfaces.first(where: { $0.key == key })
+		else { return true }
+		return graphSurface.isVisible(atCoordinate: x, inset: inset)
+	}
+
+	/// The graph's own description of one window's edges: where it is, its span, and the
+	/// parts the graph believes are not covered.
+	private static func describe(_ surfaces: [Surface], id: UInt32) -> String {
+		guard let surface = surfaces.first(where: { $0.key == SurfaceKey(owner: id, kind: .windowTop) })
+		else { return "absent" }
+		let runs = surface.visible
+			.map { "\(Int($0.start))-\(Int($0.end))" }
+			.joined(separator: ",")
+		return
+			"top=\(Int(surface.offset)) span=\(Int(surface.span.start))-\(Int(surface.span.end)) visible=[\(runs)]"
+	}
+
+	/// Which windows the body sample puts in front of `owner`, and where they are.
+	///
+	/// The body sample is what the occlusion *policy* consults, and it runs at 10 Hz
+	/// against the graph's 2 Hz, so the two can disagree about the same moment.
+	private static func describeBodies(_ provider: SurfaceProvider, inFrontOf owner: UInt32) -> String
+	{
+		guard let host = provider.windowBodies[owner] else { return "owner-absent" }
+		let front = provider.windowBodies
+			.filter { $0.key != owner && $0.value.zIndex < host.zIndex }
+			.map {
+				"\($0.key)@\(Int($0.value.bounds.left)),\(Int($0.value.bounds.top)) \(Int($0.value.bounds.width))x\(Int($0.value.bounds.height))"
+			}
+		return front.isEmpty ? "none" : front.joined(separator: " ")
+	}
+
 	/// Whether the spot she is anchored to is not covered by another window.
 	///
 	/// Asked of the **graph**, never of the live read: the live read only reports the
 	/// window's rectangle, so it would call every spot visible and she would happily
 	/// keep standing on an edge another window had just covered.
+	///
+	/// Asked at her **world** position rather than at the perch's `t` mapped onto this
+	/// surface. `t` is taken from whichever surface she landed on, and the live read and
+	/// the graph can disagree about a window's span — a window dragged sideways has a
+	/// different one in each — so mapping it here would ask about a point she is not
+	/// standing on, and answer "covered" for a spot that is clear.
 	private func isPerchSpotVisible(_ perch: Perch) -> Bool {
 		guard let graphSurface = surfaceProvider.surfaces.first(where: { $0.key == perch.key })
 		else {
@@ -1410,7 +1528,7 @@ public final class PetController: SpriteAnimatorDelegate {
 			// covered, so let her stand until the next rebuild decides.
 			return true
 		}
-		return graphSurface.isVisible(at: perch.position(in: graphSurface))
+		return graphSurface.isVisible(atCoordinate: foot.x)
 	}
 
 	/// Picks up a perch for wherever her feet are, or starts a fall.
@@ -1442,7 +1560,10 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// Her perch is gone: the surface vanished, became unreachable, or she is over
 	/// a part of it another window now hides. Held briefly while the grace lasts,
 	/// because a dragged window can blink out of the window server's list.
-	private func handlePerchLost(delta: Double) {
+	/// - Parameter reason: which condition failed. A perch that goes unexpectedly is
+	///   otherwise indistinguishable from one that was covered, vanished, or went out
+	///   of reach, and the three have different causes.
+	private func handlePerchLost(delta: Double, reason: String) {
 		perchUnavailableSeconds += delta
 
 		if PlatformRidePhysics.shouldPreserveTransientSupport(
@@ -1456,6 +1577,7 @@ public final class PetController: SpriteAnimatorDelegate {
 					[
 						("Footnote", "\(Int(foot.x)),\(Int(foot.y))"),
 						("Top", lastPerchOffset.map { String(format: "%.1f", $0) } ?? "none"),
+						("Reason", reason),
 					]
 				)
 			}
@@ -1542,6 +1664,8 @@ public final class PetController: SpriteAnimatorDelegate {
 		fallStartFootY = foot.y
 		fallRefreshRemaining = 0
 		lastFallRefreshFootY = foot.y
+		fallTickCount = 0
+		fallRefreshCount = 0
 		velocity = PixelPoint(x: initialVelocityX, y: initialVelocityY)
 		remainderX = 0
 		remainderY = 0
@@ -1558,6 +1682,12 @@ public final class PetController: SpriteAnimatorDelegate {
 			airborneSupportWindowID = nil
 			airborneSupportTop = nil
 		}
+		// The catcher is discovered rather than inherited, so it is cleared and picked
+		// afresh: the graph is rebuilt on the first falling frame anyway.
+		catcherWindowID = nil
+		catcherTop = nil
+		caughtLogGate.reset()
+		refreshAirborneCatcher()
 		// She is airborne, so nothing holds her: the perch is dropped so a stale
 		// surface cannot pull her back to its edge when she lands.
 		//
@@ -1583,11 +1713,49 @@ public final class PetController: SpriteAnimatorDelegate {
 		fallRefreshRemaining -= delta
 		let needsTimeRefresh = fallRefreshRemaining <= 0
 		let needsDistanceRefresh =
-			abs(foot.y - lastFallRefreshFootY) >= Self.fallSurfaceRefreshDistance * displayScale
+			abs(foot.y - lastFallRefreshFootY) >= fallRefreshDistance * displayScale
 		guard needsTimeRefresh || needsDistanceRefresh else { return }
 		surfaceProvider.refresh(displaySpace: displaySpace)
-		fallRefreshRemaining = Self.fallSurfaceRefreshInterval
+		fallRefreshRemaining = fallRefreshInterval
 		lastFallRefreshFootY = foot.y
+		fallRefreshCount += 1
+	}
+
+	/// Picks the window she would land on next.
+	///
+	/// Chosen from the **body sample** rather than the graph. The sample runs at 10 Hz
+	/// against the graph's 4, and what matters here is not where a window is — the live
+	/// read answers that — but *which* window it is, and a window dragged at 2000 pt/s
+	/// covers five hundred points between two graph rebuilds. That is enough to choose the
+	/// wrong one, and choosing wrong lets her fall straight through the right one.
+	///
+	/// The one nearest her feet, on either side of them. A window that has just come up
+	/// past them is the one that has just caught her, so it must not be dropped on that
+	/// frame — which is exactly what "the nearest one below" would do, and it would let
+	/// her through on the very frame the catch was due.
+	private func refreshAirborneCatcher() {
+		guard state == .falling else { return }
+		let inset = Motion.landingInset
+		let nearest = surfaceProvider.windowBodies
+			.filter { _, body in
+				body.bounds.left + inset <= foot.x && foot.x <= body.bounds.right - inset
+					&& displaySpace.displays.contains {
+						body.bounds.top >= $0.visibleFrame.top
+							&& body.bounds.top < $0.visibleFrame.bottom
+					}
+			}
+			.min { abs($0.value.bounds.top - foot.y) < abs($1.value.bounds.top - foot.y) }
+
+		// The baseline is kept when it is still the same window, because the speed it
+		// is rising at is measured from two consecutive readings and the sample runs ten
+		// times a second — resetting here would mean never having two.
+		if let nearest, nearest.key != catcherWindowID {
+			catcherWindowID = nearest.key
+			catcherTop = nil
+		} else if nearest == nil {
+			catcherWindowID = nil
+			catcherTop = nil
+		}
 	}
 
 	private func beginHop() {
@@ -1601,6 +1769,10 @@ public final class PetController: SpriteAnimatorDelegate {
 	}
 
 	private func updateFalling(_ delta: Double) {
+		fallTickCount += 1
+		// Every frame, because the choice is made from the body sample and not from the
+		// graph: it is a filter over the windows already sampled for the collision pass.
+		refreshAirborneCatcher()
 		let scale = displayScale
 		velocity.x *= exp(-Motion.horizontalAirDrag * delta)
 		velocity.y = min(
@@ -1634,7 +1806,7 @@ public final class PetController: SpriteAnimatorDelegate {
 			}
 		}
 
-		if resolveAirborneSupport(delta) {
+		if resolveAirborneSupport(footX: nextFootX, delta: delta) {
 			// She is back on the edge she was thrown from, so this frame's fall is
 			// discarded rather than applied and then corrected.
 			foot.x = nextFootX
@@ -1643,25 +1815,62 @@ public final class PetController: SpriteAnimatorDelegate {
 			return
 		}
 
-		if movementY > 0,
-			let landing = surfaceProvider.landingSurface(
+		if movementY > 0 {
+			let graphLanding = surfaceProvider.landingSurface(
 				footX: nextFootX,
 				fromY: foot.y,
 				toY: nextFootY,
 				inset: Motion.landingInset
-			),
-			!isLandingIgnored(landing)
-		{
-			foot.x = nextFootX
-			foot.y = landing.offset
-			land(on: landing)
-			return
+			)
+			.flatMap { isLandingIgnored($0) ? nil : $0 }
+			if let landing = firstLanding(
+				live: catcherLanding(footX: nextFootX, reachedY: nextFootY),
+				graph: graphLanding
+			) {
+				// Logged because the two candidates disagree when the graph is stale, and
+				// which of them landed her is not otherwise recoverable afterwards.
+				DiagnosticsLog.shared.writeEvent(
+					"Landed",
+					[
+						("Surface", "\(landing.surface.key.kind.rawValue):\(landing.surface.key.owner)"),
+						("Top", String(format: "%.1f", landing.surface.offset)),
+						("Source", landing.source),
+						("Footnote", "\(Int(nextFootX)),\(Int(nextFootY))"),
+						("FallStartY", String(format: "%.0f", fallStartFootY)),
+					]
+				)
+				foot.x = nextFootX
+				foot.y = landing.surface.offset
+				land(on: landing.surface)
+				return
+			}
 		}
 
 		foot.x = nextFootX
 		foot.y = nextFootY
 		applyCeiling()
 		if abs(velocity.x) > 8 { facing = velocity.x < 0 ? -1 : 1 }
+	}
+
+	/// The surface she meets first out of the two landing candidates, and which of the
+	/// two found it.
+	///
+	/// The higher of the two is the one she reaches first, so they are compared rather
+	/// than one being preferred.
+	private func firstLanding(
+		live: Surface?,
+		graph: Surface?
+	) -> (surface: Surface, source: String)? {
+		switch (live, graph) {
+		case let (live?, graph?):
+			return live.offset <= graph.offset ? (live, "live") : (graph, "graph")
+		case let (live?, nil):
+			return (live, "live")
+		case let (nil, graph?):
+			return (graph, "graph")
+		default:
+			return nil
+		}
 	}
 
 	/// Records for a moment that a window she was just thrown clear of must not
@@ -1683,27 +1892,110 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// is thrown overtakes her from below, swallows her, and she drops past it to
 	/// the floor. She is put back on its edge, and given its speed unless she
 	/// already has a faster one of her own.
-	private func resolveAirborneSupport(_ delta: Double) -> Bool {
-		guard let windowID = airborneSupportWindowID, let live = liveSurface(of: windowID),
-			live.isReachable, let previousTop = airborneSupportTop
-		else { return false }
+	///
+	/// Two windows can do it: the one she was just thrown clear of, which is armed
+	/// deliberately because the graph cannot be trusted to have caught up with a
+	/// window that has just been yanked, and the one the graph says is nearest her
+	/// feet, which is read live.
+	private func resolveAirborneSupport(footX: Double, delta: Double) -> Bool {
+		if catchUpIfRising(
+			windowID: airborneSupportWindowID,
+			lastTop: &airborneSupportTop,
+			footX: footX,
+			delta: delta
+		) {
+			return true
+		}
 
-		let top = live.offset
-		airborneSupportTop = top
-		let wallVelocity = (top - previousTop) / max(delta, 1.0 / 240)
+		// Skipped when it is the same window, which the deliberate arming has just
+		// looked at.
+		guard catcherWindowID != airborneSupportWindowID else { return false }
+		return catchUpIfRising(
+			windowID: catcherWindowID,
+			lastTop: &catcherTop,
+			footX: footX,
+			delta: delta
+		)
+	}
 
-		// It has come up to her feet, and is still rising fast enough to be doing it.
-		let scale = displayScale
-		guard top <= foot.y, wallVelocity <= -Motion.airborneCatchUpSpeed * scale else {
+	/// Reads one candidate window live and, if it has risen to her feet while still
+	/// rising, puts her back on its edge.
+	///
+	/// A **state**, not a crossing: "its top is at or above my feet, and it is still
+	/// coming up". A window can cross her between two samples, so asking whether it
+	/// crossed during this frame only answers yes when a sample happened to fall
+	/// inside the window's path — which is how a fast window came to swallow her.
+	///
+	/// - Parameter lastTop: the previous reading, updated in place. The first reading
+	///   of a window only establishes the baseline its speed is measured from, and
+	///   nothing can be caught from a single reading.
+	private func catchUpIfRising(
+		windowID: UInt32?,
+		lastTop: inout Double?,
+		footX: Double,
+		delta: Double
+	) -> Bool {
+		guard let windowID, let live = liveSurface(of: windowID), live.isReachable else {
 			return false
 		}
-		foot.y = top
+		let previousTop = lastTop
+		lastTop = live.offset
+		guard let previousTop else { return false }
+
+		let scale = displayScale
+		let wallVelocity = (live.offset - previousTop) / max(delta, 1.0 / 240)
+
+		// It has come up to her feet, she is over it, and it is still rising fast
+		// enough to be doing it. Without the span check a window rising beside her
+		// would lift her onto an edge she is not above; without the landing check a
+		// window that has just swept her sideways would take her straight back.
+		guard live.offset <= foot.y, live.span.contains(footX),
+			wallVelocity <= -Motion.airborneCatchUpSpeed * scale, !isLandingIgnored(live)
+		else { return false }
+
+		// Logged because this is the one path that puts her *upward* while she is
+		// falling, and it fires too rarely to be reproduced on demand: without a
+		// record, "she was lifted onto a window" and "she fell through one" look the
+		// same in the log afterwards.
+		if caughtLogGate.emits(windowID) {
+			DiagnosticsLog.shared.writeEvent(
+				"AirborneCaught",
+				[
+					("Window", "\(windowID)"),
+					("Source", windowID == airborneSupportWindowID ? "yanked" : "discovered"),
+					("Top", String(format: "%.0f", live.offset)),
+					("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
+					("WallVelocityY", String(format: "%.0f", wallVelocity)),
+				]
+			)
+		}
+
+		foot.y = live.offset
 		velocity.y = min(
 			velocity.y,
 			min(max(wallVelocity * 0.88, -1150 * scale), -300 * scale)
 		)
 		remainderY = 0
 		return true
+	}
+
+	/// Whether she has come down onto the window the graph says is nearest her feet.
+	///
+	/// Read live, so a graph a third of a second old cannot put her through a window
+	/// that has since moved under her. That is the other half of the same failure: the
+	/// landing test asks where the graph *thinks* the edge is, so a window that moved
+	/// is judged against a position it no longer has.
+	private func catcherLanding(footX: Double, reachedY: Double) -> Surface? {
+		guard let windowID = catcherWindowID, let live = liveSurface(of: windowID),
+			live.isReachable, live.offset > fallStartFootY, live.offset <= reachedY + 1,
+			live.span.contains(footX), !isLandingIgnored(live),
+			// Where the edge *is* comes from the live read, but what covers it can only
+			// come from the graph. Landing her on a covered spot is worse than not landing
+			// at all: the perch is rejected on the very next frame and she drops again from
+			// a standstill, which reads as landing, pausing, and falling.
+			isSpotVisible(for: live.key, atCoordinate: footX, inset: Motion.landingInset)
+		else { return nil }
+		return live
 	}
 
 	/// She must not fly out of the top of the screen.
@@ -1723,9 +2015,29 @@ public final class PetController: SpriteAnimatorDelegate {
 	private func land(on surface: Surface?) {
 		let fallDistance = max(0, foot.y - fallStartFootY)
 		let impactSpeed = max(0, velocity.y)
+		// What the fall cost, and the rate the graph was actually rebuilt at during it:
+		// the two triggers trade against each other, so neither constant alone says what
+		// rate was achieved.
+		if fallTickCount > 0 {
+			DiagnosticsLog.shared.writeEvent(
+				"FallProfile",
+				[
+					("Ticks", "\(fallTickCount)"),
+					("Refreshes", "\(fallRefreshCount)"),
+					(
+						"RefreshHz",
+						String(format: "%.1f", Double(fallRefreshCount) * 60 / Double(fallTickCount))
+					),
+					("Distance", String(format: "%.0f", fallDistance)),
+				]
+			)
+		}
 		// She is down, so no window is following her any more.
 		airborneSupportWindowID = nil
 		airborneSupportTop = nil
+		catcherWindowID = nil
+		catcherTop = nil
+		caughtLogGate.reset()
 		let shouldReact = LandingVoicePolicy.shouldReact(
 			fallDistancePixels: fallDistance,
 			downwardImpactSpeed: impactSpeed,

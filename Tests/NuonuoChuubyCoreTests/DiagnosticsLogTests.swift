@@ -28,4 +28,38 @@ struct DiagnosticsLogTests {
 		#expect(!text.contains("secret"))
 		#expect(text.contains("[private:"))
 	}
+
+	/// Rotation decides when to move the file aside from the offset `seekToEnd` reports,
+	/// which is also how it appends — so this is the check that the size it reads is the
+	/// size the file really has, and that the handle is reopened on the new one.
+	///
+	/// A limit small enough to be crossed several times over is deliberate: it is the
+	/// reopen that is under test, and a single rotation would pass even if the handle
+	/// were left pointing at the file that moved.
+	@Test("A log that outgrows its limit is moved aside and started again")
+	func rotatesWhenFull() throws {
+		let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+			.appendingPathComponent("nuonuo-rotate-\(UUID().uuidString)")
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let url = directory.appendingPathComponent("activity.log")
+
+		let log = DiagnosticsLog()
+		log.configure(fileURL: url, maximumBytes: 200)
+		for index in 0..<40 {
+			log.writeEvent("Filler", [("Index", "\(index)")])
+		}
+
+		let previous = directory.appendingPathComponent("activity.previous.log")
+		#expect(FileManager.default.fileExists(atPath: previous.path))
+		// Whatever was rotated away, the lines written since must not be in it: that is
+		// what says the handle was reopened on the file that replaced it.
+		let previousText = try String(contentsOf: previous, encoding: .utf8)
+		let liveText = try String(contentsOf: url, encoding: .utf8)
+		#expect(liveText.contains("Index=\"39\""))
+		#expect(!previousText.contains("Index=\"39\""))
+		// The size is checked before the write, so the live file may sit up to one line
+		// over the limit — but nowhere near the sixteen hundred bytes all forty lines
+		// would take, which is what an unreopened handle would have produced.
+		#expect(liveText.count < 300)
+	}
 }

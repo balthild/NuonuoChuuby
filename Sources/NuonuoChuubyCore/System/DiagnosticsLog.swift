@@ -8,7 +8,10 @@ import Foundation
 public final class DiagnosticsLog: @unchecked Sendable {
 	public static let shared = DiagnosticsLog()
 
-	private static let maximumLogBytes = 8 * 1024 * 1024
+	public static let defaultMaximumLogBytes = 8 * 1024 * 1024
+	/// Set by ``configure(fileURL:maximumBytes:)``. Settable so rotation can be exercised
+	/// without writing eight megabytes to reach it.
+	private var maximumLogBytes = DiagnosticsLog.defaultMaximumLogBytes
 
 	/// Built once. A write can arrive once per frame, and constructing a
 	/// `DateFormatter` on every line is expensive (refactor-plan §3.2).
@@ -37,12 +40,16 @@ public final class DiagnosticsLog: @unchecked Sendable {
 		try? handle?.close()
 	}
 
-	public func configure(fileURL: URL) {
+	public func configure(
+		fileURL: URL,
+		maximumBytes: Int = DiagnosticsLog.defaultMaximumLogBytes
+	) {
 		lock.lock()
 		defer { lock.unlock() }
 		try? handle?.close()
 		handle = nil
 		hasCreatedDirectory = false
+		maximumLogBytes = maximumBytes
 		self.fileURL = fileURL
 	}
 
@@ -90,10 +97,17 @@ public final class DiagnosticsLog: @unchecked Sendable {
 				)
 				hasCreatedDirectory = true
 			}
-			rotateIfNeeded(fileURL)
-			let handle = try openHandle(for: fileURL, manager: manager)
-			try handle.seekToEnd()
-			try handle.write(contentsOf: Data((line + "\n").utf8))
+			// `seekToEnd` returns the offset it moved to, which is the file's size — so
+			// rotation needs no `stat` of its own. That call was already being made to
+			// append, and asking for the size separately made a line cost about half
+			// again as much as it needed to.
+			if try openHandle(for: fileURL, manager: manager).seekToEnd()
+				>= UInt64(maximumLogBytes)
+			{
+				rotate(fileURL: fileURL, manager: manager)
+				_ = try openHandle(for: fileURL, manager: manager).seekToEnd()
+			}
+			try handle?.write(contentsOf: Data((line + "\n").utf8))
 			// The line reaches the kernel on every write, so an app crash cannot
 			// lose it. Deliberately no fsync: forcing a disk write per frame would
 			// add the stall this change removes.
@@ -115,11 +129,7 @@ public final class DiagnosticsLog: @unchecked Sendable {
 		return opened
 	}
 
-	private func rotateIfNeeded(_ fileURL: URL) {
-		let manager = FileManager.default
-		guard let attributes = try? manager.attributesOfItem(atPath: fileURL.path),
-			let size = attributes[.size] as? Int, size >= Self.maximumLogBytes
-		else { return }
+	private func rotate(fileURL: URL, manager: FileManager) {
 		// The cached handle points at the file being moved, so drop it first; the
 		// next write opens the fresh file.
 		try? handle?.close()
