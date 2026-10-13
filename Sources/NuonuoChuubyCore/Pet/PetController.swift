@@ -5,6 +5,9 @@ public protocol PetControllerDelegate: AnyObject {
 	func petController(_ controller: PetController, didProduceFrame image: CGImage)
 	func petControllerDidChangePlacement(_ controller: PetController)
 	func petControllerDidRequestMenu(_ controller: PetController)
+	/// The simulation stopped or started again, so anything drawn alongside her
+	/// should go away or come back.
+	func petController(_ controller: PetController, didChangeSuspension suspended: Bool)
 }
 
 @MainActor
@@ -95,6 +98,11 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var dragTracker = DragMotionTracker()
 	private var dragOffset = PixelPoint.zero
 	private var isDragging = false
+	/// No display (session locked, screen asleep) or a fullscreen app in front of
+	/// everything. Nothing advances while this is true, and her window is hidden,
+	/// because a frozen sprite left floating over the fullscreen app reads as a bug
+	/// — and keeping out of that app's way is the point of suspending.
+	public private(set) var isSuspended = false
 	private var targetX: Double = 0
 	private var targetPoint: PixelPoint = .zero
 	private var mealQueue = MealQueue()
@@ -244,7 +252,12 @@ public final class PetController: SpriteAnimatorDelegate {
 		surfaceProvider.refreshIfStale(displaySpace: displaySpace, delta: simulation)
 
 		// No display (session locked, screen asleep) or a fullscreen app: suspend.
-		if displaySpace.displays.isEmpty || surfaceProvider.isFullscreenAppActive {
+		let suspended = displaySpace.displays.isEmpty || surfaceProvider.isFullscreenAppActive
+		if suspended != isSuspended {
+			isSuspended = suspended
+			delegate?.petController(self, didChangeSuspension: suspended)
+		}
+		if suspended {
 			return
 		}
 

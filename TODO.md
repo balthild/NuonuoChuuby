@@ -48,6 +48,12 @@ landing / curious` 五种落地状态运行，且只有两条路：
    **已实施（2026-10-12，重构 Phase E）**：`World/FullscreenDetector.swift` 是**纯函数**
    `isFullscreenAppActive(windows:monitors:)`，由 `SurfaceProvider.refresh` 每 2 Hz 求值，
    `PetController.step` 据此挂起。注意：**最大化**（绿钮）的窗口停在菜单栏之下，不会误判为全屏。
+   **挂起时隐藏她（2026-10-12，用户报告后修改）**：原先挂起只让 `step` 提前返回，而 `animator.tick`
+   在返回之后 —— 于是她带着**固定的一帧**浮在全屏应用之上，读起来像坏了（拖动才会换一帧，
+   然后再次固定）。现在 `PetController` 上报 `didChangeSuspension`，`PetWindowController` 隐藏/恢复
+   自己的面板，`AppDelegate` 顺带收起气泡与幽灵图标（一次进行中的进食被打断时，幽灵图标也要一起
+   收起，否则同样会留在全屏应用上）。原项目**没有**任何全屏处理（全屏只在菲比捣蛋选目标时被用来
+   排除），所以这是本移植版自己的取舍，已记入 README 行为差异表。
 6. **空闲时间用 `CGEventSourceSecondsSinceLastEventType`**：免权限，且无需额外监听。（免权限是附带好处，不是选择理由。）
 7. **窗口快速移动 = 「受惊」反应，而不是把宠物甩出去**（`STARTLING_SPEED = 900`）。我们目前保留原版的抛出行为，阈值已对齐 900。
 8. ~~**扫描节奏**：2 Hz 常态，变化后 2 秒内 10 Hz；挂起时完全不扫描。渲染静止 30 Hz / 移动 60 Hz。~~

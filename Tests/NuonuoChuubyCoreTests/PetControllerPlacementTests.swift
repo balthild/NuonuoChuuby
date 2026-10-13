@@ -12,9 +12,13 @@ import Testing
 struct PetControllerPlacementTests {
 	private final class DelegateSpy: PetControllerDelegate {
 		var placements = 0
+		var suspensions: [Bool] = []
 		func petController(_ controller: PetController, didProduceFrame image: CGImage) {}
 		func petControllerDidChangePlacement(_ controller: PetController) { placements += 1 }
 		func petControllerDidRequestMenu(_ controller: PetController) {}
+		func petController(_ controller: PetController, didChangeSuspension suspended: Bool) {
+			suspensions.append(suspended)
+		}
 	}
 
 	/// The assets seeded into the resource folder by `make assets`.

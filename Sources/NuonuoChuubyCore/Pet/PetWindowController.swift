@@ -13,6 +13,10 @@ public final class PetWindowController: NSObject, PetControllerDelegate {
 	public var menuProvider: ((NSEvent) -> NSMenu?)?
 	/// Called after every move, so attached panels (the head bubble) can follow.
 	public var onPlacementChanged: ((PixelRect) -> Void)?
+	/// Called when the simulation suspends or resumes, so the panels that belong
+	/// to her can be put away with her rather than left floating over the
+	/// fullscreen app she is suspended for.
+	public var onSuspensionChanged: ((Bool) -> Void)?
 
 	public init(controller: PetController, displaySpace: DisplaySpace) {
 		self.controller = controller
@@ -122,5 +126,15 @@ public final class PetWindowController: NSObject, PetControllerDelegate {
 
 	public func petControllerDidRequestMenu(_ controller: PetController) {
 		// Right-click handling already has the event; nothing to do here.
+	}
+	public func petController(_ controller: PetController, didChangeSuspension suspended: Bool) {
+		if suspended {
+			hide()
+		} else {
+			// `orderFrontRegardless` rather than `makeKeyAndOrderFront`: she must
+			// come back without taking focus from whatever the user is doing.
+			show()
+		}
+		onSuspensionChanged?(suspended)
 	}
 }

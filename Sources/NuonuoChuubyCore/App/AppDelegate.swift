@@ -17,7 +17,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 	private var mouseMonitor: MouseMonitor?
 	private var desktopIcons: DesktopIconIndex?
 	private var deletionWatcher: FileDeletionWatcher?
-	private var ghostIcons: [Int: GhostIconWindow] = [:]
+	/// The fake icons standing in for the desktop icons being eaten, kept together
+	/// with the item they stand for: a suspension takes them away and has to be able
+	/// to put them back when the meal resumes.
+	private var ghostIcons: [Int: (item: DeletedItem, window: GhostIconWindow)] = [:]
 	private var assetSetup: AssetSetupWindowController?
 
 	public func applicationDidFinishLaunching(_ notification: Notification) {
@@ -134,6 +137,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		petWindow.onPlacementChanged = { [weak speech] frame in
 			speech?.updatePetFrame(frame)
 		}
+		petWindow.onSuspensionChanged = { [weak self] suspended in
+			guard let self else { return }
+			if suspended { self.speech?.hideBubble() }
+			self.placeGhostIcons(suspended: suspended)
+		}
 		self.petWindow = petWindow
 
 		// The index has to be kept warm: a deleted icon's element is gone by the
@@ -212,21 +220,41 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 	// MARK: - PetMealDelegate
 
 	public func petController(_ controller: PetController, didBeginMeal item: DeletedItem) {
-
-		let anchor = desktopIcons?.position(of: item.displayName) ?? item.anchor
 		let ghost = GhostIconWindow()
-		ghost.show(
-			icon: ShellIconProvider.icon(forPath: item.originalPath),
-			at: anchor,
-			size: controller.petSize * 0.34,
-			displaySpace: displaySpace ?? DisplaySpace()
-		)
-		ghostIcons[item.id] = ghost
+		showGhostIcon(ghost, for: item, petSize: controller.petSize)
+		ghostIcons[item.id] = (item: item, window: ghost)
 	}
 
 	public func petController(_ controller: PetController, didFinishMeal item: DeletedItem) {
-		guard let ghost = ghostIcons.removeValue(forKey: item.id) else { return }
-		ghost.fadeOut()
+		guard let entry = ghostIcons.removeValue(forKey: item.id) else { return }
+		entry.window.fadeOut()
+	}
+
+	private func showGhostIcon(_ ghost: GhostIconWindow, for item: DeletedItem, petSize: Double) {
+		// Both are looked up again rather than remembered, so restoring one after a
+		// suspension puts it where the icon and the desktop are *now*.
+		let anchor = desktopIcons?.position(of: item.displayName) ?? item.anchor
+		ghost.show(
+			icon: ShellIconProvider.icon(forPath: item.originalPath),
+			at: anchor,
+			size: petSize * 0.34,
+			displaySpace: displaySpace ?? DisplaySpace()
+		)
+	}
+
+	/// Puts the fake icons away with her, and brings them back when she returns.
+	///
+	/// A meal can be interrupted by a fullscreen app, and a fake icon left floating
+	/// over one is the same defect as the pet herself being left there.
+	private func placeGhostIcons(suspended: Bool) {
+		guard let controller else { return }
+		for entry in ghostIcons.values {
+			if suspended {
+				entry.window.hide()
+			} else {
+				showGhostIcon(entry.window, for: entry.item, petSize: controller.petSize)
+			}
+		}
 	}
 
 	@objc private func displayParametersChanged() {
