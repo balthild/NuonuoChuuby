@@ -59,7 +59,7 @@ struct PetControllerPlacementTests {
 
 	enum TestSkip: Error { case missingAssets }
 
-	@Test("A drag moves the pet as the cursor moves, without waiting for release")
+	@Test("A drag moves the pet during drag ticks, without waiting for release")
 	func dragMovesThePet() throws {
 		let (controller, spy, directory) = try makeController()
 		defer { try? FileManager.default.removeItem(at: directory) }
@@ -71,13 +71,15 @@ struct PetControllerPlacementTests {
 		let baseline = spy.placements
 		// Three intermediate drag callbacks, as a real mouse drag produces.
 		controller.updateDrag(to: PixelPoint(x: grab.x + 40, y: grab.y - 30))
+		controller.debugStep(delta: 1.0 / 60)
 		controller.updateDrag(to: PixelPoint(x: grab.x + 80, y: grab.y - 60))
+		controller.debugStep(delta: 1.0 / 60)
 		controller.updateDrag(to: PixelPoint(x: grab.x + 120, y: grab.y - 90))
+		controller.debugStep(delta: 1.0 / 60)
 
 		#expect(controller.foot.x == grab.x + 120)
 		#expect(controller.foot.y == grab.y - 90)
-		// Each intermediate move must reposition the window; this is the
-		// regression: the pet used to sit still until the button was released.
+		// Drag updates are emitted during the drag itself, before release.
 		#expect(spy.placements >= baseline + 3)
 	}
 
@@ -97,7 +99,7 @@ struct PetControllerPlacementTests {
 
 	@Test("A drag does not start while the pet is mid-chomp")
 	func dragBlockedWhileBusy() throws {
-		let (controller, _, directory) = try makeController()
+		let (_, _, directory) = try makeController()
 		defer { try? FileManager.default.removeItem(at: directory) }
 		#expect(DragInteractionPolicy.canStart(from: .chomping) == false)
 	}

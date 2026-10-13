@@ -242,11 +242,18 @@ public final class SpeechBubbleWindowController {
 		// resizing its frame does too. Asking for a redisplay here as well meant that
 		// following her around — every frame while she moved — typeset and redrew the
 		// whole bubble, line and all, without a word of it having changed.
-		view.text = text
-		view.tail = placement.tail
+		let textChanged = view.text != text
+		let tailChanged = view.tail != placement.tail
+		if textChanged { view.text = text }
+		if tailChanged { view.tail = placement.tail }
+
 		let size = view.preferredSize
-		panel.setContentSize(size)
-		view.frame = NSRect(origin: .zero, size: size)
+		if panel.contentView?.bounds.size != size {
+			panel.setContentSize(size)
+		}
+		if view.frame.size != size {
+			view.frame = NSRect(origin: .zero, size: size)
+		}
 
 		let frame = DisplaySpace.toAppKit(
 			PixelRect(
@@ -257,7 +264,11 @@ public final class SpeechBubbleWindowController {
 			),
 			primaryHeight: displaySpace.primaryHeight
 		)
-		panel.setFrame(frame, display: true)
+		let current = panel.frame
+		let sizeChanged = current.size != frame.size
+		if current.origin != frame.origin || sizeChanged {
+			panel.setFrame(frame, display: sizeChanged)
+		}
 	}
 
 	public func hide() {

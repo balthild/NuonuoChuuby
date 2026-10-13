@@ -197,6 +197,12 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var heartbeatRemaining: Double = 10
 	private var lastNotifiedFoot: PixelPoint?
 	private var lastNotifiedSize: Double?
+	private var dragRefreshRemaining: Double = 0
+	private static let dragSurfaceRefreshInterval: Double = 2
+	private var fallRefreshRemaining: Double = 0
+	private var lastFallRefreshFootY: Double = 0
+	private static let fallSurfaceRefreshInterval: Double = 1.0 / 30.0
+	private static let fallSurfaceRefreshDistance: Double = 26
 
 	public init(
 		catalog: AssetCatalog,
@@ -266,7 +272,21 @@ public final class PetController: SpriteAnimatorDelegate {
 
 		// Kept refreshing while suspended too: this is where the fullscreen check
 		// below gets its data, so stopping it would mean never resuming.
-		surfaceProvider.refreshIfStale(displaySpace: displaySpace, delta: simulation)
+		if isDragging {
+			dragRefreshRemaining -= simulation
+			if dragRefreshRemaining <= 0 {
+				surfaceProvider.refresh(displaySpace: displaySpace)
+				dragRefreshRemaining = Self.dragSurfaceRefreshInterval
+			}
+			fallRefreshRemaining = 0
+		} else if state == .falling {
+			dragRefreshRemaining = 0
+			refreshForFalling(simulation)
+		} else {
+			dragRefreshRemaining = 0
+			fallRefreshRemaining = 0
+			surfaceProvider.refreshIfStale(displaySpace: displaySpace, delta: simulation)
+		}
 
 		// No display (session locked, screen asleep) or a fullscreen app: suspend.
 		let suspended = displaySpace.displays.isEmpty || surfaceProvider.isFullscreenAppActive
@@ -288,21 +308,12 @@ public final class PetController: SpriteAnimatorDelegate {
 			return
 		}
 
-		// A fall is short, and the landing question has to be answered with where the
-		// windows are *now* rather than where they were up to half a second ago.
-		// Asked of the stale graph, a window dragged down faster than she falls is
-		// judged at a position it has already left: she lands in mid-air on it, is
-		// released again by the live read, and repeats — pinned to one spot while
-		// the window descends without her, until the graph catches up and finds the
-		// window gone off the bottom of the work area.
-		if state == .falling {
-			surfaceProvider.refresh(displaySpace: displaySpace)
+		// Body sampling is only needed for free movement and falls; dragging is
+		// directly controlled by the cursor and skips this expensive path.
+		if !isDragging {
+			surfaceProvider.sampleBodiesIfStale(displaySpace: displaySpace, delta: simulation)
+			updateWindowSideCollisions()
 		}
-
-		// Sampled on its own, faster clock than the terrain graph, and before the
-		// collision pass that reads it.
-		surfaceProvider.sampleBodiesIfStale(displaySpace: displaySpace, delta: simulation)
-		updateWindowSideCollisions()
 		tickCooldowns(simulation)
 
 		// Inside a window the four walls are the whole world: no ride, no
@@ -1529,6 +1540,8 @@ public final class PetController: SpriteAnimatorDelegate {
 		stateElapsed = 0
 		fallReason = reason
 		fallStartFootY = foot.y
+		fallRefreshRemaining = 0
+		lastFallRefreshFootY = foot.y
 		velocity = PixelPoint(x: initialVelocityX, y: initialVelocityY)
 		remainderX = 0
 		remainderY = 0
@@ -1564,6 +1577,17 @@ public final class PetController: SpriteAnimatorDelegate {
 		)
 		releasePerch()
 		animator.play(clip ?? (initialVelocityY < 0 ? "toss" : "fall"))
+	}
+
+	private func refreshForFalling(_ delta: Double) {
+		fallRefreshRemaining -= delta
+		let needsTimeRefresh = fallRefreshRemaining <= 0
+		let needsDistanceRefresh =
+			abs(foot.y - lastFallRefreshFootY) >= Self.fallSurfaceRefreshDistance * displayScale
+		guard needsTimeRefresh || needsDistanceRefresh else { return }
+		surfaceProvider.refresh(displaySpace: displaySpace)
+		fallRefreshRemaining = Self.fallSurfaceRefreshInterval
+		lastFallRefreshFootY = foot.y
 	}
 
 	private func beginHop() {
@@ -2082,6 +2106,8 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	public func canBeginDrag() -> Bool { DragInteractionPolicy.canStart(from: state) }
 
+	public var isBeingDragged: Bool { isDragging }
+
 	public func beginDrag(at cursor: PixelPoint) {
 		guard canBeginDrag() else { return }
 		// Picked up: whatever box was holding her no longer does, and no window is
@@ -2128,7 +2154,6 @@ public final class PetController: SpriteAnimatorDelegate {
 		}
 		foot = next
 		dragTracker.add(point: cursor, atSeconds: CFAbsoluteTimeGetCurrent())
-		notifyPlacementIfChanged()
 	}
 
 	/// The bottom of the work area of the display nearest a point: where that

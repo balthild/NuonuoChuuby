@@ -8,6 +8,7 @@ public final class PetWindowController: NSObject, PetControllerDelegate {
 	private let view: PetView
 	private let controller: PetController
 	private var displaySpace: DisplaySpace
+	private var lastAppliedLevel: NSWindow.Level?
 
 	/// Supplied by the menu bar layer; called on a right-click.
 	public var menuProvider: ((NSEvent) -> NSMenu?)?
@@ -96,7 +97,11 @@ public final class PetWindowController: NSObject, PetControllerDelegate {
 			PixelRect(x: topLeft.x, y: topLeft.y, width: size, height: size),
 			primaryHeight: displaySpace.primaryHeight
 		)
-		panel.setFrame(frame, display: true)
+		let current = panel.frame
+		let sizeChanged = current.size != frame.size
+		if current.origin != frame.origin || sizeChanged {
+			panel.setFrame(frame, display: sizeChanged)
+		}
 		applyLevel(topLeft: topLeft, size: size)
 		view.bodyEllipse = controller.bodyEllipseInView
 		view.facing = controller.facing
@@ -110,7 +115,10 @@ public final class PetWindowController: NSObject, PetControllerDelegate {
 	private func applyLevel(topLeft: PixelPoint, size: Double) {
 		let center = PixelPoint(x: topLeft.x + size / 2, y: topLeft.y + size / 2)
 		guard let workArea = displaySpace.display(containing: center)?.visibleFrame else { return }
-		panel.level = PetPanelLevel.level(panelTop: topLeft.y, workArea: workArea)
+		let level = PetPanelLevel.level(panelTop: topLeft.y, workArea: workArea)
+		guard lastAppliedLevel != level else { return }
+		panel.level = level
+		lastAppliedLevel = level
 	}
 
 	// MARK: - PetControllerDelegate
