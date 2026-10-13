@@ -32,6 +32,7 @@ struct WindowEnclosureTests {
 		pet body: PixelRect,
 		from previous: PixelRect? = nil,
 		to current: PixelRect,
+		baseline: Double? = nil,
 		velocityX: Double = 0,
 		velocityY: Double = 0,
 		wasOnFloor: Bool = false,
@@ -42,6 +43,7 @@ struct WindowEnclosureTests {
 			pet: body,
 			previousBox: previous ?? current,
 			currentBox: current,
+			baselineSeconds: baseline,
 			velocityX: velocityX,
 			velocityY: velocityY,
 			wasOnFloor: wasOnFloor,
@@ -206,6 +208,33 @@ struct WindowEnclosureTests {
 			wasOnFloor: true
 		)
 		#expect(!past.isResting, "past it is a throw")
+	}
+
+	@Test("A wall measured over two ticks is judged by its speed, not its distance")
+	func yankIsASpeedNotADistance() {
+		// The box is not necessarily looked at every frame, and the two rectangles
+		// are then further apart for the same movement. Reading that as a larger
+		// flick would throw her out of a box the user merely dragged.
+		let twoTicks = 2 * frame
+		let dragged = step(
+			pet: pet(left: 400, top: 466),
+			from: box(),
+			to: box(y: 200 - 20),
+			baseline: twoTicks,
+			velocityY: 0,
+			wasOnFloor: true
+		)
+		#expect(dragged.isResting, "20 pt over two ticks is 600 pt/s: a drag")
+
+		let flicked = step(
+			pet: pet(left: 400, top: 466),
+			from: box(),
+			to: box(y: 200 - 20),
+			baseline: frame,
+			velocityY: 0,
+			wasOnFloor: true
+		)
+		#expect(!flicked.isResting, "the same 20 pt in one tick is 1200 pt/s: a flick")
 	}
 
 	@Test("She still bounces off a ceiling she ran into")

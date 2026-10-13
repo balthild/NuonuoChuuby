@@ -26,6 +26,22 @@ public enum PlatformRidePhysics {
 	/// deliberate flick.
 	public static let releaseDisplacement: Double = 15
 
+	/// The tick `releaseDisplacement` is written for, so the same rule can be
+	/// applied to a movement measured over several of them.
+	public static let referenceTickSeconds: Double = 1.0 / 60
+
+	/// The same rule as ``releaseDisplacement``, for a movement measured over
+	/// `seconds` rather than over one tick.
+	///
+	/// It is really a **speed** — 900 pt/s — and it has to be read that way
+	/// whenever the two positions it compares are more than a frame apart. A box
+	/// that is only looked at 30 times a second covers twice the ground between
+	/// looks, and the raw displacement would then read an ordinary drag as a
+	/// flick.
+	public static func yankDisplacement(overSeconds seconds: Double) -> Double {
+		releaseDisplacement * (seconds / referenceTickSeconds)
+	}
+
 	public static func shouldPreserveTransientSupport(unavailableSeconds: Double) -> Bool {
 		unavailableSeconds.isFinite
 			&& unavailableSeconds >= 0

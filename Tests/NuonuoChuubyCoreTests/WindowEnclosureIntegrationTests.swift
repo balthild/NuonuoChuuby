@@ -663,6 +663,28 @@ struct WindowEnclosureIntegrationTests {
 		#expect(rig.controller.debugState.enclosureWindowID == Self.windowID)
 	}
 
+	@Test("A flick delivered wholly between two box reads still throws her")
+	func aFlickBetweenReadsStillThrowsHer() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		drop(rig, at: PixelPoint(x: 900, y: 900))
+		settle(rig)
+		#expect(rig.controller.state == .idle, "she should be resting before the flick")
+
+		// Two frames are the whole gesture: 40 pt in 33 ms, which is 1200 pt/s.
+		// The box is not read on the first of them — a resting pet's box is read
+		// at half rate — so the second read has to judge the wall by how fast it
+		// went over both frames. Judging it by the distance instead, against the
+		// position from before the flick, reads the whole gesture as one slow
+		// move of the same size and carries her through it instead of throwing her.
+		dragBox(rig, byY: -20, frames: 2)
+
+		#expect(rig.controller.debugState.state == .falling, "a flick is a flick")
+		#expect(rig.controller.debugState.velocityY < -300, "flung up with the wall")
+		#expect(rig.controller.debugState.enclosureWindowID == Self.windowID)
+	}
+
 	@Test("A box dragged down fast is left behind, not stuck to its floor")
 	func fastDownwardDragLeavesHerBehind() throws {
 		let rig = try makeRig()

@@ -168,12 +168,28 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// Simulated seconds the window holding her has been covered by one in front
 	/// of it. Held briefly, because switching apps covers a window for a moment.
 	private var enclosureCoveredSeconds: Double = 0
+	/// Simulated seconds left before the box's rectangle is read again while she
+	/// rests on its floor. Zero or less means it is read this frame.
+	private var enclosureResampleRemaining: Double = 0
+	/// Simulated seconds since the box's rectangle was last read, which is the
+	/// interval the two rectangles the physics compares really span.
+	private var enclosureBoxAgeSeconds: Double = 0
 
 	/// How long the window holding her may be covered before she gives up on it.
 	///
 	/// She cannot be composited between two ordinary windows, so a covered box
 	/// would leave her looking like she is standing on nothing.
 	private static let enclosureCoverageGraceSeconds: Double = 0.6
+
+	/// How often the box's rectangle is re-read while she rests on its floor.
+	///
+	/// That read is the largest single item in a resting frame, and a resting
+	/// pet's box is normally still, so paying for it sixty times a second buys
+	/// nothing. Half the rate rather than a quarter: the saving falls off
+	/// steeply (60 → 30 Hz is most of what 60 → 15 Hz gets) while the delay
+	/// before she notices a box that has started moving grows in proportion, and
+	/// that delay is the price of this.
+	private static let enclosureRestingResampleInterval: Double = 1.0 / 30
 
 	private let displayScale: Double = 1
 	private var timer: Timer?
@@ -473,6 +489,8 @@ public final class PetController: SpriteAnimatorDelegate {
 	private func resumeFromSuspension() {
 		lastPerchOffset = nil
 		surfaceProvider.rebaselineBodySamples()
+		enclosureResampleRemaining = 0
+		enclosureBoxAgeSeconds = 0
 		if let current = enclosure, let box = liveBounds(of: current.windowID) {
 			enclosure?.previousBox = box
 		}
@@ -484,8 +502,8 @@ public final class PetController: SpriteAnimatorDelegate {
 	///
 	/// The graph lags by up to half a second, which inside a box is the difference
 	/// between being carried by a wall and being punched through it, so the walls
-	/// are read from the window server every frame — the same single-window query
-	/// the ride uses.
+	/// come from the window server — the same single-window query the ride uses.
+	/// ``updateWindowEnclosure(_:)`` decides how often that has to happen.
 	private func liveBounds(of windowID: UInt32) -> PixelRect? {
 		if let debugLiveWindowBoundsOverride { return debugLiveWindowBoundsOverride(windowID) }
 		return WindowSurfaceProvider.liveBounds(of: windowID)
@@ -539,26 +557,47 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// Returns true while the box holds her, which is the signal to skip the whole
 	/// terrain path for this frame: inside a box its four walls are the world.
 	private func updateWindowEnclosure(_ delta: Double) -> Bool {
-		guard let current = enclosure, !isDragging else { return false }
-		// She is still read from the window server every frame, the same single
-		// window query the ride uses, so the walls follow a dragged window exactly.
-		guard let box = liveBounds(of: current.windowID) else {
-			let velocityY = velocity.y
-			let velocityX = velocity.x
-			surrenderEnclosure(reason: "WindowUnavailable")
-			beginFall(
-				reason: "EnclosureWindowLost",
-				initialVelocityY: velocityY,
-				initialVelocityX: velocityX
-			)
+		guard let current = enclosure, !isDragging else {
+			enclosureBoxAgeSeconds = 0
 			return false
 		}
+
+		// The walls come from the window server, as the same single-window query the
+		// ride uses, so they follow a dragged window exactly. A resting pet's box is
+		// normally still, though, and that read is the largest single cost in the
+		// frame — so while she rests it runs 30 times a second instead of 60. The
+		// full rate comes back on the first read that shows the box moving.
+		enclosureResampleRemaining -= delta
+		let skippedRead = current.isResting && enclosureResampleRemaining > 0
+
+		let box: PixelRect
+		if skippedRead {
+			// Nothing has been seen moving it, so the rectangle she was given last is
+			// still the truth about the walls.
+			box = current.previousBox
+		} else {
+			guard let fresh = liveBounds(of: current.windowID) else {
+				enclosureBoxAgeSeconds = 0
+				let velocityY = velocity.y
+				let velocityX = velocity.x
+				surrenderEnclosure(reason: "WindowUnavailable")
+				beginFall(
+					reason: "EnclosureWindowLost",
+					initialVelocityY: velocityY,
+					initialVelocityX: velocityX
+				)
+				return false
+			}
+			box = fresh
+		}
+		let moved = box != current.previousBox
 
 		let scale = displayScale
 		let step = WindowEnclosurePhysics.resolve(
 			pet: bodyRect(),
 			previousBox: current.previousBox,
 			currentBox: box,
+			baselineSeconds: enclosureBoxAgeSeconds,
 			velocityX: velocity.x,
 			velocityY: velocity.y,
 			wasOnFloor: current.isResting,
@@ -566,6 +605,14 @@ public final class PetController: SpriteAnimatorDelegate {
 			scale: scale
 		)
 		enclosure?.previousBox = box
+		enclosureBoxAgeSeconds = skippedRead ? enclosureBoxAgeSeconds + delta : delta
+
+		// She is worth reading every frame while she is not resting, and while the
+		// box is moving under her. Anything else earns the slower clock again.
+		if !skippedRead {
+			enclosureResampleRemaining =
+				step.isResting && !moved ? Self.enclosureRestingResampleInterval : 0
+		}
 		velocity = PixelPoint(x: step.velocityX, y: step.velocityY)
 
 		let movementX = SubpixelMotion.takeWholePixels(step.offsetX, remainder: &remainderX)
@@ -669,6 +716,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		enclosure = Enclosure(windowID: windowID, previousBox: bounds, isResting: false)
 		// The next cover earns its own grace rather than inheriting this one.
 		enclosureCoveredSeconds = 0
+		enclosureBoxAgeSeconds = 0
 		DiagnosticsLog.shared.writeEvent(
 			"WindowEnclosureTransferred",
 			[("From", from.map(String.init) ?? "none"), ("To", "\(windowID)")]
@@ -731,6 +779,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		ignoredLandingWindow = nil
 		ignoredLandingSeconds = 0
 		enclosureCoveredSeconds = 0
+		enclosureBoxAgeSeconds = 0
 		releasePerch()
 		animator.play(velocityY < -1 ? "toss" : "fall")
 		DiagnosticsLog.shared.writeEvent(

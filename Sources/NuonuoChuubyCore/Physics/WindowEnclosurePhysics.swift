@@ -80,6 +80,7 @@ public enum WindowEnclosurePhysics {
 		pet: PixelRect,
 		previousBox: PixelRect,
 		currentBox: PixelRect,
+		baselineSeconds: Double? = nil,
 		velocityX: Double,
 		velocityY: Double,
 		wasOnFloor: Bool,
@@ -103,6 +104,11 @@ public enum WindowEnclosurePhysics {
 
 		// A long frame (a stall, a display wake) must not fling her across the box.
 		let delta = min(elapsedSeconds, Motion.maximumStep)
+		// How long ago the position in `previousBox` was read. One frame normally;
+		// longer when the box has not been looked at every frame, in which case the
+		// walls have to be judged by how fast they were going over that whole
+		// interval rather than by how far they got.
+		let baseline = max(baselineSeconds ?? delta, delta)
 		let scale = max(0.5, scale)
 		let inset = wallInset * scale
 
@@ -124,7 +130,7 @@ public enum WindowEnclosurePhysics {
 		// How fast each wall itself is moving, which is what a bounce is relative
 		// to. A wall dragged faster than the clamp is treated as the clamp.
 		func wallVelocity(_ current: Double, _ previous: Double, maximum: Double) -> Double {
-			let raw = (current - previous) / delta
+			let raw = (current - previous) / baseline
 			return min(max(raw, -maximum), maximum)
 		}
 		let leftWallVelocity = wallVelocity(
@@ -150,9 +156,10 @@ public enum WindowEnclosurePhysics {
 
 		// A box dragged further in one tick than a perch may move is thrown rather
 		// than carried, so a quick jerk flings her while an ordinary drag takes her
-		// along. Same displacement threshold as the ride, so the two surfaces cannot
+		// along. The same rule as the ride — the perch's own displacement, read over
+		// however long the two rectangles actually span — so the two surfaces cannot
 		// disagree about what counts as a yank.
-		let minimumYank = PlatformRidePhysics.releaseDisplacement
+		let minimumYank = PlatformRidePhysics.yankDisplacement(overSeconds: baseline)
 		let horizontalYank =
 			abs(currentBox.left - previousBox.left) >= minimumYank
 			|| abs(currentBox.right - previousBox.right) >= minimumYank
