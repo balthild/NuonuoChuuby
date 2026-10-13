@@ -125,10 +125,9 @@ public final class SurfaceProvider {
 		bodyRefreshVersion += 1
 	}
 
-	/// Whether the pet, where she is, is hidden behind a window in front of the
-	/// one holding her.
-	public func isHidden(behindFrontierOf owner: UInt32, body: PixelRect) -> Bool {
-		WindowOcclusionPolicy.isHidden(body, attachedTo: owner, among: windowBodies)
+	/// Which window is hiding the pet, if any. See ``WindowOcclusionPolicy``.
+	public func coveringWindow(of owner: UInt32, body: PixelRect) -> UInt32? {
+		WindowOcclusionPolicy.coveringWindow(of: owner, her: body, among: windowBodies)
 	}
 
 	public var floors: [Surface] {

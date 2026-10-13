@@ -162,7 +162,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	///
 	/// She cannot be composited between two ordinary windows, so a covered box
 	/// would leave her looking like she is standing on nothing.
-	private static let enclosureCoverageGraceSeconds: Double = 1.0
+	private static let enclosureCoverageGraceSeconds: Double = 0.6
 
 	private let displayScale: Double = 1
 	private var timer: Timer?
@@ -543,19 +543,51 @@ public final class PetController: SpriteAnimatorDelegate {
 		// had to run first to have a box at all.
 		guard enclosureFitsTheBox() else { return true }
 
-		// A box that has been covered by a window in front of it is no longer a
-		// place she can be seen standing in. Held for a moment first, because
-		// switching apps covers a window and then uncovers it again.
-		if surfaceProvider.isHidden(behindFrontierOf: current.windowID, body: bodyRect()) {
-			enclosureCoveredSeconds += delta
-			if enclosureCoveredSeconds >= Self.enclosureCoverageGraceSeconds {
-				surrenderEnclosure(reason: "EnclosureCovered")
-				beginFall(reason: "EnclosureCovered")
-			}
-		} else {
+		// A box covered by a window in front of it is no longer a place she can be
+		// seen standing in. Held for a moment first, because switching apps covers
+		// a window and then uncovers it again.
+		guard let cover = surfaceProvider.coveringWindow(of: current.windowID, body: bodyRect())
+		else {
 			enclosureCoveredSeconds = 0
+			return true
 		}
+		enclosureCoveredSeconds += delta
+		guard enclosureCoveredSeconds >= Self.enclosureCoverageGraceSeconds else { return true }
+
+		// What is now in front of her could have held her had she been let go
+		// inside it, so it does. She stays in play on the window the user is
+		// actually looking at, instead of dropping out to the desktop.
+		if let bounds = surfaceProvider.windowBodies[cover]?.bounds,
+			WindowEnclosurePhysics.bodyFits(
+				bodyRect(),
+				in: bounds,
+				inset: WindowEnclosurePhysics.wallInset * scale
+			)
+		{
+			transferEnclosure(to: cover, bounds: bounds)
+			return true
+		}
+
+		surrenderEnclosure(reason: "EnclosureCovered")
+		beginFall(reason: "EnclosureCovered")
 		return true
+	}
+
+	/// Hands her to the window that was covering the one she was in.
+	///
+	/// She is already drawn on top of that window and already between its walls,
+	/// so this moves no pixel: only which rectangle the walls come from. Her
+	/// velocity carries over, so whatever she was doing continues — a walk she was
+	/// resting from simply falls to the new floor.
+	private func transferEnclosure(to windowID: UInt32, bounds: PixelRect) {
+		let from = enclosure?.windowID
+		enclosure = Enclosure(windowID: windowID, previousBox: bounds, isResting: false)
+		// The next cover earns its own grace rather than inheriting this one.
+		enclosureCoveredSeconds = 0
+		DiagnosticsLog.shared.writeEvent(
+			"WindowEnclosureTransferred",
+			[("From", from.map(String.init) ?? "none"), ("To", "\(windowID)")]
+		)
 	}
 
 	/// Puts her inside a window when she is let go wholly within one.

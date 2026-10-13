@@ -71,12 +71,17 @@ landing / curious` 五种落地状态运行，且只有两条路：
 > 也未在任何文档里记为取舍**，只是 `LandingVoicePolicy` 里两个没有生产者的死字符串
 > （`"WindowSideImpact"` / `"EnclosureWindowLost"`）；现已补进 README 的行为差异表。
 >
-> 同一批还加了一条**上游没有**的处理：**容器被更前置的窗口盖住超过 1 s，就放下她**
-> （`WindowOcclusionPolicy`，`fallReason = "EnclosureCovered"`）。原因是桌宠的窗口层级
-> 无法插进两个普通窗口之间（它们都在 CGWindowLevel 0），所以被盖住的盒子会让她看起来
-> 悬空。**这不能修好部分遮挡**：被挡住的半边仍然画在前置窗口之上（置顶 overlay 的固有
-> 性质）；要像素级正确需要逐窗 ScreenCaptureKit 捕捉，代价与滞后都不值得。宽限期是
-> `PetController.enclosureCoverageGraceSeconds`（1 s，待实测调优）。
+> 同一批还加了一条**上游没有**的处理：**容器被更前置的窗口盖住超过 0.6 s，就不再算那个盒子**
+> （`WindowOcclusionPolicy`）。**盖住她的那个窗口若装得下她（与拖拽入场同一判据 `bodyFits`），
+> 她就改由它抱着**（`WindowEnclosureTransferred`）；只有装不下才放下她（`EnclosureCovered`）。
+> 选「遮住她的窗口里最靠前的那个」不是随意 —— 比它更靠前又能把她也遮住的窗口会自己成为
+> 选中者，所以这个选择不可能来回震荡。
+> 原因是桌宠的窗口层级无法插进两个普通窗口之间（它们都在 CGWindowLevel 0），所以被盖住的
+> 盒子会让她看起来悬空。**这不能修好部分遮挡**：被挡住的半边仍然画在前置窗口之上（置顶
+> overlay 的固有性质）；要像素级正确需要逐窗 ScreenCaptureKit 捕捉，代价与滞后都不值得。
+> 宽限期是 `PetController.enclosureCoverageGraceSeconds`（0.6 s）。
+> 注意：**盖住她的窗口必须遮住她可能出现的位置**。只盖住容器一部分、而她恰好落在未遮住
+> 的那部分时，宽限期会重置 —— 这是对的（她在那里看得见）。
 >
 > 另有一处**已知不一致**：「能不能挡住别人」在图里用 `isEligiblePlatform`（含「顶边可达」），
 > 在窗口矩形采样里用 `isEligibleAppWindow`（不含），所以顶边压在菜单栏下的窗口在图里是

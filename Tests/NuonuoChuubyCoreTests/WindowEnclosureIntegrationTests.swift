@@ -63,7 +63,12 @@ struct WindowEnclosureIntegrationTests {
 			lifeStore: PetLifeStateStore(stateDirectory: directory),
 			displaySpace: space
 		)
-		controller.debugLiveWindowBoundsOverride = { _ in Self.box }
+		// The live read and the sampled bodies answer from the same place, as they
+		// would on a real desktop, so a test cannot assert against one while the
+		// physics reads the other.
+		controller.debugLiveWindowBoundsOverride = { [weak provider] id in
+			provider?.windowBodies[id]?.bounds
+		}
 		return Rig(
 			controller: controller,
 			provider: provider,
@@ -87,7 +92,6 @@ struct WindowEnclosureIntegrationTests {
 	/// Puts the one scripted window at a new rectangle.
 	private func resizeBox(_ rig: Rig, to box: PixelRect) {
 		rig.platform.setWindows([Self.window(bounds: box)])
-		rig.controller.debugLiveWindowBoundsOverride = { _ in box }
 	}
 
 	/// Runs whole frames until the body sampler has taken another sample, which is
@@ -128,7 +132,6 @@ struct WindowEnclosureIntegrationTests {
 		defer { try? FileManager.default.removeItem(at: rig.directory) }
 		let snug = PixelRect(x: 800, y: 800, width: 145, height: 170)
 		rig.platform.setWindows([Self.window(bounds: snug)])
-		rig.controller.debugLiveWindowBoundsOverride = { _ in snug }
 
 		drop(rig, at: PixelPoint(x: 872, y: 890))
 
@@ -145,7 +148,8 @@ struct WindowEnclosureIntegrationTests {
 		drop(rig, at: PixelPoint(x: 900, y: 900))
 		#expect(rig.controller.debugState.enclosureWindowID == Self.windowID)
 
-		rig.controller.debugLiveWindowBoundsOverride = { _ in nil }
+		// The window is closed: it leaves the sample entirely.
+		rig.provider.setBodies([:])
 		_ = rig.controller.debugUpdateEnclosure(delta: Self.frame)
 
 		let state = rig.controller.debugState
@@ -277,8 +281,15 @@ struct WindowEnclosureIntegrationTests {
 
 	// MARK: - Being covered
 
-	/// The whole screen, which covers her wherever she is inside the box.
-	private var screenFilling: PixelRect { PixelRect(x: 0, y: 0, width: 1728, height: 1117) }
+	/// A window that covers the box **entirely**, so she is hidden wherever she is
+	/// inside it — which is the case the user reported. It still has to be small
+	/// enough not to be the display's own background.
+	private var coveringTheBox: PixelRect { PixelRect(x: 480, y: 420, width: 900, height: 620) }
+
+	/// Another, differently placed window that also covers the box entirely.
+	private var alsoCoveringTheBox: PixelRect {
+		PixelRect(x: 450, y: 400, width: 1000, height: 700)
+	}
 
 	/// A body sample in which the box holding her sits at z-index 1, so an
 	/// occluder at 0 is in front of it.
@@ -298,15 +309,14 @@ struct WindowEnclosureIntegrationTests {
 	/// re-samples the bodies from the mock platform and would clobber the scripted
 	/// sample.
 	private func advance(_ rig: Rig, seconds: Double) {
-		let step = 0.1
 		var remaining = seconds
 		while remaining > 0 {
-			_ = rig.controller.debugUpdateEnclosure(delta: min(step, remaining))
-			remaining -= step
+			_ = rig.controller.debugUpdateEnclosure(delta: min(Self.frame, remaining))
+			remaining -= Self.frame
 		}
 	}
 
-	@Test("A window in front covering the box lets her go, and says so")
+	@Test("A covering window with no room for her drops her out of the box")
 	func coveredBoxLetsHerGo() throws {
 		let rig = try makeRig()
 		defer { try? FileManager.default.removeItem(at: rig.directory) }
@@ -314,20 +324,86 @@ struct WindowEnclosureIntegrationTests {
 		drop(rig, at: PixelPoint(x: 900, y: 900))
 		#expect(rig.controller.debugState.enclosureWindowID == Self.windowID)
 
-		rig.provider.setBodies(hostingBodies(occludedBy: screenFilling))
+		// Narrower than her body, so it can catch her but never hold her, and tall
+		// enough to stay over her as she settles inside the box.
+		let her = rig.controller.debugBodyRect()
+		let snug = PixelRect(
+			x: her.centerX - 72.5,
+			y: her.centerY - 100,
+			width: 145,
+			height: 300
+		)
+		rig.provider.setBodies(hostingBodies(occludedBy: snug))
 
 		// Held through the grace: switching apps covers a window for a moment.
-		advance(rig, seconds: 0.5)
+		advance(rig, seconds: 0.3)
 		#expect(
 			rig.controller.debugState.enclosureWindowID == Self.windowID,
 			"released before the grace had run out"
 		)
 
-		advance(rig, seconds: 0.6)
+		advance(rig, seconds: 0.5)
 		let state = rig.controller.debugState
 		#expect(state.enclosureWindowID == nil)
 		#expect(state.state == .falling)
 		#expect(state.fallReason == "EnclosureCovered")
+	}
+
+	@Test("A covering window with room for her takes her in instead of dropping her")
+	func coveredByAWindowThatCouldHoldHer() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		drop(rig, at: PixelPoint(x: 900, y: 900))
+		#expect(rig.controller.debugState.enclosureWindowID == Self.windowID)
+
+		rig.provider.setBodies(hostingBodies(occludedBy: coveringTheBox))
+		advance(rig, seconds: 1.1)
+
+		let state = rig.controller.debugState
+		#expect(state.enclosureWindowID == 9001, "she moved into the window covering her")
+		#expect(state.fallReason != "EnclosureCovered", "and was not dropped out to the desktop")
+	}
+
+	@Test("Moved into a covering window, she settles on its floor and stays")
+	func transferSettlesOnTheNewFloor() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		drop(rig, at: PixelPoint(x: 900, y: 900))
+		rig.provider.setBodies(hostingBodies(occludedBy: coveringTheBox))
+		advance(rig, seconds: 1.1)
+
+		// Gravity finishes the job on the new floor, which is what makes the
+		// hand-over invisible rather than a jump.
+		advance(rig, seconds: 3)
+		#expect(rig.controller.debugState.enclosureWindowID == 9001)
+		#expect(rig.controller.debugState.state == .idle, "she came to rest in the new box")
+
+		// Where she is now, nothing covers her — the frontmost window she was given
+		// to cannot itself be covered — so the hand-over does not repeat.
+		advance(rig, seconds: 5)
+		#expect(rig.controller.debugState.enclosureWindowID == 9001)
+	}
+
+	@Test("Handed over to the frontmost of the windows covering her")
+	func handedOverToTheFrontmost() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		drop(rig, at: PixelPoint(x: 900, y: 900))
+
+		// Four ordinary windows, hers furthest back. She goes to the one the user
+		// is actually looking at.
+		rig.provider.setBodies([
+			Self.windowID: WindowBody(bounds: Self.box, zIndex: 3),
+			9001: WindowBody(bounds: coveringTheBox, zIndex: 2),
+			9002: WindowBody(bounds: alsoCoveringTheBox, zIndex: 0),
+			9003: WindowBody(bounds: coveringTheBox, zIndex: 1),
+		])
+		advance(rig, seconds: 1.1)
+
+		#expect(rig.controller.debugState.enclosureWindowID == 9002)
 	}
 
 	@Test("Uncovering the box within the grace keeps her in it")
@@ -337,13 +413,15 @@ struct WindowEnclosureIntegrationTests {
 
 		drop(rig, at: PixelPoint(x: 900, y: 900))
 
-		rig.provider.setBodies(hostingBodies(occludedBy: screenFilling))
-		advance(rig, seconds: 0.5)
+		rig.provider.setBodies(hostingBodies(occludedBy: coveringTheBox))
+		advance(rig, seconds: 0.3)
 		rig.provider.setBodies(hostingBodies())
 		advance(rig, seconds: 0.5)
 
-		#expect(rig.controller.debugState.enclosureWindowID == Self.windowID)
-		#expect(rig.controller.debugState.state != .falling)
+		#expect(
+			rig.controller.debugState.enclosureWindowID == Self.windowID,
+			"a cover that went away in time leaves her where she was"
+		)
 	}
 
 	@Test("A window BEHIND the one holding her changes nothing")
@@ -353,11 +431,11 @@ struct WindowEnclosureIntegrationTests {
 
 		drop(rig, at: PixelPoint(x: 900, y: 900))
 
-		// The same screen-filling window, this time behind hers: a window behind
-		// the one holding her hides neither of them.
+		// The same large window, this time behind hers: a window behind the one
+		// holding her hides neither of them.
 		rig.provider.setBodies([
 			Self.windowID: WindowBody(bounds: Self.box, zIndex: 0),
-			9001: WindowBody(bounds: screenFilling, zIndex: 1),
+			9001: WindowBody(bounds: alsoCoveringTheBox, zIndex: 1),
 		])
 		advance(rig, seconds: 2)
 
