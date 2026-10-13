@@ -285,6 +285,30 @@ landing / curious` 五种落地状态运行，且只有两条路：
   （2，进菜单栏条时 25），副作用是它与其它 floating 窗口的相对次序变了；`PetPresenting` 现在自己持有
   `speechBubble`，因为两种渲染方式决定了气泡是窗口还是图层。`--pet-panel` 回退路径已实测仍走窗口气泡
   （`speechBubble.getter → init → show → reposition` 都在协议身后被调用过）。
+- **位置插值：1/60 s 的短动画（2026-10-13）**：模拟仍按 60 Hz tick，但 `position` 交给 CA 用
+  **恰好一个 tick** 的线性动画插值，于是渲染服务器按显示器自身的 120 Hz 采样这条位置曲线。
+  效果是位置从「每 16.7 ms 一跳」变成连续滑动（本机 `NSScreen.maximumFramesPerSecond == 120`）。
+  实现见 `Pet/FrameInterpolation.swift`。
+  **代价与原理（都是实测，不是推断）：**
+  - 平滑度就是延迟，两者是同一个参数。动画时长 $D$、tick 间隔 $T$ 时，跟随滞后恰为 $v \cdot D$。
+    $D<T$ 会先走完再停住（**严格劣于不插值**），$D>T$ 延迟线性增长且会被下一个目标打断
+    （0.25 s 时长就是「她追着鼠标跑」）。所以 **$D = T$ 是唯一正确值**，不是「越小越好」。
+  - **持续拖动 12 s A/B（同一脚本，`git stash` 切换同一份代码）：主线程 824 → 909 ms，
+    即 +0.71% 绝对 CPU（6.87% → 7.58%）**，全线程 +0.31%。折算 **每 tick +118 µs**。
+    新增开销全部是 CA 隐式动画的记账，self-time 对账正好闭合：`commit_transaction` +8、
+    `_copyRenderLayer` +6、`collect_layers_` +6、`thread_flags_` +6、`collect_animations_` +6、
+    `__CFStringHash`+`CFEqual` +12、`mach_msg2_trap`（IPC）+37 ≈ 81。
+    **即隐式动画的创建/编码/提交都在我们进程里，渲染服务器只播放** ——「插值不花我们的 CPU」是错的。
+  - **两个必须保持 `NSNull()` 的键**：`contents`（一旦动画就是两帧精灵交叉淡入淡出，她会一直发虚）、
+    `transform`（携带转身的镜像翻转，会经过 scale=0，**她会瞬间被压扁**）。所以 `transform` 连同倾斜角
+    都保持瞬时。
+  - **实测踩到的坑**：把 `CABasicAnimation` 模板放进 `actions` 字典**根本不插值**（500 ms 时长下
+    `presentation()` 仍恰好落后一次提交，不随时长变化）。**只有 transaction 的 duration 有效。**
+  - 气泡必须走同一个 transaction，否则她滑动时尾巴会离开头顶；气泡**首次出现**时反而要禁用动画。
+  - **未验证**：actions 字典「没有 position 键」是否仍允许隐式动画，无法在无窗口的测试进程里断言
+    （那种环境下 `action(forKey:)` 对任何键都返回 nil），只能靠眼睛确认。
+- **120 fps 绘制实验（未做，见下）**：把 tick 提到 120 Hz、去掉插值，让位置**和精灵**都按 120 Hz 更新。
+  预估代价：tick 相关开销（`step` + 每 tick 的图层提交/IPC）翻倍，即约 +0.7~1.5% 绝对 CPU。
 - **Metal 渲染实验（延后）**：在 clean tree 的独立分支做 A/B，前提是先固定同一交互脚本与同一统计口径。
    - 目标：确认是否能在不降低体感帧率的前提下，较当前 CALayer 再降低拖动/下落 CPU。
    - 技术约束：若实施，必须优先做纹理复用（避免每帧图像上传/转换），否则可能比 CALayer 更差。

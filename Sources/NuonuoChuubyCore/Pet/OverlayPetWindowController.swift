@@ -130,6 +130,37 @@ final class OverlayPetRootView: NSView {
 /// sublayer with `contents` set is only composited, so moving her is free.
 @MainActor
 public final class OverlayPetWindowController: NSObject, PetControllerDelegate, PetPresenting {
+	/// What the pet's layer must never animate.
+	///
+	/// `position` is deliberately absent: it rides `FrameInterpolation`, so the render
+	/// server glides her between ticks instead of stepping once per tick. Everything
+	/// listed here has to land in the frame it was set in — `contents` especially,
+	/// because animating it cross-fades one sprite frame into the next, and `transform`
+	/// because it carries the mirror flip, which interpolates through a zero scale and
+	/// would flatten her every time she turned around.
+	///
+	/// A manually created sublayer does not get AppKit's implicit animations suppressed
+	/// for it, so without these it eases every change over the default ~0.25 s.
+	static let petLayerActions: [String: CAAction] = [
+		"bounds": NSNull(),
+		"transform": NSNull(),
+		"contents": NSNull(),
+		"hidden": NSNull(),
+	]
+
+	/// What the bubble's layer must never animate.
+	///
+	/// `position` is absent here too, and for the opposite reason to the pet's: the
+	/// bubble sits on her head, so it has to take the same glide she does. Landing
+	/// instantly while she interpolated would pull its tail off her every frame she
+	/// moved.
+	static let bubbleLayerActions: [String: CAAction] = [
+		"bounds": NSNull(),
+		"contents": NSNull(),
+		"contentsScale": NSNull(),
+		"hidden": NSNull(),
+	]
+
 	private struct Overlay {
 		let monitor: Monitor
 		let panel: OverlayPetPanel
@@ -168,7 +199,7 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 		super.init()
 		rebuildOverlays()
 		controller.delegate = self
-		applyPlacement()
+		applyPlacement(animated: false)
 	}
 
 	public func show() {
@@ -188,7 +219,7 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 	public func updateDisplaySpace(_ space: DisplaySpace) {
 		displaySpace = space
 		rebuildOverlays()
-		applyPlacement()
+		applyPlacement(animated: false)
 	}
 
 	// MARK: - Construction
@@ -218,21 +249,10 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 			pet.magnificationFilter = .linear
 			pet.isOpaque = false
 			pet.contentsScale = monitor.scale
-			// Every geometry change has to land in the frame it was made in. A layer
-			// AppKit owns has these disabled for it, but a manually created sublayer
-			// does not: without this Core Animation animates each change over ~0.25 s,
-			// so she chases the cursor instead of following it.
-			pet.actions = [
-				"position": NSNull(),
-				"bounds": NSNull(),
-				"transform": NSNull(),
-				"contents": NSNull(),
-				"hidden": NSNull(),
-			]
+			pet.actions = Self.petLayerActions
 			root.layer?.addSublayer(pet)
 
-			// The bubble rides above her, in the same never-moving window, with the
-			// same disabled actions — it is moved by its `position` too.
+			// The bubble rides above her, in the same never-moving window.
 			let bubble = CALayer()
 			bubble.anchorPoint = CGPoint(x: 0, y: 0)
 			bubble.contentsGravity = .resize
@@ -241,13 +261,7 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 			bubble.isOpaque = false
 			bubble.contentsScale = monitor.scale
 			bubble.isHidden = true
-			bubble.actions = [
-				"position": NSNull(),
-				"bounds": NSNull(),
-				"contents": NSNull(),
-				"contentsScale": NSNull(),
-				"hidden": NSNull(),
-			]
+			bubble.actions = Self.bubbleLayerActions
 			root.layer?.addSublayer(bubble)
 
 			panel.contentView = root
@@ -318,7 +332,10 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 		return CATransform3DConcat(CATransform3DMakeScale(-1, 1, 1), rotate)
 	}
 
-	private func applyPlacement() {
+	/// - Parameter animated: whether her position should glide to the new one rather
+	///   than land in this frame. False for the first placement on a layer, which has
+	///   never been anywhere yet and would otherwise fly in from the origin.
+	private func applyPlacement(animated: Bool) {
 		let petFrame = controller.petFrame
 		guard
 			let index = OverlayPetGeometry.hostingDisplayIndex(
@@ -329,30 +346,41 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 		hostingIndex = index
 		let transform = petTransform(lean: controller.bodyLeanDegrees, facing: controller.facing)
 
-		for (position, overlay) in overlays.enumerated() {
-			guard position == index else {
-				overlay.pet.isHidden = true
-				continue
+		// The bubble is moved by the callback at the end, and has to be in the same
+		// transaction: it sits on her head, so anything that delayed one and not the
+		// other would pull its tail off her.
+		let move = {
+			for (position, overlay) in self.overlays.enumerated() {
+				guard position == index else {
+					overlay.pet.isHidden = true
+					continue
+				}
+				let local = OverlayPetGeometry.localPetFrame(
+					petFrame: petFrame,
+					displayFrame: overlay.monitor.frame
+				)
+				overlay.pet.isHidden = false
+				overlay.pet.bounds = CGRect(x: 0, y: 0, width: local.width, height: local.height)
+				overlay.pet.position = CGPoint(x: local.centerX, y: local.bottom)
+				overlay.pet.transform = transform
+				overlay.root.petRect = CGRect(
+					x: local.x,
+					y: local.y,
+					width: local.width,
+					height: local.height
+				)
+				overlay.root.bodyEllipse = self.controller.bodyEllipseInView
 			}
-			let local = OverlayPetGeometry.localPetFrame(
-				petFrame: petFrame,
-				displayFrame: overlay.monitor.frame
-			)
-			overlay.pet.isHidden = false
-			overlay.pet.bounds = CGRect(x: 0, y: 0, width: local.width, height: local.height)
-			overlay.pet.position = CGPoint(x: local.centerX, y: local.bottom)
-			overlay.pet.transform = transform
-			overlay.root.petRect = CGRect(
-				x: local.x,
-				y: local.y,
-				width: local.width,
-				height: local.height
-			)
-			overlay.root.bodyEllipse = controller.bodyEllipseInView
+			// The bubble follows the pet's own square, never the overlay's rectangle.
+			self.onPlacementChanged?(petFrame)
 		}
+		if animated {
+			FrameInterpolation.animate(move)
+		} else {
+			FrameInterpolation.withoutAnimation(move)
+		}
+
 		applyLevel(petFrame: petFrame)
-		// The bubble follows the pet's own square, never the overlay's rectangle.
-		onPlacementChanged?(petFrame)
 	}
 
 	/// Every overlay shares one level, decided from where the pet is — the same
@@ -387,7 +415,7 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 	}
 
 	public func petControllerDidChangePlacement(_ controller: PetController) {
-		applyPlacement()
+		applyPlacement(animated: true)
 	}
 
 	public func petControllerDidRequestMenu(_ controller: PetController) {

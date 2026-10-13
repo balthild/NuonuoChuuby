@@ -76,7 +76,9 @@ public final class OverlaySpeechBubbleController: SpeechBubblePresenting {
 	) {
 		guard !text.isEmpty else { return }
 		visible = true
-		apply(text: text, placement: placement)
+		// It arrives where it belongs. Gliding in from wherever it was last seen
+		// would look like the bubble was thrown at her.
+		FrameInterpolation.withoutAnimation { apply(text: text, placement: placement) }
 
 		hideWorkItem?.cancel()
 		let work = DispatchWorkItem { [weak self] in self?.hide() }
@@ -86,7 +88,10 @@ public final class OverlaySpeechBubbleController: SpeechBubblePresenting {
 
 	public func reposition(to placement: SpeechBubblePlacement, displaySpace: DisplaySpace) {
 		guard visible else { return }
-		apply(text: text, placement: placement)
+		// Following her, so it takes the same short glide she does — see
+		// `FrameInterpolation`. Landing instantly here would leave its tail behind her
+		// head every frame she moved.
+		FrameInterpolation.animate { apply(text: text, placement: placement) }
 	}
 
 	public func hide() {
