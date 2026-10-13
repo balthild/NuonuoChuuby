@@ -1,5 +1,18 @@
 import Foundation
 
+/// Locates the artwork the Makefile assembles into the app
+/// (`Contents/Resources/Assets.bundle/Assets`). It reads `Bundle.main` rather
+/// than `Bundle.module`: the folder is built by hand, so nothing depends on
+/// SwiftPM's generated resource bundle.
+enum BundledAssets {
+	static var bundleURL: URL? {
+		Bundle.main.resourceURL?.appendingPathComponent("Assets.bundle")
+	}
+
+	/// Sprite frames and voice clips.
+	static var rootURL: URL? { bundleURL?.appendingPathComponent("Assets") }
+}
+
 /// Resolves where the sprite frames and voice clips live.
 public struct AssetLocator: Sendable {
 	public let root: URL
@@ -18,12 +31,13 @@ public struct AssetLocator: Sendable {
 		}
 	}
 
-	/// Assets bundled with the app, if `make assets` seeded them.
+	/// The artwork hand-linked into the app (`Contents/Resources/Assets.bundle/Assets`)
+	/// for a development build; nil when the build fetches it instead.
 	///
-	/// The seed folder always exists (it holds a tracked placeholder), so a
+	/// The resource folder always exists (the bundle carries the manifest), so a
 	/// sentinel frame decides whether it actually carries artwork.
 	public static func bundled() -> AssetLocator? {
-		guard let url = Bundle.module.resourceURL?.appendingPathComponent("Assets") else { return nil }
+		guard let url = BundledAssets.rootURL else { return nil }
 		let sentinel = url.appendingPathComponent("sprites/runtime/idle/frame_00.png")
 		return FileManager.default.fileExists(atPath: sentinel.path) ? AssetLocator(root: url) : nil
 	}

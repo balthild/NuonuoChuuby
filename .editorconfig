@@ -6,7 +6,7 @@ end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true
 
-[*.{swift,json,swift-format}]
+[*.{swift,json,swift-format,sh}]
 indent_style = tab
 indent_size = 2
 

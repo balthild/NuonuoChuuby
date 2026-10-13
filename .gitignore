@@ -7,7 +7,6 @@ DerivedData/
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
 
-# Seeded from the upstream submodule by `make assets`; the bytes are never
-# committed. Only the placeholder is tracked so the resource folder exists.
-/Sources/NuonuoChuubyCore/Resources/Assets/*
-!/Sources/NuonuoChuubyCore/Resources/Assets/.gitkeep
+# Generated from the upstream submodule by `make manifest`; the pinned commit and
+# the file list travel in the binary, so the source is never committed.
+/Sources/NuonuoChuubyCore/Asset/AssetManifest.swift

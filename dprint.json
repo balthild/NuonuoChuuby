@@ -3,9 +3,9 @@
 	// `.swift-format` stays the single source of truth for Swift style.
 	//
 	// The include list is an allowlist, which is what keeps the upstream submodule
-	// and the generated asset manifest out of it: `Vendor/` holds another project's
-	// C#, and `asset-manifest.json` is written by Tools/generate-asset-manifest.sh
-	// with a layout of its own, so formatting it would only fight the generator.
+	// out of it: `Vendor/` holds another project's C#. The generated asset manifest
+	// sits under `Sources/` but is written by Tools/generate-asset-manifest.sh with
+	// a layout of its own, so it is excluded explicitly rather than formatted.
 	"includes": [
 		".vscode/*.json",
 		".swift-format",
@@ -17,6 +17,7 @@
 	],
 	"excludes": [
 		".build",
+		"Sources/NuonuoChuubyCore/Asset/AssetManifest.swift",
 	],
 	"useTabs": true,
 	"indentWidth": 2,

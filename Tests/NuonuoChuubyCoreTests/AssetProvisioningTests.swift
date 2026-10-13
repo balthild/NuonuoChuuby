@@ -5,33 +5,30 @@ import Testing
 
 @Suite("Asset manifest")
 struct AssetManifestTests {
-	private func manifest(_ overrides: String = "") -> AssetManifest? {
-		let json = """
-			{
-			  "upstream": "https://github.com/nicedoctors/JiuNuoDesktopPet",
-			  "commit": "abc123",
-			  "files": [
-			    { "path": "audio/voice/糯糯_002.wav", "source": "音效/糯糯_002.wav" },
-			    { "path": "sprites/runtime/idle/frame_00.png", "source": "assets/sprites/runtime/idle/frame_00.png" }
-			    \(overrides)
-			  ]
-			}
-			"""
-		return try? JSONDecoder().decode(AssetManifest.self, from: Data(json.utf8))
+	private func manifest() -> AssetManifest {
+		AssetManifest(
+			upstream: "https://github.com/nicedoctors/JiuNuoDesktopPet",
+			commit: "abc123",
+			files: [
+				.init(path: "audio/voice/糯糯_002.wav", source: "音效/糯糯_002.wav"),
+				.init(
+					path: "sprites/runtime/idle/frame_00.png",
+					source: "assets/sprites/runtime/idle/frame_00.png"
+				),
+			]
+		)
 	}
 
-	@Test("The committed manifest decodes and pins a commit")
-	func bundledManifest() throws {
-		let bundled = try #require(AssetManifest.bundled(), "the manifest should be in the bundle")
-		#expect(bundled.commit.count == 40)
-		#expect(bundled.upstream.contains("github.com"))
-		#expect(bundled.files.count > 300)
+	@Test("The compiled-in manifest pins a commit and lists the runtime files")
+	func bundledManifest() {
+		#expect(AssetManifest.bundled.commit.count == 40)
+		#expect(AssetManifest.bundled.upstream.contains("github.com"))
+		#expect(AssetManifest.bundled.files.count > 300)
 	}
 
 	@Test("Every entry points at a plausible upstream path")
-	func entryPaths() throws {
-		let bundled = try #require(AssetManifest.bundled())
-		for entry in bundled.files {
+	func entryPaths() {
+		for entry in AssetManifest.bundled.files {
 			#expect(!entry.path.isEmpty)
 			#expect(!entry.source.isEmpty)
 			// Voice clips come from the Chinese-named folder at the repo root.
@@ -43,21 +40,33 @@ struct AssetManifestTests {
 		}
 	}
 
-	@Test("A raw URL is built against the pinned commit")
-	func rawURL() throws {
-		let bundled = try #require(manifest())
+	@Test("A CDN URL is built against the pinned commit")
+	func cdnURL() throws {
+		let bundled = manifest()
 		let entry = bundled.files[1]
-		let url = try #require(bundled.rawURL(for: entry))
-		#expect(url.absoluteString.contains("raw.githubusercontent.com"))
-		#expect(url.absoluteString.contains("/abc123/"))
-		#expect(url.absoluteString.hasSuffix("assets/sprites/runtime/idle/frame_00.png"))
+		let url = try #require(bundled.cdnURL(for: entry))
+		#expect(url.absoluteString.contains("cdn.jsdelivr.net/gh/nicedoctors/JiuNuoDesktopPet@abc123"))
+		#expect(url.absoluteString.hasSuffix("/assets/sprites/runtime/idle/frame_00.png"))
+	}
+
+	@Test("The repository slug is taken from the upstream URL")
+	func repositorySlug() {
+		#expect(
+			AssetManifest.repositorySlug(from: "https://github.com/owner/repo")
+				== "owner/repo"
+		)
+		// A `.git` suffix must not leak into the CDN path.
+		#expect(
+			AssetManifest.repositorySlug(from: "https://github.com/owner/repo.git")
+				== "owner/repo"
+		)
 	}
 
 	@Test("A non-ASCII path is percent-encoded, not left raw")
 	func encodesNonASCII() throws {
-		let bundled = try #require(manifest())
+		let bundled = manifest()
 		let entry = bundled.files[0]
-		let url = try #require(bundled.rawURL(for: entry))
+		let url = try #require(bundled.cdnURL(for: entry))
 		// The manifest's own path stays readable, but the request must be escaped.
 		#expect(!url.absoluteString.contains("糯糯"))
 		#expect(url.absoluteString.contains("%E7%B3%AF"))

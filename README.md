@@ -8,7 +8,6 @@
 
 ```sh
 git submodule update --init     # 取上游素材仓库
-make assets                     # 把运行时素材复制进资源目录
 make run                        # 构建、打包、签名并启动
 ```
 
@@ -16,16 +15,16 @@ make run                        # 构建、打包、签名并启动
 
 ## 目录
 
-| 路径                                  | 内容                                    |
-| ------------------------------------- | --------------------------------------- |
-| `Sources/NuonuoChuuby/`               | 可执行目标，只负责 `NSApplication` 引导 |
-| `Sources/NuonuoChuubyCore/`           | 全部逻辑与界面                          |
-| `Sources/NuonuoChuubyCore/Resources/` | 素材目录（内容不提交）与素材清单        |
-| `Tests/`                              | swift-testing 测试                      |
-| `App/Info.plist`                      | 打包时补上版本号                        |
-| `Tools/`                              | 素材播种/清单、签名、证书脚本           |
-| `Makefile`                            | 格式化、构建、测试、打包、签名          |
-| `Vendor/JiuNuoDesktopPet/`            | 上游素材仓库（submodule）               |
+| 路径                                                 | 内容                                     |
+| ---------------------------------------------------- | ---------------------------------------- |
+| `Sources/NuonuoChuuby/`                              | 可执行目标，只负责 `NSApplication` 引导  |
+| `Sources/NuonuoChuubyCore/`                          | 全部逻辑与界面                           |
+| `Sources/NuonuoChuubyCore/Asset/AssetManifest.swift` | 生成的素材清单（不提交，每次构建重生成） |
+| `Tests/`                                             | swift-testing 测试                       |
+| `App/Info.plist`                                     | 打包时补上版本号                         |
+| `Tools/`                                             | 素材清单生成/链接、签名、证书脚本        |
+| `Makefile`                                           | 格式化、构建、测试、打包、签名           |
+| `Vendor/JiuNuoDesktopPet/`                           | 上游素材仓库（submodule）                |
 
 代码按子系统分目录：`App` `Sprite` `Physics` `Life` `Voice` `Dialogue` `Cheek` `World` `Meal` `System` `Asset` `Settings`。
 
@@ -33,9 +32,9 @@ make run                        # 构建、打包、签名并启动
 
 角色形象与录音的**再分发授权尚未明确**（见上游 `ASSET_RIGHTS.md`）。因此本项目：
 
-- 仓库里**不包含任何素材字节**，只提交 `asset-manifest.json`（一个路径清单）与 submodule 指针；
-- 开发期用 `make assets` 从 submodule 复制；
-- 发布版**首次启动时**按清单从上游下载到
+- 仓库里**不包含任何素材字节**：清单（路径 + 固定 commit）在构建时从 submodule 生成并编译进二进制，仓库只提交 submodule 指针；
+- 开发期由 `make app` 从 submodule 直接硬链（hard link）进 `.app`，不复制；
+- 发布版**首次启动时**按清单从上游（jsdelivr）下载到
   `~/Library/Application Support/NuonuoChuuby/assets/<commit>/`。
   清单固定了 commit，所以换了 pin 才会重新下载。
 
@@ -91,17 +90,16 @@ xattr -dr com.apple.quarantine /Applications/NuonuoChuuby.app
 
 ## 命令
 
-| 目标                  | 说明                               |
-| --------------------- | ---------------------------------- |
-| `make assets`         | 从 submodule 播种素材              |
-| `make manifest`       | 重新生成素材清单（换 pin 时）      |
-| `make build` / `test` | 构建 / 跑测试                      |
-| `make app`            | 拼装 `.app`                        |
-| `make sign`           | 签名（见上）                       |
-| `make run` / `rerun`  | 构建、签名并启动；`rerun` 可带参数 |
-| `make package`        | 产出分发包                         |
-| `make reset-data`     | 清空设置与存档                     |
-| `make clean`          | 清理构建产物与素材副本             |
+| 目标                  | 说明                                        |
+| --------------------- | ------------------------------------------- |
+| `make manifest`       | 从 submodule 重新生成编译进二进制的素材清单 |
+| `make build` / `test` | 构建 / 跑测试                               |
+| `make app`            | 拼装 `.app`                                 |
+| `make sign`           | 签名（见上）                                |
+| `make run` / `rerun`  | 构建、签名并启动；`rerun` 可带参数          |
+| `make package`        | 产出分发包                                  |
+| `make reset-data`     | 清空设置与存档                              |
+| `make clean`          | 清理构建产物与生成的素材清单                |
 
 调试用的启动参数：`--demo-pinch` 会自动演示一次捏脸；`--demo-lick` 会在启动后半秒自动去舔一个桌面图标（用来验证走过去、舔完之后的坠落，不必等她自己饿）。
 

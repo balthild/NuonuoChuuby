@@ -1,9 +1,10 @@
 import Foundation
 
-/// The pinned list of runtime files a release build fetches. See
-/// `Tools/generate-asset-manifest.sh`.
-public struct AssetManifest: Sendable, Decodable {
-	public struct Entry: Sendable, Decodable {
+/// The pinned list of runtime files a release build fetches. The manifest itself
+/// is compiled in: `AssetManifest.bundled` is generated into
+/// `Asset/AssetManifest.swift` by `Tools/generate-asset-manifest.sh`.
+public struct AssetManifest: Sendable {
+	public struct Entry: Sendable {
 		/// Where the file goes, relative to the app's asset folder.
 		public var path: String
 		/// Where it comes from, relative to the upstream repository root.
@@ -14,30 +15,32 @@ public struct AssetManifest: Sendable, Decodable {
 	public var commit: String
 	public var files: [Entry]
 
-	public static func bundled() -> AssetManifest? {
-		guard let url = Bundle.module.url(forResource: "asset-manifest", withExtension: "json"),
-			let data = try? Data(contentsOf: url)
-		else { return nil }
-		return try? JSONDecoder().decode(AssetManifest.self, from: data)
+	/// The `owner/repo` slug of the upstream GitHub URL.
+	static func repositorySlug(from upstream: String) -> String? {
+		var text = upstream
+		if text.hasSuffix(".git") { text.removeLast(4) }
+		guard let marker = text.range(of: "github.com") else { return nil }
+		let slug = text[marker.upperBound...].drop { $0 == ":" || $0 == "/" }
+		return slug.isEmpty ? nil : String(slug)
 	}
 
-	public var rawBaseURL: URL? {
-		URL(
-			string: upstream.replacingOccurrences(
-				of: "https://github.com/",
-				with: "https://raw.githubusercontent.com/"
-			)
-		)
+	/// The jsdelivr base for the pinned commit, e.g.
+	/// `https://cdn.jsdelivr.net/gh/owner/repo@<commit>`. jsdelivr serves a
+	/// pinned commit from its edge cache, unlike a raw.githubusercontent.com
+	/// fetch through the GitHub CDN.
+	public var cdnBaseURL: URL? {
+		guard let slug = Self.repositorySlug(from: upstream) else { return nil }
+		return URL(string: "https://cdn.jsdelivr.net/gh/\(slug)@\(commit)")
 	}
 
-	public func rawURL(for entry: Entry) -> URL? {
-		guard let base = rawBaseURL else { return nil }
+	public func cdnURL(for entry: Entry) -> URL? {
+		guard let base = cdnBaseURL else { return nil }
 		var allowed = CharacterSet.urlPathAllowed
 		// Characters that would change the meaning of the path are encoded rather
 		// than left to the server's interpretation.
 		allowed.remove(charactersIn: "#?[]{}|\\^`<>\"%")
 		guard let encoded = entry.source.addingPercentEncoding(withAllowedCharacters: allowed),
-			let url = URL(string: "\(base.absoluteString)/\(commit)/\(encoded)")
+			let url = URL(string: "\(base.absoluteString)/\(encoded)")
 		else { return nil }
 		return url
 	}
@@ -48,12 +51,10 @@ public struct AssetManifest: Sendable, Decodable {
 @MainActor
 public final class AssetStore {
 	public enum Failure: Error, CustomStringConvertible {
-		case manifestMissing
 		case downloadFailed(String)
 
 		public var description: String {
 			switch self {
-			case .manifestMissing: return "找不到素材清单。"
 			case .downloadFailed(let name): return "素材下载失败：\(name)"
 			}
 		}
@@ -78,9 +79,8 @@ public final class AssetStore {
 		self.session = URLSession(configuration: configuration)
 	}
 
-	public convenience init(environment: AppEnvironment) throws {
-		guard let manifest = AssetManifest.bundled() else { throw Failure.manifestMissing }
-		self.init(environment: environment, manifest: manifest)
+	public convenience init(environment: AppEnvironment) {
+		self.init(environment: environment, manifest: .bundled)
 	}
 
 	public var installDirectory: URL {
@@ -134,7 +134,7 @@ public final class AssetStore {
 			var inFlight = 0
 
 			while inFlight < concurrency, let entry = iterator.next() {
-				guard let url = manifest.rawURL(for: entry) else {
+				guard let url = manifest.cdnURL(for: entry) else {
 					throw Failure.downloadFailed(entry.path)
 				}
 				group.addTask { [session] in
@@ -149,7 +149,7 @@ public final class AssetStore {
 				completed += 1
 				progress(Progress(completed: completed, total: total))
 
-				if let entry = iterator.next(), let url = manifest.rawURL(for: entry) {
+				if let entry = iterator.next(), let url = manifest.cdnURL(for: entry) {
 					group.addTask { [session] in
 						try await AssetStore.fetch(entry: entry, from: url, into: directory, session: session)
 						return entry.path

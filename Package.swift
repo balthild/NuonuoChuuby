@@ -12,15 +12,7 @@ let package = Package(
 		.executable(name: "NuonuoChuuby", targets: ["NuonuoChuuby"])
 	],
 	targets: [
-		.target(
-			name: "NuonuoChuubyCore",
-			resources: [
-				// The seeded artwork (not committed) and the pinned file list that
-				// a release build downloads from.
-				.copy("Resources/Assets"),
-				.copy("Resources/asset-manifest.json"),
-			]
-		),
+		.target(name: "NuonuoChuubyCore"),
 		.executableTarget(
 			name: "NuonuoChuuby",
 			dependencies: [

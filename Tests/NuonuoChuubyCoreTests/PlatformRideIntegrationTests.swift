@@ -12,14 +12,7 @@ import Testing
 @MainActor
 @Suite("Platform ride integration", .serialized)
 struct PlatformRideIntegrationTests {
-	private static var assetsRoot: URL? {
-		let repoRoot = URL(fileURLWithPath: #filePath)
-			.deletingLastPathComponent()
-			.deletingLastPathComponent()
-			.deletingLastPathComponent()
-		let root = repoRoot.appendingPathComponent("Sources/NuonuoChuubyCore/Resources/Assets")
-		return FileManager.default.fileExists(atPath: root.path) ? root : nil
-	}
+	private static var assetsRoot: URL? { TestAssets.root }
 
 	enum TestSkip: Error { case missingAssets }
 

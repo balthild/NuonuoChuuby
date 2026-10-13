@@ -18,8 +18,7 @@
 ### 开始前必做
 
 ```sh
-make assets          # 测试需要素材，否则会 TestSkip.missingAssets 直接失败
-make test            # 记录基线测试数与全绿状态；文档里的数字可能已过时
+make test            # 素材由 make test 从 submodule 硬链提供；记录基线测试数与全绿状态
 ```
 
 然后读：`README.md`（尤其「macOS 上的行为差异」表）、`TODO.md`、`Package.swift`、`Makefile`。
@@ -95,7 +94,7 @@ Ledgeling 的技术思路可以借鉴（§10），**它的流程与产品约束�
 
 **已核实属于本仓库、可以引用的约定**：
 - `make run` / `open` 启动才有正常的 TCC 授权弹窗（`README.md`）。
-- 测试需要 `make assets`；缺素材时 `TestSkip.missingAssets` 让测试**失败**而非跳过。
+- 测试需要 `make test`（素材从 submodule 硬链到 `.build/test-assets`）；缺素材时 `TestSkip.missingAssets` 让测试**失败**而非跳过。
 - 关闭 hardened runtime；签名证书自维护，换证书会清空已授权限（`README.md`、`Makefile`）。
 
 > 另一个易混来源：上游 `Vendor/JiuNuoDesktopPet/CONTRIBUTING.md:22` 写了
@@ -611,7 +610,7 @@ d=3 role=AXImage desc=sing-box       pos=(1513,32)  size=(56,56)
 | 竖边是**新能力** | 原版没有「沿竖边走」，D3 把它推迟是对的 |
 | `WindowSurfaceProvider.liveBounds` | **唯一值得保留的旧代码** —— 它已经是「每帧查单个窗口」的正确做法，只是位置该挪到 `Platform` 后面 |
 | 测试数量基线 | **已实测（2026-10-12）：157 个测试，0 失败。** 旧笔记的 127 / 157 说法以本次输出为准 |
-| 素材依赖 | 测试需要 `make assets`，否则 `TestSkip.missingAssets` 会让测试**失败**（不是跳过） |
+| 素材依赖 | 测试需要 `make test`（素材从 submodule 硬链），否则 `TestSkip.missingAssets` 会让测试**失败**（不是跳过） |
 
 ---
 

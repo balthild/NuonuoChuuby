@@ -9,14 +9,7 @@ import Testing
 @MainActor
 @Suite("Cheek pinch renderer", .serialized)
 struct CheekPinchRendererTests {
-	private static var assetsRoot: URL? {
-		let repoRoot = URL(fileURLWithPath: #filePath)
-			.deletingLastPathComponent()
-			.deletingLastPathComponent()
-			.deletingLastPathComponent()
-		let root = repoRoot.appendingPathComponent("Sources/NuonuoChuubyCore/Resources/Assets")
-		return FileManager.default.fileExists(atPath: root.path) ? root : nil
-	}
+	private static var assetsRoot: URL? { TestAssets.root }
 
 	private func idleFrame() throws -> CGImage {
 		guard let root = Self.assetsRoot else { throw TestSkip.missingAssets }

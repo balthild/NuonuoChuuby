@@ -53,13 +53,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 	private func resolveAssets(environment: AppEnvironment) async -> AssetLocator? {
 		if let seeded = AssetLocator.bundled() { return seeded }
 
-		guard let store = try? AssetStore(environment: environment) else {
-			presentAlert(
-				title: "缺少素材清单",
-				message: "这个构建里没有素材清单，也没找到随包的素材。请先运行 `make assets`。"
-			)
-			return nil
-		}
+		let store = AssetStore(environment: environment)
 		if store.isComplete() {
 			return AssetLocator(root: store.installDirectory)
 		}
@@ -402,16 +396,5 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		} else {
 			deletionWatcher?.stop()
 		}
-	}
-
-	// MARK: - Assets
-
-	private func presentAlert(title: String, message: String) {
-		let alert = NSAlert()
-		alert.messageText = title
-		alert.informativeText = message
-		alert.alertStyle = .critical
-		alert.addButton(withTitle: "好")
-		alert.runModal()
 	}
 }

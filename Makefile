@@ -1,9 +1,11 @@
 # NuonuoChuuby — terminal-first build, test and packaging.
 #
 # The app is assembled by hand: no Xcode project, no `xcodebuild`. `swift build`
-# produces the executable and the resource bundle, and `make app` copies them
-# into a `.app` skeleton whose Info.plist is patched with the version at package
-# time.
+# produces the executable, and `make app` assembles a `.app` skeleton whose
+# Info.plist is patched with the version at package time and whose resource
+# folder (`Contents/Resources/Assets.bundle`) is built by hand as well — SwiftPM's
+# own resource bundle is not used. A development run hard-links the seeded assets
+# instead of copying them (see DEV_ASSETS).
 #
 # Always launch the bundle with `make run` (or `open`). macOS ties automation
 # decisions to the signature, so an ad-hoc rebuild loses them on every build —
@@ -48,10 +50,17 @@ DIST_DIR := $(BUILD_DIR)/dist
 APP_DIR := $(BUILD_DIR)/app
 APP_BUNDLE := $(APP_DIR)/$(APP_NAME).app
 BIN_DIR := $(BUILD_DIR)/$(CONFIG)
-RESOURCE_BUNDLE := $(BIN_DIR)/$(APP_NAME)_$(CORE_TARGET).bundle
 
-ASSETS_DIR := Sources/$(CORE_TARGET)/Resources/Assets
-ASSET_MANIFEST := Sources/$(CORE_TARGET)/Resources/asset-manifest.json
+# The manifest (pinned commit + file list) is generated into a git-ignored Swift
+# source and compiled in; the artwork is assembled into the .app by hand at
+# `Contents/Resources/Assets.bundle/Assets`, which the program reads through
+# `Bundle.main.resourceURL`. A development run (`run`/`rerun`) hard-links the
+# submodule's assets into it instead of copying them. Off by default, so
+# `make app`/`package` stay self-contained and fetch the artwork on first launch.
+DEV_ASSETS ?=
+
+MANIFEST_SWIFT := Sources/$(CORE_TARGET)/Asset/AssetManifest.swift
+TEST_ASSETS_DIR := $(BUILD_DIR)/test-assets
 INFO_PLIST := App/Info.plist
 ICONSET_DIR := $(BUILD_DIR)/$(APP_NAME).iconset
 ICNS := $(BUILD_DIR)/$(APP_NAME).icns
@@ -61,7 +70,7 @@ PLIST_BUDDY := /usr/libexec/PlistBuddy
 
 .DEFAULT_GOAL := help
 
-.PHONY: help format lint assets manifest strip-assets icon build test app sign signing-cert package run rerun dev reset-data clean release
+.PHONY: help format lint manifest icon build test app sign signing-cert package run rerun dev reset-data clean release
 
 help: ## Show this help.
 	@printf '%s\n' "$(DISPLAY_NAME) $(VERSION) — available targets:"
@@ -73,32 +82,29 @@ format: ## Format the sources in place (Swift via swift-format, JSON via dprint)
 lint: ## Report formatting violations, changing nothing.
 	dprint check
 
-assets: ## Seed runtime assets from the upstream submodule.
-	Tools/seed-assets.sh "$(UPSTREAM_SUBMODULE)" "$(ASSETS_DIR)"
-
-strip-assets: ## Remove the seed, so a release fetches artwork from upstream.
-	@rm -rf "$(ASSETS_DIR)/sprites" "$(ASSETS_DIR)/audio"
-	@printf '%s\n' "Stripped seeded assets; the app will download them on first launch."
-
-manifest: assets ## Pin the upstream commit and list the assets a release fetches.
-	Tools/generate-asset-manifest.sh "$(UPSTREAM_SUBMODULE)" "$(ASSETS_DIR)" "$(ASSET_MANIFEST)"
+manifest: ## Regenerate the compiled-in asset manifest from the submodule.
+	Tools/generate-asset-manifest.sh "$(UPSTREAM_SUBMODULE)" "$(MANIFEST_SWIFT)"
 
 icon: ## Generate AppIcon.icns, drawing the artwork from source.
 	@mkdir -p "$(BUILD_DIR)"
 	$(SWIFT) Tools/GenerateAppIcon.swift "$(ICONSET_DIR)"
 	iconutil --convert icns --output "$(ICNS)" "$(ICONSET_DIR)"
 
-build: ## Build the executable and its resource bundle.
+build: manifest ## Build the executable.
 	$(SWIFT) build -c $(CONFIG)
 
-test: ## Run the test suite.
-	$(SWIFT) test -c $(CONFIG)
+test: manifest ## Run the test suite (assets hard-linked from the submodule).
+	@Tools/link-assets.sh "$(UPSTREAM_SUBMODULE)" "$(TEST_ASSETS_DIR)"
+	@NUONUO_ASSET_ROOT="$(TEST_ASSETS_DIR)" $(SWIFT) test -c $(CONFIG)
 
 app: build icon ## Assemble the .app bundle.
 	@rm -rf "$(APP_BUNDLE)"
 	@mkdir -p "$(APP_BUNDLE)/Contents/MacOS" "$(APP_BUNDLE)/Contents/Resources"
 	@cp "$(BIN_DIR)/$(APP_NAME)" "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)"
-	@if [ -d "$(RESOURCE_BUNDLE)" ]; then cp -R "$(RESOURCE_BUNDLE)" "$(APP_BUNDLE)/Contents/Resources/"; fi
+	@if [ "$(DEV_ASSETS)" = "1" ]; then \
+		Tools/link-assets.sh "$(UPSTREAM_SUBMODULE)" \
+			"$(APP_BUNDLE)/Contents/Resources/Assets.bundle/Assets"; \
+	fi
 	@if [ -f "$(ICNS)" ]; then cp "$(ICNS)" "$(APP_BUNDLE)/Contents/Resources/AppIcon.icns"; fi
 	@cp "$(INFO_PLIST)" "$(APP_BUNDLE)/Contents/Info.plist"
 	@$(PLIST_BUDDY) -c "Set :CFBundleShortVersionString $(VERSION)" "$(APP_BUNDLE)/Contents/Info.plist"
@@ -120,10 +126,12 @@ package: sign ## Produce a distributable zip in .build/dist.
 	ditto -c -k --keepParent "$(APP_BUNDLE)" "$(DIST_DIR)/$(APP_NAME)-$(VERSION).zip"
 	@printf '%s\n' "Created $(DIST_DIR)/$(APP_NAME)-$(VERSION).zip"
 
+run: DEV_ASSETS := 1
 run: sign ## Build, bundle and launch the app.
 	open "$(APP_BUNDLE)"
 
 rerun: APP_ARGS ?=
+rerun: DEV_ASSETS := 1
 rerun: sign ## Build, bundle and relaunch the app with arguments.
 	@pkill -f "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)" || true
 	open -n "$(APP_BUNDLE)" --args $(APP_ARGS)
@@ -139,11 +147,9 @@ reset-data: ## Forget the app's preferences and pet state.
 
 clean: ## Remove all build products.
 	rm -rf "$(BUILD_DIR)"
-	@find "$(ASSETS_DIR)" -mindepth 1 ! -name '.gitkeep' -exec rm -rf {} + 2>/dev/null || true
+	@rm -f "$(MANIFEST_SWIFT)"
 
-release: ## Clean release build: tested, then packaged WITHOUT the seeded assets.
+release: ## Clean release build: tested, then packaged WITHOUT the artwork.
 	$(MAKE) clean
-	$(MAKE) assets
 	$(MAKE) CONFIG=release test
-	$(MAKE) CONFIG=release strip-assets
 	$(MAKE) CONFIG=release package

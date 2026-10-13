@@ -12,7 +12,7 @@
 
 ## 开工前的必做步骤
 
-1. `make assets`（测试需要素材，否则 `TestSkip.missingAssets` 会让测试**失败**）
+1. `git submodule update --init`（测试与构建都需要 submodule；素材由 `make` 从它硬链而来，不再需要单独播种）
 2. `make test` —— 记录**当前**的测试数量与全绿状态。文档里的数字可能已过时，
    **以实际输出为准**。
 3. 读 `README.md`（尤其「macOS 上的行为差异」表）、`TODO.md`、`Package.swift`、`Makefile`。
