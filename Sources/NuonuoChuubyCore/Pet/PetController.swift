@@ -519,8 +519,17 @@ public final class PetController: SpriteAnimatorDelegate {
 		foot.x += Double(movementX)
 		foot.y += Double(movementY)
 
+		if abs(velocity.x) > 8 { facing = velocity.x < 0 ? -1 : 1 }
+
+		// The floor's own answer is the truth about whether she is standing on it.
+		// Reading it back only when she happened to be moving fast enough left her
+		// "resting" for ever after a yank that gave her no speed of her own — a
+		// downward one — so the floor went on carrying her for the whole drag
+		// instead of dropping away from her.
+		let wasResting = current.isResting
+		enclosure?.isResting = step.isResting
+
 		if step.hitAny, step.impactSpeed >= 70 * scale {
-			enclosure?.isResting = false
 			state = .falling
 			stateElapsed = 0
 			animator.play(velocity.y < -40 * scale ? "toss" : "fall")
@@ -533,8 +542,7 @@ public final class PetController: SpriteAnimatorDelegate {
 				]
 			)
 			announce(.platformLaunch, voice: .scream, priority: .important)
-		} else if step.isResting, enclosure?.isResting == false {
-			enclosure?.isResting = true
+		} else if step.isResting, !wasResting {
 			state = .idle
 			stateElapsed = 0
 			animator.play("idle")
@@ -542,15 +550,14 @@ public final class PetController: SpriteAnimatorDelegate {
 				"WindowEnclosureSettled",
 				[("Window", "\(current.windowID)")]
 			)
-		} else if !step.isResting, abs(velocity.y) > 35 * scale {
-			enclosure?.isResting = false
+		} else if !step.isResting {
+			// Nothing holds her: the box was yanked, or the walls are only shutting
+			// her in loosely. Either way she is a falling body inside it.
 			state = .falling
 			if animator.currentClip != "toss", animator.currentClip != "fall" {
 				animator.play(velocity.y < 0 ? "toss" : "fall")
 			}
 		}
-
-		if abs(velocity.x) > 8 { facing = velocity.x < 0 ? -1 : 1 }
 
 		// The capacity question — "is this box still big enough for her" — is asked
 		// here rather than before ``resolve``. It is about size and not position, so

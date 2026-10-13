@@ -145,7 +145,7 @@ struct WindowEnclosureTests {
 		#expect(result.impactSpeed > 800)
 	}
 
-	@Test("A floor yanked down leaves her behind")
+	@Test("A floor yanked down leaves her where she was")
 	func yankedFloorDownLeavesHer() {
 		let result = step(
 			pet: pet(left: 400, top: 466),
@@ -154,10 +154,36 @@ struct WindowEnclosureTests {
 			velocityY: 0,
 			wasOnFloor: true
 		)
-		#expect(result.hitBottom)
+		// It did not touch her at all: it simply went away. She falls from rest
+		// where she stood — released with no speed of her own, gravity applying from
+		// the next frame, exactly as the perch releases her. Snapping her down onto
+		// the new floor would have carried her a frame's worth of the drag before
+		// gravity had any say, which is the framewise version of being stuck to the
+		// bottom edge.
+		#expect(!result.hitBottom)
 		#expect(!result.isResting)
-		#expect(result.velocityY == 0, "left behind rather than pulled down")
-		#expect(result.impactSpeed == 0, "and nothing to be startled by")
+		#expect(result.velocityY == 0, "left behind from rest")
+		#expect(result.offsetY == 0, "and still where she was")
+		#expect(result.impactSpeed == 0, "nothing to be startled by")
+	}
+
+	@Test("A floor yanked down takes its own speed with it")
+	func yankedFloorDownDropsItsSpeed() {
+		// She was being carried, so she is holding the floor's speed. That speed is
+		// the floor's, not hers, and must not come with her: keeping it made a fast
+		// downward drag fling her at the floor's speed instead of dropping her from
+		// rest, which reads as a heavy shove rather than a fall.
+		let result = step(
+			pet: pet(left: 400, top: 466),
+			from: box(),
+			to: box(y: 220),
+			velocityY: 850,
+			wasOnFloor: true
+		)
+		#expect(!result.hitBottom)
+		#expect(!result.isResting)
+		#expect(result.velocityY == 0, "left behind from rest, not thrown down")
+		#expect(result.offsetY == 0, "and she does not move this frame")
 	}
 
 	@Test("The threshold is the one the perch uses")

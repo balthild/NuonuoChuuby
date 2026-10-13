@@ -627,6 +627,52 @@ struct WindowEnclosureIntegrationTests {
 		#expect(rig.controller.debugState.enclosureWindowID == Self.windowID)
 	}
 
+	@Test("A box dragged down fast is left behind, not stuck to its floor")
+	func fastDownwardDragLeavesHerBehind() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		drop(rig, at: PixelPoint(x: 900, y: 900))
+		settle(rig)
+		#expect(rig.controller.state == .idle, "she should be resting before the drag")
+		let footBefore = rig.controller.debugState.foot.y
+
+		// 40 pt a frame is 2400 pt/s, far past the 15 pt that counts as a yank.
+		var box = Self.box
+		for _ in 0..<4 {
+			box = PixelRect(x: box.x, y: box.y + 40, width: box.width, height: box.height)
+			rig.controller.debugLiveWindowBoundsOverride = { _ in box }
+			_ = rig.controller.debugUpdateEnclosure(delta: Self.frame)
+		}
+
+		let moved = rig.controller.debugState.foot.y - footBefore
+		#expect(
+			rig.controller.debugState.state == .falling,
+			"the floor was yanked out from under her, so she is falling"
+		)
+		#expect(
+			moved < 20,
+			"the box fell \(Int(box.bottom - Self.box.bottom)) pt and carried her \(Int(moved)) with it"
+		)
+
+		// Once the drag stops she is still in mid-air and has to fall the rest of the
+		// way. Being put straight down on the new floor would mean the record of her
+		// standing on it outlived the yank that took it away.
+		_ = rig.controller.debugUpdateEnclosure(delta: Self.frame)
+		#expect(
+			rig.controller.debugState.state == .falling,
+			"she was in mid-air when the drag stopped, but is \(rig.controller.debugState.state)"
+		)
+
+		// And then she comes down onto the floor it left behind.
+		advance(rig, seconds: 5)
+		#expect(rig.controller.debugState.state == .idle, "she should have settled")
+		#expect(
+			abs(rig.controller.debugState.foot.y - (box.bottom + 8)) < 1,
+			"expected her on the new floor at \(Int(box.bottom + 8)), found \(Int(rig.controller.debugState.foot.y))"
+		)
+	}
+
 	@Test("Dragging the box slowly down carries her down with it")
 	func slowDownwardDragCarriesHer() throws {
 		let rig = try makeRig()

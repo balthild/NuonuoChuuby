@@ -223,17 +223,25 @@ public enum WindowEnclosurePhysics {
 			velocityY = bottomWallVelocity
 			hitBottom = true
 			isResting = true
-		} else if wasOnFloor, verticalYank {
-			// The floor was yanked out from under her: a rising one throws her, a
-			// falling one leaves her behind. The rule the perch already follows.
+		} else if wasOnFloor, verticalYank, bottomWallVelocity < 0 {
+			// The floor was yanked **up** into her: put her back on it and throw her
+			// with it. The perch's rule for a rising ledge.
 			offsetY = bottomBoundary - pet.bottom
+			velocityY = bottomWallVelocity
 			hitBottom = true
-			if bottomWallVelocity < 0 {
-				velocityY = bottomWallVelocity
-				impactSpeed = abs(bottomWallVelocity)
-			} else {
-				velocityY = 0
-			}
+			impactSpeed = abs(bottomWallVelocity)
+		} else if wasOnFloor, verticalYank {
+			// The floor was yanked **down** out from under her. She is not touched by
+			// it at all, so she does not move this frame: she is left standing in
+			// mid-air and falls from rest, which is what the perch does when a ledge
+			// drops away and what a fall should feel like.
+			//
+			// Her velocity has to be dropped with it. While she was resting the floor
+			// carried her, and carrying meant *assigning* the wall's speed to her; that
+			// speed is the floor's, not hers, so keeping it would fling her downwards
+			// with the drag instead of dropping her.
+			offsetY = 0
+			velocityY = 0
 		} else {
 			let nextTop = pet.top + offsetY
 			let nextBottom = pet.bottom + offsetY
