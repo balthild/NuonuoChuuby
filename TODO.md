@@ -66,12 +66,32 @@ landing / curious` 五种落地状态运行，且只有两条路：
 - **双宠共存 / 配对互动**：依赖菲比。
 - **窗口捣蛋**（踢、藏帽、撕裂真实窗口）：**未实现的原因是整个功能尚未开工**；所需**辅助功能 + 屏幕录制**两项权限均可接受。
 
+> 「窗口容器」与「窗口侧撞」已于 2026-10-12 移植（`WindowEnclosurePhysics`、
+> `WindowSideCollisionPolicy`、`WindowEnclosureEligibilityPolicy`）。它们此前**既未实现、
+> 也未在任何文档里记为取舍**，只是 `LandingVoicePolicy` 里两个没有生产者的死字符串
+> （`"WindowSideImpact"` / `"EnclosureWindowLost"`）；现已补进 README 的行为差异表。
+>
+> 同一批还加了一条**上游没有**的处理：**容器被更前置的窗口盖住超过 1 s，就放下她**
+> （`WindowOcclusionPolicy`，`fallReason = "EnclosureCovered"`）。原因是桌宠的窗口层级
+> 无法插进两个普通窗口之间（它们都在 CGWindowLevel 0），所以被盖住的盒子会让她看起来
+> 悬空。**这不能修好部分遮挡**：被挡住的半边仍然画在前置窗口之上（置顶 overlay 的固有
+> 性质）；要像素级正确需要逐窗 ScreenCaptureKit 捕捉，代价与滞后都不值得。宽限期是
+> `PetController.enclosureCoverageGraceSeconds`（1 s，待实测调优）。
+>
+> 另有一处**已知不一致**：「能不能挡住别人」在图里用 `isEligiblePlatform`（含「顶边可达」），
+> 在窗口矩形采样里用 `isEligibleAppWindow`（不含），所以顶边压在菜单栏下的窗口在图里是
+> occluder、在采样里不是。遮挡语义应收敛到 `isEligibleAppWindow`；未做，因为它会改变现有
+> graph 的遮挡结果，需要单独确认。
+
 ---
 
 ## 4. 其他
 
 - **签名**：发布版尚未单独生成证书，开发期复用 CalendarShouter 的（`OP_ITEM_REF="CalendarShouter Signing"`）。换证书会让 macOS 忘记已授予的自动化与文件夹授权，所以只换一次。
 - **性能未实测**：预算目标是闲置 < 0.5% / 移动 < 2% CPU、< 80 MB 内存，但从未测量过。参考项目的 overlay 模型实测 **3.48% CPU**，已超出其 2% 目标 —— 值得我们自己实测一次再下结论。
+  - **部分实测（2026-10-12）**：一次全量 `CGWindowListCopyWindowInfo`（25 个窗口）实测 **0.48 ms**。
+    窗口容器与侧撞新增的 10 Hz 矩形采样因此约 **0.48% CPU**，恰好压在闲置预算上；
+    叠加地形图的 2 Hz 刷新（0.1%）后略超 0.5%。若实测确认超标，首选把两者的采样合并成一次枚举。
 - **多屏混合 DPI 未验证**：当前全程用点（points）规避了大部分换算问题，但未在真实混合 DPI 的多屏组合上验证过。
 - **桌面图标位置是近似值**：macOS 无公开 API，`DesktopIconGrid` 用 Finder 默认布局近似，不是图标真实坐标。
 

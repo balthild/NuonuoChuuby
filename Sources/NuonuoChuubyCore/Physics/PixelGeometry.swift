@@ -40,4 +40,15 @@ public struct PixelRect: Sendable, Equatable {
 	public var bottom: Double { y + height }
 	public var centerX: Double { x + width / 2 }
 	public var centerY: Double { y + height / 2 }
+
+	/// A rectangle shrunk by `amount` on every side. May come out inside-out, in
+	/// which case ``contains(_:)`` is false for everything — which is the right
+	/// answer for a container that is too small.
+	public func insetBy(_ amount: Double) -> PixelRect {
+		PixelRect(x: x + amount, y: y + amount, width: width - 2 * amount, height: height - 2 * amount)
+	}
+
+	public func contains(_ other: PixelRect) -> Bool {
+		other.left >= left && other.right <= right && other.top >= top && other.bottom <= bottom
+	}
 }

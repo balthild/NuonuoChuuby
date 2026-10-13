@@ -26,6 +26,20 @@ public enum WindowTerrainEligibilityPolicy {
 		ownPID: Int32,
 		workArea: PixelRect
 	) -> Bool {
+		guard isEligibleAppWindow(window, ownPID: ownPID) else { return false }
+		// The pet stands on the top edge, so that edge has to be somewhere she
+		// can reach — inside the display, below the menu bar. An enclosure is
+		// entered through the body rather than the top edge, so it uses
+		// ``isEligibleAppWindow`` alone.
+		guard window.bounds.top >= workArea.top, window.bounds.top < workArea.bottom else {
+			return false
+		}
+		return true
+	}
+
+	/// Whether the window is an ordinary, solid, user-facing application window,
+	/// ignoring where its edges are.
+	public static func isEligibleAppWindow(_ window: PlatformWindow, ownPID: Int32) -> Bool {
 		// Only ordinary windows: anything raised above or dropped below the
 		// normal level is chrome or an overlay.
 		guard window.layer == 0 else { return false }
@@ -35,11 +49,6 @@ public enum WindowTerrainEligibilityPolicy {
 			return false
 		}
 		guard window.bounds.width >= minimumWidth, window.bounds.height >= minimumHeight else {
-			return false
-		}
-		// The pet stands on the top edge, so that edge has to be somewhere she
-		// can reach — inside the display, below the menu bar.
-		guard window.bounds.top >= workArea.top, window.bounds.top < workArea.bottom else {
 			return false
 		}
 		return true

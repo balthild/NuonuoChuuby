@@ -131,6 +131,39 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var climbSlipAt: Double = 1
 	private var transientDuration: Double = 0
 
+	/// Her state while a window's walls hold her.
+	///
+	/// Deliberately not a `PetState`: inside a box she still falls and rests, so
+	/// every state-driven rule (the ride, autonomy, the clip table) would need a
+	/// case for it. Holding the window and returning early from ``step(_:)`` says
+	/// the same thing without touching any of them.
+	private struct Enclosure {
+		var windowID: UInt32
+		var previousBox: PixelRect
+		var isResting: Bool
+	}
+
+	private var enclosure: Enclosure?
+	/// Simulated seconds left before another side impact may be felt.
+	private var sideImpactCooldown: Double = 0
+	/// The window-server body sample the collision pass last looked at, so it runs
+	/// once per sample rather than once per frame.
+	private var processedBodyRefreshVersion = -1
+	/// A window that has just thrown her must not catch her again on its own top
+	/// edge in the same instant: at a corner the side hit and the platform top are
+	/// the same window.
+	private var ignoredLandingWindow: UInt32?
+	private var ignoredLandingSeconds: Double = 0
+	/// Simulated seconds the window holding her has been covered by one in front
+	/// of it. Held briefly, because switching apps covers a window for a moment.
+	private var enclosureCoveredSeconds: Double = 0
+
+	/// How long the window holding her may be covered before she gives up on it.
+	///
+	/// She cannot be composited between two ordinary windows, so a covered box
+	/// would leave her looking like she is standing on nothing.
+	private static let enclosureCoverageGraceSeconds: Double = 1.0
+
 	private let displayScale: Double = 1
 	private var timer: Timer?
 	private var lastTick: CFAbsoluteTime = 0
@@ -212,25 +245,19 @@ public final class PetController: SpriteAnimatorDelegate {
 			return
 		}
 
-		// Runs for every grounded state, not only while walking: a dragged window
-		// moves her whether or not she happens to be walking.
-		maintainGroundSupport(simulation)
+		// Sampled on its own, faster clock than the terrain graph, and before the
+		// collision pass that reads it.
+		surfaceProvider.sampleBodiesIfStale(displaySpace: displaySpace, delta: simulation)
+		updateWindowSideCollisions()
+		tickCooldowns(simulation)
 
-		switch state {
-		case .idle: updateIdle(simulation)
-		case .running: updateRunning(simulation)
-		case .falling: updateFalling(simulation)
-		case .climbing: updateClimbing(simulation)
-		case .landing, .curious, .waking, .satisfied, .rolling:
-			if stateElapsed >= transientDuration {
-				if state == .waking { announce(.wakeNormally, voice: .calm) }
-				returnToIdle()
-			}
-		case .sleeping: updateSleeping(simulation)
-		case .chomping, .licking:
-			// Driven by the clip finishing, not by a timer.
-			break
-		default: break
+		// Inside a window the four walls are the whole world: no ride, no
+		// autonomy, no terrain. Everything below belongs to the open desktop.
+		if !updateWindowEnclosure(simulation) {
+			// Runs for every grounded state, not only while walking: a dragged
+			// window moves her whether or not she happens to be walking.
+			maintainGroundSupport(simulation)
+			updateState(simulation)
 		}
 
 		animator.tick(timing.animationSeconds)
@@ -249,14 +276,23 @@ public final class PetController: SpriteAnimatorDelegate {
 		guard heartbeatRemaining <= 0 else { return }
 		heartbeatRemaining = 10
 
+		// Inside a window the four walls are what holds her, and she rests there
+		// with `state == .idle` — so reporting "none" would look exactly like the
+		// floating bug this heartbeat exists to catch (see TODO.md §1).
 		let support: String
-		switch perchSurface?.key.kind {
-		case nil: support = "none"
-		case .some(.floor): support = "floor"
-		default: support = "window"
+		let tracked: String
+		if let enclosure {
+			support = "enclosure"
+			tracked = String(enclosure.windowID)
+		} else {
+			switch perchSurface?.key.kind {
+			case nil: support = "none"
+			case .some(.floor): support = "floor"
+			default: support = "window"
+			}
+			tracked =
+				perch.flatMap { $0.key.kind == .windowTop ? String($0.key.owner) : nil } ?? "none"
 		}
-		let tracked =
-			perch.flatMap { $0.key.kind == .windowTop ? String($0.key.owner) : nil } ?? "none"
 		let position = "\(Int(foot.x)),\(Int(foot.y))"
 
 		DiagnosticsLog.shared.writeEvent(
@@ -361,6 +397,331 @@ public final class PetController: SpriteAnimatorDelegate {
 		)
 	}
 
+	/// The rectangle she can be hit in, in global top-left coordinates.
+	///
+	/// The feet are deliberately outside it, so standing on a window's top edge can
+	/// never be mistaken for that window's side edge sweeping through her.
+	private func bodyRect(bottomCanvasY: Double? = nil) -> PixelRect {
+		let topLeft = screenPoint(
+			canvasX: profile.geometry.bodyCollisionLeftCanvasX,
+			canvasY: profile.geometry.bodyCollisionTopCanvasY
+		)
+		let bottomRight = screenPoint(
+			canvasX: profile.geometry.bodyCollisionRightCanvasX,
+			canvasY: bottomCanvasY ?? profile.geometry.bodyCollisionBottomCanvasY
+		)
+		return PixelRect(
+			x: topLeft.x,
+			y: topLeft.y,
+			width: bottomRight.x - topLeft.x,
+			height: bottomRight.y - topLeft.y
+		)
+	}
+
+	// MARK: - Window enclosure
+
+	/// The window's rectangle right now, read fresh.
+	///
+	/// The graph lags by up to half a second, which inside a box is the difference
+	/// between being carried by a wall and being punched through it, so the walls
+	/// are read from the window server every frame — the same single-window query
+	/// the ride uses.
+	private func liveBounds(of windowID: UInt32) -> PixelRect? {
+		if let debugLiveWindowBoundsOverride { return debugLiveWindowBoundsOverride(windowID) }
+		return WindowSurfaceProvider.liveBounds(of: windowID)
+	}
+
+	/// Whether the box still holds her, leaving it if it does not.
+	///
+	/// The capacity rule, shared with entry through the same wall inset: a box big
+	/// enough for her when she goes in is big enough until it — or she — is
+	/// resized. Where she is *inside* it is ``WindowEnclosurePhysics/resolve``'s
+	/// business, not this one's, so a window being dragged can never trip it.
+	private func enclosureFitsTheBox() -> Bool {
+		guard let current = enclosure else { return true }
+		guard let box = liveBounds(of: current.windowID) else {
+			surrenderEnclosure(reason: "WindowUnavailable")
+			beginFall(
+				reason: "EnclosureWindowLost",
+				initialVelocityY: velocity.y,
+				initialVelocityX: velocity.x
+			)
+			return false
+		}
+		guard
+			WindowEnclosurePhysics.boxHasRoom(
+				for: bodyRect(),
+				in: box,
+				inset: WindowEnclosurePhysics.wallInset * displayScale
+			)
+		else {
+			surrenderEnclosure(reason: "BoxTooSmall")
+			beginFall(reason: "EnclosureTooSmall")
+			return false
+		}
+		return true
+	}
+
+	/// Steps her as a free body inside the window's walls.
+	///
+	/// Returns true while the box holds her, which is the signal to skip the whole
+	/// terrain path for this frame: inside a box its four walls are the world.
+	private func updateWindowEnclosure(_ delta: Double) -> Bool {
+		guard let current = enclosure, !isDragging else { return false }
+		// She is still read from the window server every frame, the same single
+		// window query the ride uses, so the walls follow a dragged window exactly.
+		guard let box = liveBounds(of: current.windowID) else {
+			let velocityY = velocity.y
+			let velocityX = velocity.x
+			surrenderEnclosure(reason: "WindowUnavailable")
+			beginFall(
+				reason: "EnclosureWindowLost",
+				initialVelocityY: velocityY,
+				initialVelocityX: velocityX
+			)
+			return false
+		}
+
+		let scale = displayScale
+		let step = WindowEnclosurePhysics.resolve(
+			pet: bodyRect(),
+			previousBox: current.previousBox,
+			currentBox: box,
+			velocityX: velocity.x,
+			velocityY: velocity.y,
+			elapsedSeconds: delta,
+			scale: scale
+		)
+		enclosure?.previousBox = box
+		velocity = PixelPoint(x: step.velocityX, y: step.velocityY)
+
+		let movementX = SubpixelMotion.takeWholePixels(step.offsetX, remainder: &remainderX)
+		let movementY = SubpixelMotion.takeWholePixels(step.offsetY, remainder: &remainderY)
+		// A wall absorbs whatever subpixel drift was in flight, so a bounce does
+		// not carry a stale fraction through the impact.
+		if step.hitHorizontal { remainderX = 0 }
+		if step.hitVertical { remainderY = 0 }
+		foot.x += Double(movementX)
+		foot.y += Double(movementY)
+
+		if step.hitAny, step.impactSpeed >= 70 * scale {
+			enclosure?.isResting = false
+			state = .falling
+			stateElapsed = 0
+			animator.play(velocity.y < -40 * scale ? "toss" : "fall")
+			DiagnosticsLog.shared.writeEvent(
+				"WindowEnclosureImpact",
+				[
+					("Window", "\(current.windowID)"),
+					("Walls", "L=\(step.hitLeft),T=\(step.hitTop),R=\(step.hitRight),B=\(step.hitBottom)"),
+					("ImpactSpeed", String(format: "%.0f", step.impactSpeed)),
+				]
+			)
+			announce(.platformLaunch, voice: .scream, priority: .important)
+		} else if step.isResting, enclosure?.isResting == false {
+			enclosure?.isResting = true
+			state = .idle
+			stateElapsed = 0
+			animator.play("idle")
+			DiagnosticsLog.shared.writeEvent(
+				"WindowEnclosureSettled",
+				[("Window", "\(current.windowID)")]
+			)
+		} else if !step.isResting, abs(velocity.y) > 35 * scale {
+			enclosure?.isResting = false
+			state = .falling
+			if animator.currentClip != "toss", animator.currentClip != "fall" {
+				animator.play(velocity.y < 0 ? "toss" : "fall")
+			}
+		}
+
+		if abs(velocity.x) > 8 { facing = velocity.x < 0 ? -1 : 1 }
+
+		// The capacity question — "is this box still big enough for her" — is asked
+		// here rather than before ``resolve``. It is about size and not position, so
+		// the order cannot change the answer; it sits at the end because the walls
+		// had to run first to have a box at all.
+		guard enclosureFitsTheBox() else { return true }
+
+		// A box that has been covered by a window in front of it is no longer a
+		// place she can be seen standing in. Held for a moment first, because
+		// switching apps covers a window and then uncovers it again.
+		if surfaceProvider.isHidden(behindFrontierOf: current.windowID, body: bodyRect()) {
+			enclosureCoveredSeconds += delta
+			if enclosureCoveredSeconds >= Self.enclosureCoverageGraceSeconds {
+				surrenderEnclosure(reason: "EnclosureCovered")
+				beginFall(reason: "EnclosureCovered")
+			}
+		} else {
+			enclosureCoveredSeconds = 0
+		}
+		return true
+	}
+
+	/// Puts her inside a window when she is let go wholly within one.
+	///
+	/// Stricter than the original, which asked only for her *centre* to be inside.
+	/// A body hanging out of the frame would be visibly half in and half out, and
+	/// the walls would shove her on the very first frame.
+	private func tryBeginWindowEnclosure(velocityX: Double, velocityY: Double) -> Bool {
+		let body = bodyRect()
+		let inset = WindowEnclosurePhysics.wallInset * displayScale
+		// The tightest box wins, so a small window opened inside a large one is
+		// what she ends up in. Whether a window may hold her at all was decided
+		// when it was sampled.
+		guard
+			let fitted = surfaceProvider.windowBodies
+				.filter({ WindowEnclosurePhysics.bodyFits(body, in: $0.value.bounds, inset: inset) })
+				.min(by: {
+					$0.value.bounds.width * $0.value.bounds.height
+						< $1.value.bounds.width * $1.value.bounds.height
+				})
+		else { return false }
+
+		enclosure = Enclosure(
+			windowID: fitted.key,
+			previousBox: fitted.value.bounds,
+			isResting: false
+		)
+		movementPurpose = .none
+		state = .falling
+		stateElapsed = 0
+		velocity = PixelPoint(x: velocityX, y: velocityY)
+		remainderX = 0
+		remainderY = 0
+		ignoredLandingWindow = nil
+		ignoredLandingSeconds = 0
+		enclosureCoveredSeconds = 0
+		releasePerch()
+		animator.play(velocityY < -1 ? "toss" : "fall")
+		DiagnosticsLog.shared.writeEvent(
+			"WindowEnclosureEntered",
+			[
+				("Window", "\(fitted.key)"),
+				(
+					"Bounds",
+					"\(Int(fitted.value.bounds.left)),\(Int(fitted.value.bounds.top)),\(Int(fitted.value.bounds.right)),\(Int(fitted.value.bounds.bottom))"
+				),
+				("Velocity", String(format: "%.0f,%.0f", velocityX, velocityY)),
+			]
+		)
+		return true
+	}
+
+	/// Leaves the box without deciding what happens next.
+	private func surrenderEnclosure(reason: String) {
+		guard let current = enclosure else { return }
+		enclosure = nil
+		movementPurpose = .none
+		DiagnosticsLog.shared.writeEvent(
+			"WindowEnclosureReleased",
+			[("Window", "\(current.windowID)"), ("Reason", reason)]
+		)
+	}
+
+	/// Leaves the box to go and eat, through whichever wall faces the food.
+	private func releaseEnclosureForMeal(target: PixelPoint) {
+		guard let current = enclosure else { return }
+		let body = bodyRect()
+		let deltaX = target.x - body.centerX
+		let deltaY = target.y - body.centerY
+		let exitSide =
+			abs(deltaX) >= abs(deltaY)
+			? (deltaX < 0 ? "Left" : "Right")
+			: (deltaY < 0 ? "Top" : "Bottom")
+		surrenderEnclosure(reason: "MealEscape")
+		DiagnosticsLog.shared.writeEvent(
+			"WindowEnclosureMealEscape",
+			[
+				("Window", "\(current.windowID)"),
+				("ExitSide", exitSide),
+				("Target", "\(Int(target.x)),\(Int(target.y))"),
+			]
+		)
+	}
+
+	// MARK: - Window side impact
+
+	/// A window's left or right edge sweeping sideways through her body throws her
+	/// clear of it, rather than passing through her.
+	private func updateWindowSideCollisions() {
+		let version = surfaceProvider.bodyRefreshVersion
+		guard version != processedBodyRefreshVersion else { return }
+		processedBodyRefreshVersion = version
+
+		guard enclosure == nil, !isDragging, state != .dragging, sideImpactCooldown <= 0
+		else { return }
+
+		let elapsed = surfaceProvider.bodySampleElapsed
+		let body = bodyRect()
+		var strongest: (id: UInt32, impact: WindowSideImpact)?
+
+		for (windowID, current) in surfaceProvider.windowBodies {
+			guard let previous = surfaceProvider.previousWindowBodies[windowID] else { continue }
+			guard
+				let impact = WindowSideCollisionPolicy.resolve(
+					previous: previous.bounds,
+					current: current.bounds,
+					pet: body,
+					elapsedSeconds: elapsed,
+					scale: displayScale
+				)
+			else { continue }
+			if strongest == nil
+				|| abs(impact.edgeVelocityX) > abs(strongest!.impact.edgeVelocityX)
+			{
+				strongest = (windowID, impact)
+			}
+		}
+
+		guard let strongest else { return }
+		sideImpactCooldown = Self.sideImpactCooldownSeconds
+		ignoredLandingWindow = strongest.id
+		ignoredLandingSeconds = Self.sideImpactLandingGraceSeconds
+		DiagnosticsLog.shared.writeEvent(
+			"WindowSideImpact",
+			[
+				("Window", "\(strongest.id)"),
+				("Direction", "\(strongest.impact.direction)"),
+				("EdgeVelocityX", String(format: "%.0f", strongest.impact.edgeVelocityX)),
+				("PetVelocityX", String(format: "%.0f", strongest.impact.petVelocityX)),
+				("PetVelocityY", String(format: "%.0f", strongest.impact.petVelocityY)),
+			]
+		)
+		announce(.platformLaunch, voice: .scream, priority: .critical)
+		beginFall(
+			reason: "WindowSideImpact",
+			initialVelocityY: strongest.impact.petVelocityY,
+			initialVelocityX: strongest.impact.petVelocityX
+		)
+	}
+
+	private static let sideImpactCooldownSeconds: Double = 0.32
+	private static let sideImpactLandingGraceSeconds: Double = 0.48
+
+	// MARK: - State dispatch
+
+	/// One frame of whichever behaviour the current state owns. Inside a window
+	/// this is skipped entirely: the walls decide everything.
+	private func updateState(_ delta: Double) {
+		switch state {
+		case .idle: updateIdle(delta)
+		case .running: updateRunning(delta)
+		case .falling: updateFalling(delta)
+		case .climbing: updateClimbing(delta)
+		case .landing, .curious, .waking, .satisfied, .rolling:
+			if stateElapsed >= transientDuration {
+				if state == .waking { announce(.wakeNormally, voice: .calm) }
+				returnToIdle()
+			}
+		case .sleeping: updateSleeping(delta)
+		case .chomping, .licking:
+			// Driven by the clip finishing, not by a timer.
+			break
+		default: break
+		}
+	}
+
 	/// Her mouth and lick point, which are what actually reach the target.
 	private var mouthPoint: PixelPoint {
 		screenPoint(
@@ -406,7 +767,13 @@ public final class PetController: SpriteAnimatorDelegate {
 			announce(.mealSpotted, voice: .question, priority: .normal)
 		}
 
-		if activeMeal == nil, state == .idle || state == .curious {
+		// Being inside a window is no reason to sit out a meal: she leaves through
+		// whichever wall faces the food and runs to it.
+		let escaping = WindowEnclosureBehaviorPolicy.shouldEscapeForMeal(
+			isEnclosed: enclosure != nil,
+			pendingMeals: mealQueue.count
+		)
+		if activeMeal == nil, escaping || state == .idle || state == .curious {
 			_ = beginNextMeal()
 		}
 		return accepted
@@ -418,6 +785,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		guard activeMeal == nil, !quietMode else { return false }
 		guard let item = mealQueue.dequeue() else { return false }
 
+		releaseEnclosureForMeal(target: item.anchor)
 		activeMeal = item
 		targetPoint = item.anchor
 		state = .running
@@ -442,6 +810,13 @@ public final class PetController: SpriteAnimatorDelegate {
 	@discardableResult
 	public func tryBeginIconLick(manual: Bool) -> Bool {
 		guard profile.supportsFood, !quietMode else { return false }
+		guard WindowEnclosureBehaviorPolicy.allowsIconLick(isEnclosed: enclosure != nil) else {
+			DiagnosticsLog.shared.writeEvent(
+				"IconLickSuppressedInEnclosure",
+				[("Manual", "\(manual)")]
+			)
+			return false
+		}
 
 		let display = displaySpace.display(containing: foot) ?? displaySpace.displays.first
 		guard let workArea = display?.visibleFrame else { return false }
@@ -1010,7 +1385,8 @@ public final class PetController: SpriteAnimatorDelegate {
 				fromY: foot.y,
 				toY: nextFootY,
 				inset: Motion.landingInset
-			)
+			),
+			!isLandingIgnored(landing)
 		{
 			foot.x = nextFootX
 			foot.y = landing.offset
@@ -1022,6 +1398,17 @@ public final class PetController: SpriteAnimatorDelegate {
 		foot.y = nextFootY
 		applyCeiling()
 		if abs(velocity.x) > 8 { facing = velocity.x < 0 ? -1 : 1 }
+	}
+
+	/// Records for a moment that a window she was just thrown clear of must not
+	/// catch her on its own top edge.
+	private func isLandingIgnored(_ surface: Surface) -> Bool {
+		ignoredLandingSeconds > 0 && surface.key.owner == ignoredLandingWindow
+	}
+
+	private func tickCooldowns(_ delta: Double) {
+		sideImpactCooldown = max(0, sideImpactCooldown - delta)
+		ignoredLandingSeconds = max(0, ignoredLandingSeconds - delta)
 	}
 
 	/// She must not fly out of the top of the screen.
@@ -1273,10 +1660,14 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	public var isPinching: Bool { cheek.isActive }
 
-	/// How far the body leans while a cheek is pulled, in degrees.
+	/// How far the body leans, in degrees: a cheek being pulled, or being flung
+	/// across the inside of a window.
 	public var bodyLeanDegrees: Double {
-		guard cheek.isActive else { return 0 }
-		return min(max(-cheek.x / CheekPinchDynamics.maximumHorizontal * 3.5, -3.5), 3.5)
+		if cheek.isActive {
+			return min(max(-cheek.x / CheekPinchDynamics.maximumHorizontal * 3.5, -3.5), 3.5)
+		}
+		guard enclosure != nil else { return 0 }
+		return min(max(velocity.x / (1200 * displayScale) * 10, -10), 10)
 	}
 
 	/// The cheek under a point in the view's own point space, if any.
@@ -1340,6 +1731,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// part of the app reads them.
 	struct DebugState {
 		var state: PetState
+		var velocityX: Double
 		var velocityY: Double
 		var foot: PixelPoint
 		var fallReason: String
@@ -1347,17 +1739,32 @@ public final class PetController: SpriteAnimatorDelegate {
 		var trackedWindowID: UInt32?
 		/// The edge she is anchored to, if any.
 		var perchKey: SurfaceKey?
+		/// The window whose walls are holding her, if any.
+		var enclosureWindowID: UInt32?
 	}
 
 	var debugState: DebugState {
 		DebugState(
 			state: state,
+			velocityX: velocity.x,
 			velocityY: velocity.y,
 			foot: foot,
 			fallReason: fallReason,
 			trackedWindowID: perch.flatMap { $0.key.kind == .windowTop ? $0.key.owner : nil },
-			perchKey: perch?.key
+			perchKey: perch?.key,
+			enclosureWindowID: enclosure?.windowID
 		)
+	}
+
+	/// Stands in for the per-frame live window query the enclosure makes.
+	var debugLiveWindowBoundsOverride: ((UInt32) -> PixelRect?)?
+
+	/// Her hittable body rectangle, as the collision and enclosure code sees it.
+	func debugBodyRect() -> PixelRect { bodyRect() }
+
+	/// Advances only the enclosure step, as one frame would.
+	func debugUpdateEnclosure(delta: Double) -> Bool {
+		updateWindowEnclosure(delta)
 	}
 
 	/// Places her on a known surface and anchors her to it.
@@ -1403,6 +1810,8 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	public func beginDrag(at cursor: PixelPoint) {
 		guard canBeginDrag() else { return }
+		// Picked up: whatever box was holding her no longer does.
+		surrenderEnclosure(reason: "PickedUp")
 		// Being picked up interrupts a meal; it is re-queued so she finishes it
 		// after landing.
 		if movementPurpose == .meal {
@@ -1461,13 +1870,18 @@ public final class PetController: SpriteAnimatorDelegate {
 		)
 		// Through `beginFall`, so the window she was riding stops being tracked —
 		// otherwise it would pull her back to its top once she landed.
-		beginFall(
-			reason: release.hasInertia ? "DragThrow" : "released",
-			initialVelocityY: release.velocityY,
-			initialVelocityX: release.velocityX,
-			clip: release.hasInertia && release.velocityY < 0 ? "toss" : "fall",
-			purpose: MovementPurpose.none
-		)
+		//
+		// Let go wholly inside a window and it takes her in instead. `beginFall`
+		// stays the only other way into the air, so the two cannot both apply.
+		if !tryBeginWindowEnclosure(velocityX: release.velocityX, velocityY: release.velocityY) {
+			beginFall(
+				reason: release.hasInertia ? "DragThrow" : "released",
+				initialVelocityY: release.velocityY,
+				initialVelocityX: release.velocityX,
+				clip: release.hasInertia && release.velocityY < 0 ? "toss" : "fall",
+				purpose: MovementPurpose.none
+			)
+		}
 		// A weak release is a drop, not a throw; only a real flick earns the
 		// louder reaction.
 		if release.hasInertia, release.speed > 700 * displayScale {
@@ -1475,12 +1889,21 @@ public final class PetController: SpriteAnimatorDelegate {
 		} else {
 			announce(.released, voice: .aggrieved, priority: .normal)
 		}
+		// A deletion that arrived while she was being held has to be honoured now
+		// that she is somewhere she can leave from.
+		if WindowEnclosureBehaviorPolicy.shouldEscapeForMeal(
+			isEnclosed: enclosure != nil,
+			pendingMeals: mealQueue.count
+		) {
+			_ = beginNextMeal()
+		}
 	}
 
 	// MARK: - External commands
 
 	public func bringHome() {
 		guard let home = displaySpace.displays.first?.visibleFrame else { return }
+		surrenderEnclosure(reason: "BringHome")
 		foot = PixelPoint(x: home.centerX, y: home.bottom)
 		velocity = .zero
 		remainderX = 0
@@ -1507,13 +1930,20 @@ public final class PetController: SpriteAnimatorDelegate {
 	public func setSize(_ size: Double) {
 		petSize = PetSizePolicy.clampPreferredSize(size)
 		notifyPlacementIfChanged()
+		// Resizing her is the one thing that can make a box she fits in stop
+		// fitting; a box that still holds her keeps holding her.
+		_ = enclosureFitsTheBox()
 	}
 
 	/// Rebuilds the coordinate space after a display change and re-clamps the pet
 	/// so it cannot be left off every screen.
 	public func updateDisplaySpace(_ space: DisplaySpace) {
 		displaySpace = space
-		if let display = space.display(containing: foot) {
+		// Inside a window the box is the authority on where she is, so the
+		// display's own edges must not clamp her out of it. She is released only
+		// if the box can no longer hold her.
+		if !enclosureFitsTheBox() { return }
+		if enclosure == nil, let display = space.display(containing: foot) {
 			let clampedX = min(max(foot.x, display.frame.left + 12), display.frame.right - 12)
 			if clampedX != foot.x { foot.x = clampedX }
 			if foot.y > display.visibleFrame.bottom { foot.y = display.visibleFrame.bottom }

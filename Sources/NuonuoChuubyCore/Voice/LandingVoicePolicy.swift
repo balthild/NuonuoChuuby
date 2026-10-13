@@ -10,6 +10,7 @@ public enum LandingVoicePolicy {
 		"WindowMaximized",
 		"WindowSideImpact",
 		"EnclosureWindowLost",
+		"EnclosureCovered",
 	]
 
 	public static func shouldReact(

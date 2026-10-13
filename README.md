@@ -16,16 +16,16 @@ make run                        # 构建、打包、签名并启动
 
 ## 目录
 
-| 路径 | 内容 |
-| --- | --- |
-| `Sources/NuonuoChuuby/` | 可执行目标，只负责 `NSApplication` 引导 |
-| `Sources/NuonuoChuubyCore/` | 全部逻辑与界面 |
-| `Sources/NuonuoChuubyCore/Resources/` | 素材目录（内容不提交）与素材清单 |
-| `Tests/` | swift-testing 测试 |
-| `App/Info.plist` | 打包时补上版本号 |
-| `Tools/` | 素材播种/清单、签名、证书脚本 |
-| `Makefile` | 格式化、构建、测试、打包、签名 |
-| `Vendor/JiuNuoDesktopPet/` | 上游素材仓库（submodule） |
+| 路径                                  | 内容                                    |
+| ------------------------------------- | --------------------------------------- |
+| `Sources/NuonuoChuuby/`               | 可执行目标，只负责 `NSApplication` 引导 |
+| `Sources/NuonuoChuubyCore/`           | 全部逻辑与界面                          |
+| `Sources/NuonuoChuubyCore/Resources/` | 素材目录（内容不提交）与素材清单        |
+| `Tests/`                              | swift-testing 测试                      |
+| `App/Info.plist`                      | 打包时补上版本号                        |
+| `Tools/`                              | 素材播种/清单、签名、证书脚本           |
+| `Makefile`                            | 格式化、构建、测试、打包、签名          |
+| `Vendor/JiuNuoDesktopPet/`            | 上游素材仓库（submodule）               |
 
 代码按子系统分目录：`App` `Sprite` `Physics` `Life` `Voice` `Dialogue` `Cheek` `World` `Meal` `System` `Asset` `Settings`。
 
@@ -45,15 +45,18 @@ make run                        # 构建、打包、签名并启动
 
 原项目依赖 Win32，有些能力在 macOS 上没有等价物，这里如实说明取舍：
 
-| 能力 | Windows | macOS |
-| --- | --- | --- |
-| 窗口地形（站在窗口上） | `EnumWindows` + Win32 style 位 | `CGWindowListCopyWindowInfo`，**无需任何权限**（bounds 不需要屏幕录制）；被别的窗口盖住的那段窗沿不可站立 |
-| 窗口最大化顶飞 | 最大化时把桌宠顶飞（专门的反弹规则） | **已移除**：没有专门的反弹判定。窗口最大化只是让窗沿快速上移，是否被甩出只取决于通用的「单 tick 位移超过阈值」释放规则 |
-| 删除文件进食 | 回收站 `$I*` 元数据 + 桌面 ListView 跨进程读取 | FSEvents 监听桌面/下载目录，与 `~/.Trash` 新增项按文件名比对；`rm` 删除的文件等一小段窗口后也接受 |
-| 桌面图标位置 | 跨进程读取 ListView 真实坐标 | 通过**辅助功能**读取 Finder 桌面图标真实坐标（见 `DesktopIconIndex`）；未授予辅助功能时**降级**为 Finder 默认布局近似（见 `DesktopIconGrid`） |
-| 全局按键（Delete） | `WH_KEYBOARD_LL` 钩子 | **不做**：FSEvents 已覆盖删除检测，按键钩子只是冗余的提前量；权限本身不是障碍 |
-| 开机自启 | 注册表 Run 键 | `osascript` 登录项（自签名证书下 `SMAppService` 不可用），按路径匹配 |
-| 菲比窗口捣蛋 | 移动真实窗口 | **未实现**（整个功能尚未开工）；需要辅助功能 + 屏幕录制，两项权限均可接受 |
+| 能力                           | Windows                                                              | macOS                                                                                                                                                                                                                                        |
+| ------------------------------ | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 窗口地形（站在窗口上）         | `EnumWindows` + Win32 style 位                                       | `CGWindowListCopyWindowInfo`，**无需任何权限**（bounds 不需要屏幕录制）；被别的窗口盖住的那段窗沿不可站立                                                                                                                                    |
+| 窗口最大化顶飞                 | 最大化时把桌宠顶飞（专门的反弹规则）                                 | **已移除**：没有专门的反弹判定。窗口最大化只是让窗沿快速上移，是否被甩出只取决于通用的「单 tick 位移超过阈值」释放规则                                                                                                                       |
+| 窗口容器（把桌宠放进窗口内部） | 拖进窗口内部松手即被关住，保留惯性、受重力，并相对移动的四壁碰撞弹跳 | 已实现（`WindowEnclosurePhysics`）。**入场更严格**：要求**整个身体**都在窗口内，原版只要求身体中心；容量不足时只有「窗口被改小」或「桌宠被调大」能让她出来                                                                                   |
+| 容器被更前置的窗口盖住         | 无处理：桌宠始终置顶，被盖住时看起来像悬空站在看不见的窗口里         | **她是被抱着的窗口的上一层，而 macOS 不允许把自己合成在两个普通窗口之间**（它们都在 CGWindowLevel 0）。取舍：被盖住超过 1 s 就视为该盒子不再成立，放下她（`EnclosureCovered`）。部分遮挡不做像素级遮罩 —— 那需要逐窗捕获，代价与滞后都不值得 |
+| 窗口侧撞                       | 窗口左右边缘扫过身体时，按撞击方向和窗口速度施加抛飞冲量             | 已实现（`WindowSideCollisionPolicy`），阈值与原版一致。窗口矩形按 **10 Hz** 采样（原版 16.7 Hz）：这是边速的测量基准，不能沿用 2 Hz 地形图的节奏                                                                                             |
+| 删除文件进食                   | 回收站 `$I*` 元数据 + 桌面 ListView 跨进程读取                       | FSEvents 监听桌面/下载目录，与 `~/.Trash` 新增项按文件名比对；`rm` 删除的文件等一小段窗口后也接受                                                                                                                                            |
+| 桌面图标位置                   | 跨进程读取 ListView 真实坐标                                         | 通过**辅助功能**读取 Finder 桌面图标真实坐标（见 `DesktopIconIndex`）；未授予辅助功能时**降级**为 Finder 默认布局近似（见 `DesktopIconGrid`）                                                                                                |
+| 全局按键（Delete）             | `WH_KEYBOARD_LL` 钩子                                                | **不做**：FSEvents 已覆盖删除检测，按键钩子只是冗余的提前量；权限本身不是障碍                                                                                                                                                                |
+| 开机自启                       | 注册表 Run 键                                                        | `osascript` 登录项（自签名证书下 `SMAppService` 不可用），按路径匹配                                                                                                                                                                         |
+| 菲比窗口捣蛋                   | 移动真实窗口                                                         | **未实现**（整个功能尚未开工）；需要辅助功能 + 屏幕录制，两项权限均可接受                                                                                                                                                                    |
 
 首次使用删除文件进食时，macOS 会弹出**桌面/下载目录访问权限**请求 —— 这是系统 TCC 授权，不是证书问题。
 
@@ -87,17 +90,17 @@ xattr -dr com.apple.quarantine /Applications/NuonuoChuuby.app
 
 ## 命令
 
-| 目标 | 说明 |
-| --- | --- |
-| `make assets` | 从 submodule 播种素材 |
-| `make manifest` | 重新生成素材清单（换 pin 时） |
-| `make build` / `test` | 构建 / 跑测试 |
-| `make app` | 拼装 `.app` |
-| `make sign` | 签名（见上） |
-| `make run` / `rerun` | 构建、签名并启动；`rerun` 可带参数 |
-| `make package` | 产出分发包 |
-| `make reset-data` | 清空设置与存档 |
-| `make clean` | 清理构建产物与素材副本 |
+| 目标                  | 说明                               |
+| --------------------- | ---------------------------------- |
+| `make assets`         | 从 submodule 播种素材              |
+| `make manifest`       | 重新生成素材清单（换 pin 时）      |
+| `make build` / `test` | 构建 / 跑测试                      |
+| `make app`            | 拼装 `.app`                        |
+| `make sign`           | 签名（见上）                       |
+| `make run` / `rerun`  | 构建、签名并启动；`rerun` 可带参数 |
+| `make package`        | 产出分发包                         |
+| `make reset-data`     | 清空设置与存档                     |
+| `make clean`          | 清理构建产物与素材副本             |
 
 调试用的启动参数：`--demo-pinch` 会自动演示一次捏脸。
 
