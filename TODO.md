@@ -89,6 +89,14 @@ landing / curious` 五种落地状态运行，且只有两条路：
 > `MockPlatform.windows()` 现在也按列表顺序赋 `zIndex`（与 `MacOSPlatform` 一致），
 > 否则默认全 0，任何读 z 序的 mock 测试都是哑的。
 >
+> 入场还有第二道条件：**她脚下到盒底之间不能有可站的窗沿**。有就先落在那条窗沿上，
+> 不会穿过前置窗口被吞进大窗口（`landsOnTheWindowInFront`）。边界是**盒底以下**的窗沿
+> 不算 —— 落到那里等于穿过她所在的盒子（`surfaceBelowTheBoxDoesNotBlock`）。
+> 这条判定读地形图，所以 `endDrag` 里**强制执行一次图刷新**（原版 `RefreshSurfaceMap(force: true)`
+> 同样位置也这么做），否则读到的可能是最多 0.5 s 前的旧图。
+> 注意这条只在**入场**生效；**被遮挡后的转移**（`transferEnclosure`）不做这个询问，
+> 因为那里她已经在盒子里运动，不是在松手瞬间。
+>
 > 另有一处**已知不一致**：「能不能挡住别人」在图里用 `isEligiblePlatform`（含「顶边可达」），
 > 在窗口矩形采样里用 `isEligibleAppWindow`（不含），所以顶边压在菜单栏下的窗口在图里是
 > occluder、在采样里不是。遮挡语义应收敛到 `isEligibleAppWindow`；未做，因为它会改变现有

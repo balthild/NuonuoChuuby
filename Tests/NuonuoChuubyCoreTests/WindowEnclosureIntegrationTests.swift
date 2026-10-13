@@ -190,6 +190,54 @@ struct WindowEnclosureIntegrationTests {
 		#expect(rig.controller.debugState.enclosureWindowID == Self.windowID)
 	}
 
+	@Test("Let go above a window in front, she lands on it instead of being swallowed")
+	func landsOnTheWindowInFront() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		// A large window with a smaller one in front of it, lower down. Let go
+		// above the small one but inside the large one, her body is not in the
+		// small window at all — so only the large one could hold her.
+		let large = PixelRect(x: 500, y: 400, width: 900, height: 700)
+		let small = PixelRect(x: 850, y: 650, width: 400, height: 300)
+		rig.platform.setWindows([
+			Self.window(id: 9002, bounds: small),
+			Self.window(id: 9003, bounds: large),
+		])
+
+		drop(rig, at: PixelPoint(x: 900, y: 600))
+
+		#expect(
+			rig.controller.debugState.enclosureWindowID == nil,
+			"a window top to land on is not a reason to be swallowed whole"
+		)
+
+		// And she comes down onto the small window's top edge, as she would onto
+		// any other ledge.
+		for _ in 0..<120 { rig.controller.debugStep(delta: Self.frame) }
+		#expect(rig.controller.debugState.perchKey == SurfaceKey(owner: 9002, kind: .windowTop))
+		#expect(abs(rig.controller.debugState.foot.y - small.top) < 0.001)
+	}
+
+	@Test("A window top below the box's floor does not stop the box taking her")
+	func surfaceBelowTheBoxDoesNotBlock() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		// The window holding her ends at y = 1000; another one starts at 1050,
+		// below it. Landing on that would mean falling straight through the box she
+		// is in, so it does not count as somewhere she can land.
+		let below = PixelRect(x: 700, y: 1050, width: 500, height: 300)
+		rig.platform.setWindows([
+			Self.window(id: Self.windowID, bounds: Self.box),
+			Self.window(id: 9002, bounds: below),
+		])
+
+		drop(rig, at: PixelPoint(x: 900, y: 900))
+
+		#expect(rig.controller.debugState.enclosureWindowID == Self.windowID)
+	}
+
 	// MARK: - Staying in, and getting out
 
 	@Test("The window going away drops her, and says so")

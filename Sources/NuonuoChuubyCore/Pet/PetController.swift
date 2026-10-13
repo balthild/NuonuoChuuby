@@ -612,6 +612,24 @@ public final class PetController: SpriteAnimatorDelegate {
 			return false
 		}
 
+		// A window top between her feet and the box's floor is a landing, not a
+		// reason to be swallowed whole: she comes down on it as she would anywhere
+		// else, and only a box with nothing inside it to land on takes her in.
+		//
+		// Without this she fell straight past a window in front of the one holding
+		// her — dropped above a small window while inside a large one, she went into
+		// the large one and came to rest on its floor instead of on the small
+		// window's top edge.
+		let floor = fitted.value.bounds.bottom - inset
+		guard
+			surfaceProvider.landingSurface(
+				footX: foot.x,
+				fromY: foot.y,
+				toY: floor,
+				inset: Motion.landingInset
+			) == nil
+		else { return false }
+
 		enclosure = Enclosure(
 			windowID: fitted.key,
 			previousBox: fitted.value.bounds,
@@ -1902,6 +1920,11 @@ public final class PetController: SpriteAnimatorDelegate {
 			atSeconds: CFAbsoluteTimeGetCurrent(),
 			scale: displayScale
 		)
+		// Whether the window under her is somewhere she can land, or somewhere that
+		// swallows her, is read from the terrain graph — so it is asked fresh here
+		// rather than trusting a map up to half a second old. The original forced
+		// its map at exactly this point, for the same reason.
+		surfaceProvider.refresh(displaySpace: displaySpace)
 		// Through `beginFall`, so the window she was riding stops being tracked —
 		// otherwise it would pull her back to its top once she landed.
 		//
