@@ -117,4 +117,30 @@ struct MockPlatformTests {
 		let landing = provider.landingSurface(footX: 700, fromY: 760, toY: 810)
 		#expect(landing?.key == SurfaceKey(owner: 20, kind: .windowTop))
 	}
+
+	@Test("The list order is the z-order, as it is on the real platform")
+	func listOrderIsZOrder() {
+		// A scripted window's z-index defaults to 0, so leaving it to the caller
+		// would make every window claim to be frontmost and silently flatten
+		// anything that reads z-order.
+		let platform = MockPlatform.singleMonitor()
+		platform.setWindows([
+			window(id: 1, x: 100, y: 200),
+			window(id: 2, x: 100, y: 300),
+			window(id: 3, x: 100, y: 400),
+		])
+		#expect(platform.windows().map(\.zIndex) == [0, 1, 2])
+		#expect(platform.windows().map(\.id) == [1, 2, 3])
+	}
+
+	@Test("A z-index set by hand is not what decides the order")
+	func handSetZIndexIsOverridden() {
+		let platform = MockPlatform.singleMonitor()
+		var behind = window(id: 1, x: 100, y: 200)
+		behind.zIndex = 7
+		platform.setWindows([behind, window(id: 2, x: 100, y: 300)])
+		// Index 0 is frontmost whichever number the caller happened to write, so a
+		// test cannot describe one order and have the code read another.
+		#expect(platform.windows().map(\.zIndex) == [0, 1])
+	}
 }

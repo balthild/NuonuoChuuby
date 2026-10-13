@@ -36,8 +36,12 @@ struct WindowEnclosureIntegrationTests {
 	}
 
 	private static func window(bounds: PixelRect) -> PlatformWindow {
+		window(id: windowID, bounds: bounds)
+	}
+
+	private static func window(id: UInt32, bounds: PixelRect) -> PlatformWindow {
 		PlatformWindow(
-			id: windowID,
+			id: id,
 			ownerPID: 4242,
 			ownerName: "Safari",
 			bounds: bounds,
@@ -136,6 +140,54 @@ struct WindowEnclosureIntegrationTests {
 		drop(rig, at: PixelPoint(x: 872, y: 890))
 
 		#expect(rig.controller.debugState.enclosureWindowID == nil)
+	}
+
+	@Test("Two overlapping windows: the frontmost one takes her, not the smallest")
+	func frontmostWindowTakesHerNotTheSmallest() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		// A small window with a larger one in front of it, both holding her whole
+		// body. Picking by size took her into the small one — the one she cannot be
+		// seen in — and the occlusion rule then handed her on to the large one, so
+		// she appeared to fall twice.
+		let large = PixelRect(x: 500, y: 500, width: 900, height: 500)
+		rig.platform.setWindows([
+			Self.window(id: 9002, bounds: large),
+			Self.window(id: Self.windowID, bounds: Self.box),
+		])
+
+		drop(rig, at: PixelPoint(x: 900, y: 900))
+
+		#expect(
+			rig.controller.debugState.enclosureWindowID == 9002,
+			"she went into the window she is actually visible inside"
+		)
+
+		// And she stays there: nothing is in front of the frontmost window, so the
+		// hand-over cannot fire on the very next grace.
+		advance(rig, seconds: 3)
+		#expect(rig.controller.debugState.enclosureWindowID == 9002)
+	}
+
+	@Test("A small window in front of a large one still takes her")
+	func smallWindowInFrontStillTakesHer() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		// The case the size rule was there for, and which frontmost gets right for
+		// the same reason: she is visibly inside the small window.
+		let large = PixelRect(x: 500, y: 500, width: 900, height: 500)
+		rig.platform.setWindows([
+			Self.window(id: Self.windowID, bounds: Self.box),
+			Self.window(id: 9002, bounds: large),
+		])
+
+		drop(rig, at: PixelPoint(x: 900, y: 900))
+
+		#expect(rig.controller.debugState.enclosureWindowID == Self.windowID)
+		advance(rig, seconds: 3)
+		#expect(rig.controller.debugState.enclosureWindowID == Self.windowID)
 	}
 
 	// MARK: - Staying in, and getting out

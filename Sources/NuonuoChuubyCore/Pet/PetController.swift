@@ -595,20 +595,22 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// Stricter than the original, which asked only for her *centre* to be inside.
 	/// A body hanging out of the frame would be visibly half in and half out, and
 	/// the walls would shove her on the very first frame.
+	///
+	/// The **frontmost** window her body fits in is the one that takes her, since
+	/// that is the one she is visibly standing inside. Choosing by size instead let
+	/// a small window *behind* a larger one capture her, and the occlusion rule then
+	/// handed her straight on to the larger one — two captures in a row, which reads
+	/// as falling twice. Whether a window may hold her at all was decided when it
+	/// was sampled.
 	private func tryBeginWindowEnclosure(velocityX: Double, velocityY: Double) -> Bool {
 		let body = bodyRect()
 		let inset = WindowEnclosurePhysics.wallInset * displayScale
-		// The tightest box wins, so a small window opened inside a large one is
-		// what she ends up in. Whether a window may hold her at all was decided
-		// when it was sampled.
-		guard
-			let fitted = surfaceProvider.windowBodies
-				.filter({ WindowEnclosurePhysics.bodyFits(body, in: $0.value.bounds, inset: inset) })
-				.min(by: {
-					$0.value.bounds.width * $0.value.bounds.height
-						< $1.value.bounds.width * $1.value.bounds.height
-				})
-		else { return false }
+		let holders = surfaceProvider.windowBodies.filter {
+			WindowEnclosurePhysics.bodyFits(body, in: $0.value.bounds, inset: inset)
+		}
+		guard let fitted = holders.min(by: { $0.value.zIndex < $1.value.zIndex }) else {
+			return false
+		}
 
 		enclosure = Enclosure(
 			windowID: fitted.key,

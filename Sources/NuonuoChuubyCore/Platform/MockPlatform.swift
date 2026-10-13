@@ -11,7 +11,18 @@ public final class MockPlatform: Platform {
 		self.scriptedMonitors = monitors
 	}
 
-	public func windows() -> [PlatformWindow] { scriptedWindows }
+	/// The list order **is** the z-order, as it is for ``MacOSPlatform``: index 0 is
+	/// frontmost. Assigned here rather than left to the caller, because a scripted
+	/// window's z-index defaults to 0 and every window would then claim to be
+	/// frontmost — which silently flattens anything that reads z-order.
+	public func windows() -> [PlatformWindow] {
+		scriptedWindows.enumerated().map { index, window in
+			var window = window
+			window.zIndex = index
+			return window
+		}
+	}
+
 	public func monitors() -> [Monitor] { scriptedMonitors }
 
 	public func setWindows(_ windows: [PlatformWindow]) { scriptedWindows = windows }
