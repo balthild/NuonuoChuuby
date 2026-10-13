@@ -242,6 +242,26 @@ landing / curious` 五种落地状态运行，且只有两条路：
   `Double.random`（闲置计时、自主行为选择）用的是**全局 RNG**，而 swift-testing 并行跑各 suite，
   于是「她下一步做什么」取决于别的测试恰好吃掉了多少随机数。修法是给 `PetController` 注入
   一个可播种的 RNG 供测试使用；未做，因为它与本次改动无关。
+- **渲染架构：全屏 overlay（现为默认）与跨屏裁切（2026-10-13）**：宠物改为「每屏一块全屏透明窗口 +
+  宠物是其中的 `CALayer` 子层」，**窗口不再移动**，只移动图层。实测（`xctrace` Time Profiler，30 s，
+  全线程 Running / 30 s，同一交互脚本）：拖动 **17.8% → 10.8%**，容器内闲置 **5.7% → 3.9%**。
+  归因：旧模型每次移动都在付窗口移动事务（`_setFrameCommon` 2.4% + `commit_transaction` 4.9% 绝对），
+  新模型把这两项压到 0.19% 与 1.3%。
+  **两个必须记住的坑（都是先测出来才发现的）：**
+  1. 宠物**不能**用 `NSView` 子视图：AppKit 在子视图 frame 变化时就会重绘它，把 384² 精灵用
+     **CPU 重采样**进目标矩形（`argb32_sample` 0% → 28%，比窗口移动本身更贵），
+     `layerContentsRedrawPolicy` 拦不住。必须用 `CALayer`（`contents = CGImage`，靠图层几何移动）。
+  2. 手工 `CALayer()` **不会**像 `wantsLayer` 的视图那样自动禁用隐式动画；不处理的话每次改
+     `position` 都被 CA 用 ~0.25 s 缓动动画过去，症状是「**她追着鼠标跑**」（方向永远指向鼠标、
+     追不上、鼠标停下后过一会儿才到；气泡无此问题，因为它是 `NSWindow`）。
+     修法：`pet.actions = ["position"/"bounds"/"transform"/"contents"/"hidden": NSNull()]`。
+  旧路径保留在 `--pet-panel` 后面（由 `Pet/PetPresenting.swift` 协议隔离），用于回退与对照。
+  **未验证 / 已知行为差异：**
+  - **多显示器完全未验证**（开发机单屏）。实现为每屏一块 overlay，宠物画在「含其中心点」的那块上，
+    其余 overlay 的子层隐藏（完全不绘制 ⇒ 全透明 ⇒ 点击穿透）。
+  - **宠物跨显示器边界时会被 overlay 窗口边界裁切**，旧模型不会。多屏验证时一并处理。
+  - overlay 的层级取 `belowFloating`（= 2），必须 **> 0**：`FullscreenDetector` 只看 `layer == 0`、
+    不排除自身 PID，层级为 0 会让它自触发挂起 → 隐藏 → 恢复 → 挂起，形成可见闪烁。
 - **多屏混合 DPI 未验证**：当前全程用点（points）规避了大部分换算问题，但未在真实混合 DPI 的多屏组合上验证过。
 - **桌面图标位置是近似值**：macOS 无公开 API，`DesktopIconGrid` 用 Finder 默认布局近似，不是图标真实坐标。
 - **桌面图标位置是近似值**：macOS 无公开 API，`DesktopIconGrid` 用 Finder 默认布局近似，不是图标真实坐标。

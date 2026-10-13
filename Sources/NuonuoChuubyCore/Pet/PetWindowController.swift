@@ -3,7 +3,7 @@ import AppKit
 /// Owns the pet's panel and keeps it in step with the controller's foot
 /// position. It also translates mouse events into drag gestures.
 @MainActor
-public final class PetWindowController: NSObject, PetControllerDelegate {
+public final class PetWindowController: NSObject, PetControllerDelegate, PetPresenting {
 	private let panel: PetPanel
 	private let view: PetView
 	private let controller: PetController
