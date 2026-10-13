@@ -53,8 +53,18 @@ landing / curious` 五种落地状态运行，且只有两条路：
    然后再次固定）。现在 `PetController` 上报 `didChangeSuspension`，`PetWindowController` 隐藏/恢复
    自己的面板，`AppDelegate` 顺带收起气泡与幽灵图标（一次进行中的进食被打断时，幽灵图标也要一起
    收起，否则同样会留在全屏应用上）。原项目**没有**任何全屏处理（全屏只在菲比捣蛋选目标时被用来
-   排除），所以这是本移植版自己的取舍，已记入 README 行为差异表。
-6. **空闲时间用 `CGEventSourceSecondsSinceLastEventType`**：免权限，且无需额外监听。（免权限是附带好处，不是选择理由。）
+   排除），所以这是本移植版自己的取舍，已记入 README 行为差异表。>
+> **挂起恢复时位移基准必须重设（2026-10-12，用户报告）**：`PetController` 里每个「运动」都是
+> **两次采样之差 ÷ 一帧**（骑乘的地面、盒子的四壁、扫过她的窗口边）。挂起期间这些都不被询问，
+> 基准值也不会更新；恢复的第一帧于是把**整个挂起期**的位移除以**一帧**，普通移动被读成「有什么
+> 东西猛拽过她」。实测复现的正是最后一条：**侧撞**（日志 `WindowSideImpact EdgeVelocityX="1100"`
+> —— 钳制上限，说明原始差值远超真实边速），她被打飞 400pt。
+> `resumeFromSuspension()` 重设三处基准（`lastPerchOffset`、`enclosure.previousBox`、窗口矩形采样）。
+> **注意清空 `previousWindowBodies` 并不够**：`windowBodies` 本身也停在挂起前，下次采样会把它当成
+> 「上一次」，坏配对只是被推迟一次采样。所以 `SurfaceProvider` 用一个 `nextBodySampleIsBaseline`
+> 标记，让重基线后的第一个采样**以自己为基准**（差值为零）。
+> 同时补了两个诊断事件：`FallStarted`（原项目 C# 有、我们缺；`beginFall` 原先只设 `fallReason`
+> 而从不记录它，导致任何位置异常都无法定位原因）与 `SuspensionChanged`。6. **空闲时间用 `CGEventSourceSecondsSinceLastEventType`**：免权限，且无需额外监听。（免权限是附带好处，不是选择理由。）
 7. **窗口快速移动 = 「受惊」反应，而不是把宠物甩出去**（`STARTLING_SPEED = 900`）。我们目前保留原版的抛出行为，阈值已对齐 900。
 8. ~~**扫描节奏**：2 Hz 常态，变化后 2 秒内 10 Hz；挂起时完全不扫描。渲染静止 30 Hz / 移动 60 Hz。~~
    **不采纳**：常态**已经**是 2 Hz（`SurfaceProvider.refreshInterval = 0.5`），

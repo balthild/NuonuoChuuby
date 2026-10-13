@@ -124,6 +124,131 @@ struct SuspensionTests {
 		#expect(rig.spy.suspensions == [true])
 	}
 
+	@Test("A window that moved while she was away does not hit her on the way back")
+	func resumingDoesNotFlingHer() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+		// Standing still, so her body stays where it can be measured.
+		rig.controller.quietMode = true
+
+		let her = rig.controller.debugBodyRect()
+
+		// A window beside her whose right edge has not yet reached her, covering the
+		// height her body occupies so that edge sweeping right would be a hit.
+		func besideHer(right: Double) -> PlatformWindow {
+			PlatformWindow(
+				id: 7002,
+				ownerPID: 4242,
+				ownerName: "Finder",
+				bounds: PixelRect(
+					x: right - 600,
+					y: her.top - 100,
+					width: 600,
+					height: her.height + 200
+				),
+				layer: 0,
+				alpha: 1
+			)
+		}
+		rig.platform.setWindows([besideHer(right: her.left - 40)])
+		run(rig, frames: Self.framesPerRefresh)
+		#expect(
+			rig.controller.debugState.fallReason != "WindowSideImpact",
+			"it has not reached her yet"
+		)
+
+		// Away: the fullscreen app comes up, and while she is behind it the desktop is
+		// rearranged so that edge ends up past her. The difference spans the whole
+		// suspension while the sampler still believes the samples are 0.1 s apart.
+		rig.platform.setWindows([fullscreenWindow(), besideHer(right: her.left - 40)])
+		run(rig, frames: Self.framesPerRefresh)
+		#expect(rig.controller.isSuspended)
+
+		rig.platform.setWindows([fullscreenWindow(), besideHer(right: her.left + 60)])
+		run(rig, frames: Self.framesPerRefresh)
+		#expect(rig.controller.isSuspended, "she is still behind the fullscreen app")
+
+		// Leaving fullscreen exposes her again, with the window wherever it now is.
+		rig.platform.setWindows([besideHer(right: her.left + 60)])
+		run(rig, frames: Self.framesPerRefresh)
+		#expect(!rig.controller.isSuspended, "the fullscreen app has gone")
+
+		let state = rig.controller.debugState
+		#expect(
+			state.fallReason != "WindowSideImpact",
+			"a window that moved while she was away was read as sweeping through her"
+		)
+		#expect(
+			abs(state.velocityX) < 230,
+			"and threw her sideways at \(Int(state.velocityX)) pt/s"
+		)
+	}
+
+	@Test("Coming back from a fullscreen app leaves her standing where she was")
+	func resumingKeepsHerFooting() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+		// Standing still, so the only thing that can move her is the suspension.
+		rig.controller.quietMode = true
+
+		#expect(rig.controller.debugState.perchKey?.kind == .floor)
+		let restingFoot = rig.controller.debugState.foot
+
+		rig.platform.setWindows([fullscreenWindow()])
+		run(rig, frames: Self.framesPerRefresh)
+		#expect(rig.controller.isSuspended)
+
+		// The work area is what the floor is measured from, and a fullscreen app
+		// takes the menu bar and the Dock away, so it can arrive back larger or
+		// smaller than it left.
+		rig.controller.updateDisplaySpace(
+			DisplaySpace(monitors: [monitor(visibleFrame: grownWorkArea)], primaryHeight: 1117)
+		)
+		run(rig, frames: 30)
+		#expect(rig.controller.isSuspended, "still behind the fullscreen app")
+
+		rig.platform.setWindows([])
+		rig.controller.updateDisplaySpace(
+			DisplaySpace(monitors: [monitor(visibleFrame: normalWorkArea)], primaryHeight: 1117)
+		)
+		run(rig, frames: 2)
+
+		// A floor that moved while nothing was simulated must not be read as a yank.
+		let state = rig.controller.debugState
+		#expect(
+			state.state != .falling,
+			"the floor moving while she was suspended threw her (vy=\(state.velocityY))"
+		)
+		#expect(state.velocityY > -100, "and did not launch her")
+
+		run(rig, frames: 30)
+		#expect(rig.controller.debugState.perchKey?.kind == .floor)
+		#expect(
+			abs(rig.controller.debugState.foot.y - normalWorkArea.bottom) < 1,
+			"expected her on the floor at \(Int(normalWorkArea.bottom)), found \(Int(rig.controller.debugState.foot.y))"
+		)
+		#expect(
+			abs(rig.controller.debugState.foot.x - restingFoot.x) < 1,
+			"and where she was standing across the screen"
+		)
+	}
+
+	/// A display whose Dock takes a strip off the bottom, so the floor is not at the
+	/// bottom of the screen.
+	private var normalWorkArea: PixelRect { PixelRect(x: 85, y: 25, width: 1643, height: 1007) }
+
+	/// The same display with the Dock hidden, as fullscreen leaves it.
+	private var grownWorkArea: PixelRect { PixelRect(x: 0, y: 0, width: 1728, height: 1117) }
+
+	private func monitor(visibleFrame: PixelRect) -> Monitor {
+		Monitor(
+			id: 1,
+			frame: PixelRect(x: 0, y: 0, width: 1728, height: 1117),
+			visibleFrame: visibleFrame,
+			scale: 1
+		)
+	}
+
 	@Test("Suspended, she neither moves nor animates")
 	func suspendedIsFrozen() throws {
 		let rig = try makeRig()

@@ -24,6 +24,8 @@ public final class SurfaceProvider {
 	public private(set) var bodyRefreshVersion = 0
 	/// Simulated seconds between the two most recent body samples.
 	public private(set) var bodySampleElapsed: Double = 0
+	/// Set by ``rebaselineBodySamples()``: the next sample is a starting point.
+	private var nextBodySampleIsBaseline = false
 
 	/// Windows change constantly, so the graph is rebuilt on an interval.
 	private static let refreshInterval: Double = 0.5
@@ -61,6 +63,23 @@ public final class SurfaceProvider {
 		windowBodies = bodies
 		bodySampleElapsed = Self.bodySampleInterval
 		bodyRefreshVersion += 1
+	}
+
+	/// Forgets the earlier sample, so the next one is a baseline rather than a step.
+	///
+	/// A side collision is a difference between two samples and is scaled by the
+	/// interval between them. After a gap in the simulation — a locked screen, a
+	/// fullscreen app — the two samples are that whole gap apart while the code still
+	/// believes they are a tenth of a second apart, so ordinary movement reads as a
+	/// window lashing past her.
+	///
+	/// Dropping the earlier sample is not enough on its own: the sample held **now**
+	/// is from before the gap too, and it would become the earlier sample of the next
+	/// pair — a difference spanning the gap all over again, one sample later. So the
+	/// next sample is told to start from itself, which makes its difference zero.
+	public func rebaselineBodySamples() {
+		previousWindowBodies = [:]
+		nextBodySampleIsBaseline = true
 	}
 
 	public func refresh(displaySpace: DisplaySpace) {
@@ -119,7 +138,8 @@ public final class SurfaceProvider {
 			bodies[window.id] = WindowBody(bounds: window.bounds, zIndex: window.zIndex)
 		}
 
-		previousWindowBodies = windowBodies
+		previousWindowBodies = nextBodySampleIsBaseline ? bodies : windowBodies
+		nextBodySampleIsBaseline = false
 		windowBodies = bodies
 		bodySampleElapsed = elapsed
 		bodyRefreshVersion += 1

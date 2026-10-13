@@ -255,6 +255,16 @@ public final class PetController: SpriteAnimatorDelegate {
 		let suspended = displaySpace.displays.isEmpty || surfaceProvider.isFullscreenAppActive
 		if suspended != isSuspended {
 			isSuspended = suspended
+			if !suspended { resumeFromSuspension() }
+			DiagnosticsLog.shared.writeEvent(
+				"SuspensionChanged",
+				[
+					("Suspended", "\(suspended)"),
+					("State", state.rawValue),
+					("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
+					("Support", enclosure != nil ? "enclosure" : perchSurface?.key.kind.rawValue ?? "none"),
+				]
+			)
 			delegate?.petController(self, didChangeSuspension: suspended)
 		}
 		if suspended {
@@ -443,6 +453,28 @@ public final class PetController: SpriteAnimatorDelegate {
 			width: bottomRight.x - topLeft.x,
 			height: bottomRight.y - topLeft.y
 		)
+	}
+
+	/// Forgets everything that measures movement **across frames**, because the frames
+	/// it is measured over did not happen.
+	///
+	/// Every moving thing here is a difference between the last sample and this one,
+	/// divided by a frame to get a speed: the ledge she rides, the walls of a box, and
+	/// a window edge sweeping at her. Suspended, none of them are asked — so on the way
+	/// back, each is a difference spanning the whole suspension while still being
+	/// divided by one frame. A display that rearranged itself, or a window that moved,
+	/// then reads as something lashing past her, and she is thrown off her footing the
+	/// moment she reappears.
+	///
+	/// Zeroing the baselines makes the first frame back a starting point instead. The
+	/// ride then carries her to wherever the surface is now, which is what she should
+	/// do after a gap: the world moved, she did not.
+	private func resumeFromSuspension() {
+		lastPerchOffset = nil
+		surfaceProvider.rebaselineBodySamples()
+		if let current = enclosure, let box = liveBounds(of: current.windowID) {
+			enclosure?.previousBox = box
+		}
 	}
 
 	// MARK: - Window enclosure
@@ -1445,6 +1477,21 @@ public final class PetController: SpriteAnimatorDelegate {
 		}
 		// She is airborne, so nothing holds her: the perch is dropped so a stale
 		// surface cannot pull her back to its edge when she lands.
+		//
+		// Logged because a fall is the only way she leaves the ground, so when she
+		// ends up somewhere unexpected this is the one record of why. Without it the
+		// log shows a state change to falling and nothing about the cause.
+		let from = perchSurface?.key
+		DiagnosticsLog.shared.writeEvent(
+			"FallStarted",
+			[
+				("Reason", reason),
+				("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
+				("Velocity", String(format: "%.0f,%.0f", initialVelocityX, initialVelocityY)),
+				("From", from.map { "\($0.kind.rawValue):\($0.owner)" } ?? "none"),
+				("State", state.rawValue),
+			]
+		)
 		releasePerch()
 		animator.play(clip ?? (initialVelocityY < 0 ? "toss" : "fall"))
 	}
