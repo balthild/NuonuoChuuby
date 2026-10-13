@@ -262,8 +262,33 @@ landing / curious` 五种落地状态运行，且只有两条路：
   - **宠物跨显示器边界时会被 overlay 窗口边界裁切**，旧模型不会。多屏验证时一并处理。
   - overlay 的层级取 `belowFloating`（= 2），必须 **> 0**：`FullscreenDetector` 只看 `layer == 0`、
     不排除自身 PID，层级为 0 会让它自触发挂起 → 隐藏 → 恢复 → 挂起，形成可见闪烁。
+- **对话气泡也搬进了 overlay 图层（2026-10-13）**：气泡原先是一块独立的 `NSPanel`，跟着她每帧
+  `setFrame`。现在它是同一块 overlay 里、宠物图层**之上**的 `CALayer`（`Dialogue/OverlaySpeechBubbleController.swift`），
+  只改 `position`。窗口版气泡保留给 `--pet-panel`（`SpeechBubbleWindowController`），两者共用一个
+  `Dialogue/SpeechBubbleDrawing.swift`，所以画的形状与量出的尺寸必然一致。
+  实测（12 s「拖到窗口外→落屏幕底」，与同一场景的旧 trace 对照，主线程 Running / 12 s）：
+  主线程 **1221 → 929 ms（−24%）**，全线程 **1676 → 1241 ms（−26%）**；
+  `updatePetFrame` 子树 **148 → 22**（其中气泡本身 146 → 18）；`setFrame` **165 → 0**；
+  `commit_transaction` **238 → 89**。
+  **对照组证明这不是场景差异**：`applyPlacement` 里**去掉气泡后的宠物部分 33 → 35 样本（没变）**，
+  「气泡可见时每帧都跑」的 `bubblePlacement` 是 4 → 5 样本（气泡出现的帧数相当）。
+  两个结论值得单独记：
+  1. **贵的从来不是文本排版，也不是光栅化**，是**窗口移动**。新的光栅化总计只占主线程 **0.75%**
+     （12 s 内所有气泡的排版 + 绘制）。所以「预先测量尺寸 / 预先光栅化以省 CPU」是错的方向 ——
+     尺寸本来就已缓存，绘制本来就几乎免费；预先光栅化**唯一**的用处是给 `layer.contents` 提供位图，
+     它是让图层方案成立的**使能步骤**，不是收益来源。
+  2. **`commit_transaction` 的降幅（−149 样本）在栈归因里永远看不到** ——它是 runloop flush，
+     调用链里没有我们的任何函数（已核实）。也就是说气泡的窗口移动每帧都在**强制一次 CA 事务提交**，
+     而这笔开销只有 A/B（同一脚本跑新旧两版）才能归给它。**只做栈归因会系统性低估窗口移动的代价。**
+  实现上必须注意：气泡的三种颜色都是动态颜色（随明暗主题变），所以缓存位图的键**必须含 appearance**；
+  位图要按 `contentsScale` 光栅化，否则文字发虚；气泡层级从 `floating`(3) 一并降到 overlay 的层级
+  （2，进菜单栏条时 25），副作用是它与其它 floating 窗口的相对次序变了；`PetPresenting` 现在自己持有
+  `speechBubble`，因为两种渲染方式决定了气泡是窗口还是图层。`--pet-panel` 回退路径已实测仍走窗口气泡
+  （`speechBubble.getter → init → show → reposition` 都在协议身后被调用过）。
+- **Metal 渲染实验（延后）**：在 clean tree 的独立分支做 A/B，前提是先固定同一交互脚本与同一统计口径。
+   - 目标：确认是否能在不降低体感帧率的前提下，较当前 CALayer 再降低拖动/下落 CPU。
+   - 技术约束：若实施，必须优先做纹理复用（避免每帧图像上传/转换），否则可能比 CALayer 更差。
 - **多屏混合 DPI 未验证**：当前全程用点（points）规避了大部分换算问题，但未在真实混合 DPI 的多屏组合上验证过。
-- **桌面图标位置是近似值**：macOS 无公开 API，`DesktopIconGrid` 用 Finder 默认布局近似，不是图标真实坐标。
 - **桌面图标位置是近似值**：macOS 无公开 API，`DesktopIconGrid` 用 Finder 默认布局近似，不是图标真实坐标。
 
 ---

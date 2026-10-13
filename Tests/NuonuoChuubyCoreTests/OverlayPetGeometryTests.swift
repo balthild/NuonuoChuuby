@@ -72,4 +72,45 @@ struct OverlayPetGeometryTests {
 	func hostingIsNilWithoutDisplays() {
 		#expect(OverlayPetGeometry.hostingDisplayIndex(for: pet(600, 400), displays: []) == nil)
 	}
+
+	/// The bubble is placed globally but drawn into one overlay's layer, so the
+	/// placement has to come back into that overlay's own space.
+	@Test("A global point is shifted by the display's origin")
+	func localPointIsTranslatedByTheDisplayOrigin() {
+		let display = PixelRect(x: -1920, y: -200, width: 1920, height: 1080)
+		let local = OverlayPetGeometry.localTopLeft(PixelPoint(x: -1500, y: 100), in: display)
+		#expect(local == PixelPoint(x: 420, y: 300))
+	}
+
+	@Test("The overlay holding a point is the one that contains it")
+	func hostingADisplayForAPointUsesThePointItself() {
+		let displays = [monitor(1, 0, 0, 1728, 1117), monitor(2, -1920, 0, 1920, 1080)]
+		#expect(
+			OverlayPetGeometry.hostingDisplayIndex(for: PixelPoint(x: 10, y: 10), displays: displays) == 0
+		)
+		#expect(
+			OverlayPetGeometry.hostingDisplayIndex(
+				for: PixelPoint(x: -1900, y: 400),
+				displays: displays
+			) == 1
+		)
+	}
+
+	@Test("A point past every display still lands on the first")
+	func hostingAPointFallsBackToTheFirstDisplay() {
+		let displays = [monitor(1, 0, 0, 1728, 1117)]
+		#expect(
+			OverlayPetGeometry.hostingDisplayIndex(
+				for: PixelPoint(x: 9000, y: 9000),
+				displays: displays
+			) == 0
+		)
+	}
+
+	@Test("No displays means no overlay for a point either")
+	func hostingAPointIsNilWithoutDisplays() {
+		#expect(
+			OverlayPetGeometry.hostingDisplayIndex(for: PixelPoint(x: 10, y: 10), displays: []) == nil
+		)
+	}
 }

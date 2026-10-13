@@ -107,8 +107,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		)
 		self.controller = controller
 
-		// Voice and the head bubble are wired before the pet starts so the first
-		// frame can already speak.
+		// The voice is wired up before the pet starts so the first frame can already
+		// speak.
 		let loudness = VoiceLoudness.load(from: locator.file("audio/voice-levels.json"))
 		let voice = VoicePlaybackService(
 			locator: locator,
@@ -117,21 +117,17 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 			enabled: settings.soundEnabled,
 			volume: settings.voiceVolume
 		)
-		let speech = PetSpeechCoordinator(
-			voice: voice,
-			bubble: SpeechBubbleWindowController(),
-			displaySpace: displaySpace,
-			character: character
-		)
 		self.voice = voice
-		self.speech = speech
-		controller.speech = speech
 
 		// The full-display overlay is the default renderer: it keeps the window still
 		// and moves the pet inside it, which measured ~39% less CPU while dragging and
 		// ~32% less at idle than moving a panel every frame. `--pet-panel` falls back to
 		// the moving-panel renderer until the overlay has been checked on a multi-display
 		// setup.
+		//
+		// It comes before the speech coordinator because the presenter also decides how
+		// the head bubble is drawn — as a panel of its own, or as another layer of the
+		// overlay — and the coordinator needs whichever it chose.
 		let petWindow: any PetPresenting =
 			CommandLine.arguments.contains("--pet-panel")
 			? PetWindowController(controller: controller, displaySpace: displaySpace)
@@ -141,6 +137,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 			self?.statusItem?.popUpMenu(atScreenPoint: NSEvent.mouseLocation)
 			return nil
 		}
+		self.petWindow = petWindow
+
+		let speech = PetSpeechCoordinator(
+			voice: voice,
+			bubble: petWindow.speechBubble,
+			displaySpace: displaySpace,
+			character: character
+		)
+		self.speech = speech
+		controller.speech = speech
 
 		petWindow.onPlacementChanged = { [weak speech] frame in
 			speech?.updatePetFrame(frame)
@@ -150,7 +156,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 			if suspended { self.speech?.hideBubble() }
 			self.placeGhostIcons(suspended: suspended)
 		}
-		self.petWindow = petWindow
 		// Self-labelling, so a performance trace can be told apart from one taken
 		// with the other renderer without guessing from the launch command.
 		DiagnosticsLog.shared.writeEvent(

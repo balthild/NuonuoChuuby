@@ -2,14 +2,21 @@ import AppKit
 
 /// What the rest of the app needs from whatever puts the pet on screen.
 ///
-/// Two implementations exist. `PetWindowController` moves a small panel to where
-/// she is. `OverlayPetWindowController` draws her into a full-display transparent
-/// window that never moves (see `--pet-overlay`). Both report the same placement
-/// rectangle, so the speech bubble follows either one with no change.
+/// Two implementations exist. `OverlayPetWindowController` (the default) draws her
+/// into a full-display transparent window that never moves; `--pet-panel` selects
+/// `PetWindowController`, which moves a small panel to where she is instead. Both
+/// report the same placement rectangle and expose a ``speechBubble``, so the speech
+/// coordinator drives either one without knowing which it got.
 @MainActor
 public protocol PetPresenting: AnyObject {
 	/// Supplied by the menu bar layer; called on a right-click.
 	var menuProvider: ((NSEvent) -> NSMenu?)? { get set }
+	/// The bubble she speaks through, drawn the way this presenter draws her.
+	///
+	/// It belongs to the presenter rather than to the caller because the two
+	/// renderers put it on screen differently: a panel of its own, or a layer of the
+	/// overlay that also holds her.
+	var speechBubble: any SpeechBubblePresenting { get }
 	/// Called after every move, so attached panels (the head bubble) can follow.
 	///
 	/// The rectangle is always **the pet's own square**, never the presenter's

@@ -12,6 +12,8 @@ public final class PetWindowController: NSObject, PetControllerDelegate, PetPres
 
 	/// Supplied by the menu bar layer; called on a right-click.
 	public var menuProvider: ((NSEvent) -> NSMenu?)?
+	/// This renderer moves a window, so its bubble is a window too.
+	public lazy var speechBubble: any SpeechBubblePresenting = SpeechBubbleWindowController()
 	/// Called after every move, so attached panels (the head bubble) can follow.
 	public var onPlacementChanged: ((PixelRect) -> Void)?
 	/// Called when the simulation suspends or resumes, so the panels that belong

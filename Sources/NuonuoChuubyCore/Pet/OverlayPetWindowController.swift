@@ -8,23 +8,36 @@ public enum OverlayPetGeometry {
 	/// is a translation by the negative of the display's origin. The result can have
 	/// a negative origin while she straddles the left or top edge of her display.
 	public static func localPetFrame(petFrame: PixelRect, displayFrame: PixelRect) -> PixelRect {
-		PixelRect(
-			x: petFrame.x - displayFrame.x,
-			y: petFrame.y - displayFrame.y,
+		let origin = localTopLeft(PixelPoint(x: petFrame.x, y: petFrame.y), in: displayFrame)
+		return PixelRect(
+			x: origin.x,
+			y: origin.y,
 			width: petFrame.width,
 			height: petFrame.height
 		)
 	}
 
-	/// The overlay she is drawn into: the display whose full bounds hold her centre.
+	/// A global point, expressed in the overlay's own coordinate space.
+	public static func localTopLeft(_ point: PixelPoint, in displayFrame: PixelRect) -> PixelPoint {
+		PixelPoint(x: point.x - displayFrame.x, y: point.y - displayFrame.y)
+	}
+
+	/// The overlay that holds `point`.
 	///
-	/// Falls back to the first display, so a pet momentarily past every screen edge
-	/// is still drawn somewhere rather than disappearing. `nil` only when there are
-	/// no displays at all, which the simulation already treats as a suspension.
-	public static func hostingDisplayIndex(for petFrame: PixelRect, displays: [Monitor]) -> Int? {
+	/// Falls back to the first display, so something momentarily past every screen
+	/// edge is still drawn somewhere rather than disappearing. `nil` only when there
+	/// are no displays at all, which the simulation already treats as a suspension.
+	public static func hostingDisplayIndex(for point: PixelPoint, displays: [Monitor]) -> Int? {
 		guard !displays.isEmpty else { return nil }
-		let centre = PixelPoint(x: petFrame.centerX, y: petFrame.centerY)
-		return displays.firstIndex { $0.frame.contains(centre) } ?? 0
+		return displays.firstIndex { $0.frame.contains(point) } ?? 0
+	}
+
+	/// The overlay she is drawn into: the display whose full bounds hold her centre.
+	public static func hostingDisplayIndex(for petFrame: PixelRect, displays: [Monitor]) -> Int? {
+		hostingDisplayIndex(
+			for: PixelPoint(x: petFrame.centerX, y: petFrame.centerY),
+			displays: displays
+		)
 	}
 }
 
@@ -104,12 +117,11 @@ final class OverlayPetRootView: NSView {
 }
 
 /// Puts the pet on screen by drawing her into a full-display transparent window
-/// that never moves, instead of moving a small panel to where she is.
+/// that never moves, instead of moving a small panel to where she is. This is the
+/// default renderer; `--pet-panel` selects `PetWindowController` instead.
 ///
-/// Enabled with `--pet-overlay` while the experiment runs; `PetWindowController`
-/// remains the default. The cost being attacked is the window-move transaction —
-/// `NSWindow._setFrameCommon:` plus the Core Animation commit — that a per-frame
-/// `setFrame` pays.
+/// The cost being attacked is the window-move transaction — `NSWindow._setFrameCommon:`
+/// plus the Core Animation commit — that a per-frame `setFrame` pays.
 ///
 /// The pet is a **sublayer**, not a view. A layer-backed subview is redrawn by
 /// AppKit whenever its frame changes, and on a full-display window that puts the
@@ -123,6 +135,14 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 		let panel: OverlayPetPanel
 		let root: OverlayPetRootView
 		let pet: CALayer
+		let bubble: CALayer
+
+		/// The bubble's colours are dynamic, so its cached raster only holds for one
+		/// appearance.
+		@MainActor
+		var isDarkAppearance: Bool {
+			panel.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+		}
 	}
 
 	private let controller: PetController
@@ -134,6 +154,11 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 	private var isVisible = false
 
 	public var menuProvider: ((NSEvent) -> NSMenu?)?
+	/// The bubble is a layer of these overlays, above her, rather than a window of
+	/// its own — which is what makes following her free for the bubble too.
+	public lazy var speechBubble: any SpeechBubblePresenting = OverlaySpeechBubbleController(
+		host: self
+	)
 	public var onPlacementChanged: ((PixelRect) -> Void)?
 	public var onSuspensionChanged: ((Bool) -> Void)?
 
@@ -206,9 +231,34 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 			]
 			root.layer?.addSublayer(pet)
 
+			// The bubble rides above her, in the same never-moving window, with the
+			// same disabled actions — it is moved by its `position` too.
+			let bubble = CALayer()
+			bubble.anchorPoint = CGPoint(x: 0, y: 0)
+			bubble.contentsGravity = .resize
+			bubble.minificationFilter = .linear
+			bubble.magnificationFilter = .linear
+			bubble.isOpaque = false
+			bubble.contentsScale = monitor.scale
+			bubble.isHidden = true
+			bubble.actions = [
+				"position": NSNull(),
+				"bounds": NSNull(),
+				"contents": NSNull(),
+				"contentsScale": NSNull(),
+				"hidden": NSNull(),
+			]
+			root.layer?.addSublayer(bubble)
+
 			panel.contentView = root
 			wireGestures(root: root)
-			return Overlay(monitor: monitor, panel: panel, root: root, pet: pet)
+			return Overlay(
+				monitor: monitor,
+				panel: panel,
+				root: root,
+				pet: pet,
+				bubble: bubble
+			)
 		}
 		hostingIndex = nil
 		lastAppliedLevel = nil
@@ -351,5 +401,24 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 			show()
 		}
 		onSuspensionChanged?(suspended)
+	}
+}
+
+@MainActor
+extension OverlayPetWindowController: SpeechBubbleLayerHosting {
+	public func speechBubbleLayer(at point: PixelPoint) -> SpeechBubbleLayerTarget? {
+		guard
+			let index = OverlayPetGeometry.hostingDisplayIndex(
+				for: point,
+				displays: overlays.map(\.monitor)
+			)
+		else { return nil }
+		let overlay = overlays[index]
+		return SpeechBubbleLayerTarget(
+			layer: overlay.bubble,
+			displayFrame: overlay.monitor.frame,
+			scale: CGFloat(overlay.monitor.scale),
+			isDark: overlay.isDarkAppearance
+		)
 	}
 }
