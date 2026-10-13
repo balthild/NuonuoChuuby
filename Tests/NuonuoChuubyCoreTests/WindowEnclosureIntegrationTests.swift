@@ -395,12 +395,23 @@ struct WindowEnclosureIntegrationTests {
 	/// occluder at 0 is in front of it.
 	private func hostingBodies(occludedBy occluder: PixelRect? = nil) -> [UInt32: WindowBody] {
 		var bodies: [UInt32: WindowBody] = [
-			Self.windowID: WindowBody(bounds: Self.box, zIndex: 1)
+			Self.windowID: Self.holder(bounds: Self.box, zIndex: 1)
 		]
 		if let occluder {
-			bodies[9001] = WindowBody(bounds: occluder, zIndex: 0)
+			bodies[9001] = Self.holder(bounds: occluder, zIndex: 0)
 		}
 		return bodies
+	}
+
+	/// A window with room for her, as the sampler would mark one.
+	private static func holder(bounds: PixelRect, zIndex: Int) -> WindowBody {
+		WindowBody(bounds: bounds, zIndex: zIndex, isEnclosureCandidate: true)
+	}
+
+	/// A window that is sampled but could never hold her — one filling the display,
+	/// which she would be sealed against. It still hides her.
+	private static func notAHolder(bounds: PixelRect, zIndex: Int) -> WindowBody {
+		WindowBody(bounds: bounds, zIndex: zIndex, isEnclosureCandidate: false)
 	}
 
 	/// Runs the enclosure for `seconds`, as the simulation clock would.
@@ -446,6 +457,31 @@ struct WindowEnclosureIntegrationTests {
 		let state = rig.controller.debugState
 		#expect(state.enclosureWindowID == nil)
 		#expect(state.state == .falling)
+		#expect(state.fallReason == "EnclosureCovered")
+	}
+
+	@Test("A window too large to hold her still hides her")
+	func aWindowTooLargeToHoldHerStillHidesHer() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		drop(rig, at: PixelPoint(x: 900, y: 900))
+		#expect(rig.controller.debugState.enclosureWindowID == Self.windowID)
+
+		// A window filling the display comes to the front. It cannot hold her — she
+		// would be sealed against the screen — so it is not a container candidate.
+		// It certainly hides her, though, and a sampled window that cannot hide her
+		// leaves her standing in a box that is no longer on screen at all.
+		let fullScreen = PixelRect(x: 0, y: 25, width: 1728, height: 1092)
+		rig.provider.setBodies([
+			Self.windowID: Self.holder(bounds: Self.box, zIndex: 1),
+			9001: Self.notAHolder(bounds: fullScreen, zIndex: 0),
+		])
+
+		advance(rig, seconds: 1.5)
+
+		let state = rig.controller.debugState
+		#expect(state.enclosureWindowID == nil, "she should have been let out of the covered box")
 		#expect(state.fallReason == "EnclosureCovered")
 	}
 
@@ -496,10 +532,10 @@ struct WindowEnclosureIntegrationTests {
 		// Four ordinary windows, hers furthest back. She goes to the one the user
 		// is actually looking at.
 		rig.provider.setBodies([
-			Self.windowID: WindowBody(bounds: Self.box, zIndex: 3),
-			9001: WindowBody(bounds: coveringTheBox, zIndex: 2),
-			9002: WindowBody(bounds: alsoCoveringTheBox, zIndex: 0),
-			9003: WindowBody(bounds: coveringTheBox, zIndex: 1),
+			Self.windowID: Self.holder(bounds: Self.box, zIndex: 3),
+			9001: Self.holder(bounds: coveringTheBox, zIndex: 2),
+			9002: Self.holder(bounds: alsoCoveringTheBox, zIndex: 0),
+			9003: Self.holder(bounds: coveringTheBox, zIndex: 1),
 		])
 		advance(rig, seconds: 1.1)
 
@@ -534,8 +570,8 @@ struct WindowEnclosureIntegrationTests {
 		// The same large window, this time behind hers: a window behind the one
 		// holding her hides neither of them.
 		rig.provider.setBodies([
-			Self.windowID: WindowBody(bounds: Self.box, zIndex: 0),
-			9001: WindowBody(bounds: alsoCoveringTheBox, zIndex: 1),
+			Self.windowID: Self.holder(bounds: Self.box, zIndex: 0),
+			9001: Self.holder(bounds: alsoCoveringTheBox, zIndex: 1),
 		])
 		advance(rig, seconds: 2)
 

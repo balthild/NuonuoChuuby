@@ -153,10 +153,34 @@ landing / curious` 五种落地状态运行，且只有两条路：
 > 3. 只跟踪**因窗口移开而被抛出**的情形（`PlatformLaunch` / `PlatformDownwardRelease`）；
 >    用户自己甩出去的不跟，否则会被钉回原来那个窗口。
 >
-> 另有一处**已知不一致**：「能不能挡住别人」在图里用 `isEligiblePlatform`（含「顶边可达」），
-> 在窗口矩形采样里用 `isEligibleAppWindow`（不含），所以顶边压在菜单栏下的窗口在图里是
-> occluder、在采样里不是。遮挡语义应收敛到 `isEligibleAppWindow`；未做，因为它会改变现有
-> graph 的遮挡结果，需要单独确认。
+> 另有一处**部分修好**：「能不能挡住别人」与「能不能站上去」共用一个谓词。
+> `SurfaceBuilder.build` 只收一个 `isEligible`，却同时用来决定 ①她能否站在顶边、②它挡不挡别人；
+> 而 `isEligiblePlatform` = `isEligibleAppWindow` ∧ **顶边可达**，后半句对 ② 毫无意义。
+> **已修（2026-10-12，第一步）**：采样现在把**所有**合格普通窗口都收进来，用
+> `WindowBody.isEnclosureCandidate`（= `isBoundedBody`）标记哪些能当容器。
+> 遮挡（`coveringWindow`）读**全部**，容器与侧撞只读标记为真的（侧撞与上游一致，
+> 它的 `WindowBodies` 也用 `IsBoundedBody` 过滤）。修好的是这条实测过的 bug：
+> **最大化窗口盖住盒子时，她永远不出来**（实测 bodies=`[盒子]`、`coveringWindow=nil`、
+> 2 秒后仍被困）。`transferEnclosure` 也补上了容器资格检查 —— 这是第一步的**前置条件**，
+> 否则她会被转移进一个最大化窗口、封在整个屏幕里。
+> **已修（2026-10-12，第二步）**：`SurfaceBuilder.build` 现在收**两个**闭包 —— `isTerrain`
+> （她能否站在顶边）与 `occludes`（它是否不透明且在前面）。后者只用 `isEligibleAppWindow`，
+> 因为**顶边在哪里与"它挡不挡得住东西"无关**。修好的是一条能演示的 bug：
+> 顶边被拖到菜单栏之下的窗口原本**不遮挡**别人，于是 `isPerchSpotVisible` 问道于图会得到
+> 「可见」，她就站在一条**实际被盖住**的窗沿上（看起来浮在那个窗口的中间）。
+> 钉住它的测试 `menuBarTopWindowStillOccludes` 在改动前报红（`visible.isEmpty → false`）。
+> 注意**只有"顶边压进菜单栏"这一类会变**：每一条可站窗沿的 y 都 < `workArea.bottom`，
+> 所以"整个窗口在屏幕下方之外"的窗口永远不会遮挡任何可站窗沿 —— 改不改都一样。
+> `WindowClimbPlanner` 用 `span` 而非 `visible`，`floors` 也硬编码 `visible = [span]`，均不受影响。
+>
+> **手工验收的边界（2026-10-12，记录用）**：「顶边压进菜单栏的窗口仍能遮挡」这条**只能**由
+> 纯函数测试（`menuBarTopWindowStillOccludes`）钉住 —— 真实 macOS 上**普通窗口很难把标题栏
+> 拖到菜单栏之下**（能被完全推上去的通常是无边框/工具栏样式的窗口，或全屏过渡中的瞬态），
+> 所以没有可靠的桌面步骤可以手工复现那种几何。这不是缺陷：「只能在测试里构造」恰恰是这类
+> 不变量需要测试的原因。**若以后出现"她站在一条看不见的窗沿上"之类的报告**，这里就是第一
+> 个该怀疑的地方，届时再想办法构造可复现的几何。
+> 与此无关的一项：系统设置的「双击窗口的标题栏以」控制的是 **zoom**，zoom 后的窗口停在菜单栏
+> **下方**（`top >= workArea.top`），既不触发这次的判据，也不属于本改动覆盖的情形。
 
 ---
 

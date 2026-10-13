@@ -153,13 +153,14 @@ struct WindowSurfaceTests {
 		let graph = SurfaceBuilder.build(
 			windows: [window],
 			monitors: [monitor],
-			isEligible: { window, monitor in
+			isTerrain: { window, monitor in
 				WindowTerrainEligibilityPolicy.isEligiblePlatform(
 					window,
 					ownPID: 999,
 					workArea: monitor.visibleFrame
 				)
-			}
+			},
+			occludes: { WindowTerrainEligibilityPolicy.isEligibleAppWindow($0, ownPID: 999) }
 		)
 
 		let surface = graph.first { $0.key == SurfaceKey(owner: 7, kind: .windowTop) }

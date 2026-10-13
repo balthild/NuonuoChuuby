@@ -624,7 +624,11 @@ public final class PetController: SpriteAnimatorDelegate {
 		// What is now in front of her could have held her had she been let go
 		// inside it, so it does. She stays in play on the window the user is
 		// actually looking at, instead of dropping out to the desktop.
-		if let bounds = surfaceProvider.windowBodies[cover]?.bounds,
+		//
+		// Checked against the container candidates, not against every body: the
+		// window covering her may have no room for her at all — filling the display,
+		// say — and moving her into it would seal her against the screen.
+		if let bounds = surfaceProvider.windowBodies.enclosureCandidates[cover]?.bounds,
 			WindowEnclosurePhysics.bodyFits(
 				bodyRect(),
 				in: bounds,
@@ -672,7 +676,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	private func tryBeginWindowEnclosure(velocityX: Double, velocityY: Double) -> Bool {
 		let body = bodyRect()
 		let inset = WindowEnclosurePhysics.wallInset * displayScale
-		let holders = surfaceProvider.windowBodies.filter {
+		let holders = surfaceProvider.windowBodies.enclosureCandidates.filter {
 			WindowEnclosurePhysics.bodyFits(body, in: $0.value.bounds, inset: inset)
 		}
 		guard let fitted = holders.min(by: { $0.value.zIndex < $1.value.zIndex }) else {
@@ -778,7 +782,10 @@ public final class PetController: SpriteAnimatorDelegate {
 		var strongest: (id: UInt32, impact: WindowSideImpact)?
 
 		for (windowID, current) in surfaceProvider.windowBodies {
-			guard let previous = surfaceProvider.previousWindowBodies[windowID] else { continue }
+			guard current.isEnclosureCandidate else { continue }
+			guard let previous = surfaceProvider.previousWindowBodies[windowID],
+				previous.isEnclosureCandidate
+			else { continue }
 			guard
 				let impact = WindowSideCollisionPolicy.resolve(
 					previous: previous.bounds,

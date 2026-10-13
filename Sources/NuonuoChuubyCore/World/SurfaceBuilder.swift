@@ -26,16 +26,22 @@ public enum SurfaceBuilder {
 		}
 	}
 
-	/// Builds every edge of every eligible window, plus a floor per monitor.
+	/// Builds every edge of every standable window, plus a floor per monitor.
 	///
 	/// - Parameters:
 	///   - windows: front to back, so index 0 is frontmost (see ``PlatformWindow/zIndex``).
 	///   - monitors: the displays, each contributing a floor.
-	///   - isEligible: whether a window may be terrain on a given monitor.
+	///   - isTerrain: whether the pet may stand on this window's top edge. An edge she
+	///     cannot reach — under the menu bar — is not terrain, so it yields no surface.
+	///   - occludes: whether this window hides what is behind it. Deliberately a
+	///     separate question: a window dragged up under the menu bar is not somewhere
+	///     she can stand, but it is still opaque, still in front, and she is still
+	///     drawn over it — so an edge behind it must not be standable.
 	public static func build(
 		windows: [PlatformWindow],
 		monitors: [Monitor],
-		isEligible: (PlatformWindow, Monitor) -> Bool
+		isTerrain: (PlatformWindow, Monitor) -> Bool,
+		occludes: (PlatformWindow) -> Bool
 	) -> [Surface] {
 		var result: [Surface] = []
 
@@ -53,13 +59,14 @@ public enum SurfaceBuilder {
 			)
 		}
 
-		let eligible = windows.map { window in monitors.contains { isEligible(window, $0) } }
+		let standable = windows.map { window in monitors.contains { isTerrain(window, $0) } }
+		// Only an ordinary app window hides an edge; our own overlays, the Dock and
+		// HUDs are not desktop content.
+		let opaque = windows.map { occludes($0) }
 
 		for (index, window) in windows.enumerated() {
-			guard eligible[index] else { continue }
-			// Only an ordinary app window hides an edge; our own overlays, the Dock
-			// and HUDs are not desktop content.
-			let occluders = (0..<index).filter { eligible[$0] }.map { windows[$0] }
+			guard standable[index] else { continue }
+			let occluders = (0..<index).filter { opaque[$0] }.map { windows[$0] }
 			result.append(contentsOf: edges(of: window, occludedBy: occluders))
 		}
 

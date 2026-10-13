@@ -30,13 +30,14 @@ struct SurfaceBuilderTests {
 		SurfaceBuilder.build(
 			windows: windows,
 			monitors: monitors ?? [monitor],
-			isEligible: { window, monitor in
+			isTerrain: { window, monitor in
 				WindowTerrainEligibilityPolicy.isEligiblePlatform(
 					window,
 					ownPID: 1,
 					workArea: monitor.visibleFrame
 				)
-			}
+			},
+			occludes: { WindowTerrainEligibilityPolicy.isEligibleAppWindow($0, ownPID: 1) }
 		)
 	}
 
@@ -159,6 +160,23 @@ struct SurfaceBuilderTests {
 	func menuBarTopIneligible() {
 		let graph = build([window(id: 1, x: 100, y: 10, w: 800, h: 500)])
 		#expect(top(of: 1, in: graph) == nil)
+	}
+
+	@Test("A window whose top is under the menu bar still hides the edge behind it")
+	func menuBarTopWindowStillOccludes() {
+		// Dragged up so its top edge is above the work area: she cannot stand on
+		// that edge, which is why it yields no surface. It is still in front of the
+		// window behind it, and she is still drawn over both of them, so standing on
+		// the edge behind would leave her apparently floating against its middle.
+		let raised = window(id: 1, x: 100, y: 10, w: 1200, h: 700)
+		let behind = window(id: 2, x: 100, y: 400, w: 1200, h: 500)
+		let graph = build([raised, behind])
+
+		#expect(top(of: 1, in: graph) == nil, "she still cannot stand on it")
+		#expect(
+			top(of: 2, in: graph)?.visible.isEmpty == true,
+			"but it hides the edge behind it, which is at y=400 under its x-range"
+		)
 	}
 
 	@Test("Each monitor contributes its own floor")

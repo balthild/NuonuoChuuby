@@ -39,6 +39,58 @@ struct SurfaceProviderBodyTests {
 		provider.sampleBodiesIfStale(displaySpace: space, delta: 1.0)
 	}
 
+	@Test("A window filling the display is sampled, and marked as no container")
+	func aWindowFillingTheDisplayIsSampledButNotAContainer() {
+		let (provider, platform, space) = makeProvider(left: 100)
+		// The display's own work area: big enough that she would be sealed against
+		// the screen, so it can never hold her.
+		platform.setWindows([
+			PlatformWindow(
+				id: 9001,
+				ownerPID: 900,
+				ownerName: "Keynote",
+				bounds: monitor.visibleFrame,
+				layer: 0,
+				alpha: 1
+			),
+			window(left: 100),
+		])
+		sample(provider, space)
+
+		let filling = provider.windowBodies[9001]
+		#expect(filling != nil, "a window that cannot hold her is still in front of her")
+		#expect(filling?.isEnclosureCandidate == false)
+
+		#expect(provider.windowBodies[Self.windowID]?.isEnclosureCandidate == true)
+		#expect(provider.windowBodies.enclosureCandidates.keys.sorted() == [Self.windowID])
+	}
+
+	@Test("A window too large to hold her still covers the one holding her")
+	func aWindowTooLargeToHoldHerStillCoversHer() {
+		let (provider, platform, space) = makeProvider(left: 100)
+		sample(provider, space)
+
+		// It comes to the front, over the window she is in.
+		platform.setWindows([
+			PlatformWindow(
+				id: 9001,
+				ownerPID: 900,
+				ownerName: "Keynote",
+				bounds: monitor.visibleFrame,
+				layer: 0,
+				alpha: 1
+			),
+			window(left: 100),
+		])
+		sample(provider, space)
+
+		let her = PixelRect(x: 200, y: 300, width: 120, height: 140)
+		#expect(
+			provider.coveringWindow(of: Self.windowID, body: her) == 9001,
+			"a window with no room for her still hides her"
+		)
+	}
+
 	@Test("Two ordinary samples measure the movement between them")
 	func ordinarySamplesMeasureMovement() {
 		let (provider, platform, space) = makeProvider(left: 100)

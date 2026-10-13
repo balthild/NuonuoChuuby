@@ -92,12 +92,17 @@ public final class SurfaceProvider {
 		surfaces = SurfaceBuilder.build(
 			windows: windows,
 			monitors: displaySpace.displays,
-			isEligible: { window, monitor in
+			isTerrain: { window, monitor in
 				WindowTerrainEligibilityPolicy.isEligiblePlatform(
 					window,
 					ownPID: ownPID,
 					workArea: monitor.visibleFrame
 				)
+			},
+			occludes: { window in
+				// Where its top edge is has nothing to do with whether it is opaque and
+				// in front of something.
+				WindowTerrainEligibilityPolicy.isEligibleAppWindow(window, ownPID: ownPID)
 			}
 		)
 	}
@@ -112,9 +117,9 @@ public final class SurfaceProvider {
 
 	/// Called from the simulation tick, on its own faster clock than the graph.
 	///
-	/// A window is a body when its rectangle could hold her: an ordinary app
-	/// window that is not merely the display's own background. Whether she can
-	/// stand on its top edge is irrelevant here — she goes in through the middle.
+	/// A window is sampled when it is ordinary desktop content, and *marked* when it
+	/// could also hold her. Which of the two a caller needs depends on the question:
+	/// a window filling the display hides her but cannot hold her.
 	public func sampleBodiesIfStale(displaySpace: DisplaySpace, delta: Double) {
 		secondsSinceBodySample += delta
 		guard secondsSinceBodySample >= Self.bodySampleInterval else { return }
@@ -129,13 +134,14 @@ public final class SurfaceProvider {
 		for window in platform.windows() {
 			guard WindowTerrainEligibilityPolicy.isEligibleAppWindow(window, ownPID: ownPID)
 			else { continue }
-			guard
-				WindowEnclosureEligibilityPolicy.isBoundedBody(
+			bodies[window.id] = WindowBody(
+				bounds: window.bounds,
+				zIndex: window.zIndex,
+				isEnclosureCandidate: WindowEnclosureEligibilityPolicy.isBoundedBody(
 					window.bounds,
 					monitors: displaySpace.displays
 				)
-			else { continue }
-			bodies[window.id] = WindowBody(bounds: window.bounds, zIndex: window.zIndex)
+			)
 		}
 
 		previousWindowBodies = nextBodySampleIsBaseline ? bodies : windowBodies
