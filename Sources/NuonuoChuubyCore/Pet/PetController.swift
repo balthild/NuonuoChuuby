@@ -36,6 +36,9 @@ public final class PetController: SpriteAnimatorDelegate {
 		static let movementTimeout: Double = 8
 		/// How fast a ledge must be rising to catch her back up rather than pass her.
 		static let airborneCatchUpSpeed: Double = 360
+		/// How far she may sit from where the ride last put her before the edge she is
+		/// anchored to counts as one she has left.
+		static let perchDriftTolerance: Double = 8
 	}
 
 	private static let implementedActions: Set<AutonomousAction> = [
@@ -1054,9 +1057,14 @@ public final class PetController: SpriteAnimatorDelegate {
 	}
 
 	/// Sends her to lick an icon when she is hungry but has nothing to eat.
+	///
+	/// - Parameter ignoringQuietMode: quiet mode is meant to stop this — the original's
+	///   own menu item returns silently when it is on — so nothing that speaks for the
+	///   user passes this. It is for the launch-argument demo, which has been asked for
+	///   explicitly and has no other way to be seen.
 	@discardableResult
-	public func tryBeginIconLick(manual: Bool) -> Bool {
-		guard profile.supportsFood, !quietMode else { return false }
+	public func tryBeginIconLick(manual: Bool, ignoringQuietMode: Bool = false) -> Bool {
+		guard profile.supportsFood, ignoringQuietMode || !quietMode else { return false }
 		guard WindowEnclosureBehaviorPolicy.allowsIconLick(isEnclosed: enclosure != nil) else {
 			DiagnosticsLog.shared.writeEvent(
 				"IconLickSuppressedInEnclosure",
@@ -1324,6 +1332,33 @@ public final class PetController: SpriteAnimatorDelegate {
 			return
 		}
 
+		// She has left the edge she was anchored to: a walk to a meal or an icon
+		// moves her feet off the surface without ever going through `beginFall`, so
+		// the ride would otherwise write her back onto it. `lastPerchOffset` is where
+		// the ride last put her, which is what makes this a question about her own
+		// movement — a surface carrying her along reads as no drift at all, however
+		// fast it is dragged.
+		if let lastPerchOffset, abs(foot.y - lastPerchOffset) > Motion.perchDriftTolerance {
+			guard let nearby = surfaceProvider.support(at: foot) else {
+				handlePerchLost(delta: delta, reason: "off-perch")
+				return
+			}
+			DiagnosticsLog.shared.writeEvent(
+				"PerchReanchored",
+				[
+					("From", "\(perch.key.kind.rawValue):\(perch.key.owner)"),
+					("To", "\(nearby.key.kind.rawValue):\(nearby.key.owner)"),
+					("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
+				]
+			)
+			perchUnavailableSeconds = 0
+			isInPerchGrace = false
+			adopt(nearby)
+			// Returned rather than falling through: `perch` is the edge she just left,
+			// and the ride at the end of this function would put her back on it.
+			return
+		}
+
 		// A missing, unreachable, or now-covered spot is a lost perch. The grace
 		// covers a window that briefly vanishes from the window server's list. Each
 		// condition is told apart here because they mean different things when a perch
@@ -1566,9 +1601,14 @@ public final class PetController: SpriteAnimatorDelegate {
 	private func handlePerchLost(delta: Double, reason: String) {
 		perchUnavailableSeconds += delta
 
-		if PlatformRidePhysics.shouldPreserveTransientSupport(
-			unavailableSeconds: perchUnavailableSeconds
-		) {
+		// The grace is for a dragged window blinking out of the window server's list
+		// for a moment. A floor is a property of the display and cannot blink, so
+		// holding her over one would only postpone a fall that is already due.
+		if perch?.key.kind != .floor,
+			PlatformRidePhysics.shouldPreserveTransientSupport(
+				unavailableSeconds: perchUnavailableSeconds
+			)
+		{
 			// Logged once per grace period rather than every frame.
 			if !isInPerchGrace {
 				isInPerchGrace = true
@@ -2345,6 +2385,8 @@ public final class PetController: SpriteAnimatorDelegate {
 		var velocityY: Double
 		var foot: PixelPoint
 		var fallReason: String
+		/// What she set out to do — the walk she is in the middle of, if any.
+		var movementPurpose: MovementPurpose
 		/// The window currently being ridden, if any.
 		var trackedWindowID: UInt32?
 		/// The edge she is anchored to, if any.
@@ -2360,6 +2402,7 @@ public final class PetController: SpriteAnimatorDelegate {
 			velocityY: velocity.y,
 			foot: foot,
 			fallReason: fallReason,
+			movementPurpose: movementPurpose,
 			trackedWindowID: perch.flatMap { $0.key.kind == .windowTop ? $0.key.owner : nil },
 			perchKey: perch?.key,
 			enclosureWindowID: enclosure?.windowID
@@ -2527,6 +2570,9 @@ public final class PetController: SpriteAnimatorDelegate {
 		velocity = .zero
 		remainderX = 0
 		remainderY = 0
+		// Home is the floor, which is not where she was: dropping the perch makes the
+		// next frame anchor her to what is under her rather than ride her back up.
+		releasePerch()
 		returnToIdle()
 		notifyPlacementIfChanged()
 		announce(.home, voice: .affirmative, priority: .normal)
@@ -2623,7 +2669,9 @@ public final class PetController: SpriteAnimatorDelegate {
 			// Eating the item is what completes the meal.
 			completeActiveMeal()
 		case "lick":
-			returnToIdle()
+			// She drops from the icon's height rather than snapping back to the edge
+			// she set off from; `purpose` is cleared so the ride resumes on landing.
+			beginFall(reason: "IconLickFinished", purpose: MovementPurpose.none)
 		case "satisfied", "satisfied_quick":
 			advanceAfterMeal()
 		case "land", "curious", "sleep_exit":

@@ -1,0 +1,183 @@
+import Foundation
+import Testing
+
+@testable import NuonuoChuubyCore
+
+/// The two walks that leave the surface behind: to a meal, and to an icon.
+///
+/// Both move her feet off the edge she is anchored to without ever going through
+/// `beginFall`, so the perch has to work out on its own that she is somewhere else.
+/// Until it did, the edge she set off from rode her back to it the moment the walk
+/// ended — a teleport with no explanation on screen.
+///
+/// Both tests are arranged so that nothing else can hide the problem. A perch that
+/// no longer covers her feet is already rejected, so her x must stay well inside
+/// the edge she set off from: if it did not, the perch would be dropped as
+/// "covered" and she would fall for the wrong reason, and the test would pass
+/// whether or not her drift is noticed at all.
+@MainActor
+@Suite("Free-standing walks", .serialized)
+struct FreeStandingWalkTests {
+	private static var assetsRoot: URL? {
+		let repoRoot = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+		let root = repoRoot.appendingPathComponent("Sources/NuonuoChuubyCore/Resources/Assets")
+		return FileManager.default.fileExists(atPath: root.path) ? root : nil
+	}
+
+	enum TestSkip: Error { case missingAssets }
+
+	private static let frame = 1.0 / 60
+	private static let windowID: UInt32 = 6060
+	/// A wide window she can start on: its edge is below the icon she walks to, and
+	/// wide enough to still contain her once she is up there.
+	private static let ledgeTop: Double = 700
+	private static let ledge = PixelRect(x: 200, y: ledgeTop, width: 1400, height: 300)
+	/// The one icon she may lick, and the one meal she is offered.
+	private static let spot = PixelPoint(x: 700, y: 300)
+
+	private struct Rig {
+		var controller: PetController
+		var provider: SurfaceProvider
+		var platform: MockPlatform
+		var ledge: Surface
+		var floor: Surface
+		var directory: URL
+	}
+
+	/// A real ``MockPlatform`` rather than the surface-injection seam, because a
+	/// walk spans seconds: the graph is rebuilt on its own cadence as she goes, and
+	/// an injected graph would be wiped by the first rebuild.
+	private func makeRig() throws -> Rig {
+		guard let root = Self.assetsRoot else { throw TestSkip.missingAssets }
+		let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+			.appendingPathComponent("nuonuo-walk-\(UUID().uuidString)")
+
+		let platform = MockPlatform.singleMonitor(width: 1728, height: 1117)
+		platform.setWindows([
+			PlatformWindow(
+				id: Self.windowID,
+				ownerPID: 4242,
+				ownerName: "Safari",
+				bounds: Self.ledge,
+				layer: 0,
+				alpha: 1
+			)
+		])
+		let space = DisplaySpace(monitors: platform.monitors(), primaryHeight: 1117)
+		let provider = SurfaceProvider(platform: platform)
+		provider.refresh(displaySpace: space)
+
+		let controller = PetController(
+			catalog: AssetCatalog(locator: AssetLocator(root: root)),
+			surfaceProvider: provider,
+			lifeStore: PetLifeStateStore(stateDirectory: directory),
+			displaySpace: space
+		)
+
+		let ledge = try #require(provider.surfaces.first { $0.key.kind == .windowTop })
+		let floor = try #require(provider.surfaces.first { $0.key.kind == .floor })
+		return Rig(
+			controller: controller,
+			provider: provider,
+			platform: platform,
+			ledge: ledge,
+			floor: floor,
+			directory: directory
+		)
+	}
+
+	/// Runs whole frames until `condition` holds, and reports how many it took.
+	@discardableResult
+	private func run(_ rig: Rig, upTo limit: Int, until condition: () -> Bool) -> Int {
+		var frames = 0
+		while !condition(), frames < limit {
+			rig.controller.debugStep(delta: Self.frame)
+			frames += 1
+		}
+		return frames
+	}
+
+	@Test("The last frame of a lick leaves her falling, not walking back")
+	func lickEndsInAFall() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+		rig.controller.debugPlaceOnSurface(rig.ledge)
+
+		// One icon, put there by hand: the pick is otherwise random, and what this
+		// test is about is where she ends up, not which icon she chose.
+		let index = DesktopIconIndex(reader: { [DesktopIcon(name: "a.txt", position: Self.spot)] })
+		index.refresh()
+		rig.controller.desktopIcons = index
+
+		#expect(rig.controller.tryBeginIconLick(manual: false))
+		#expect(rig.controller.debugState.movementPurpose == .iconLick)
+
+		run(rig, upTo: 900) { rig.controller.state == .licking }
+		#expect(rig.controller.state == .licking, "she reached the icon")
+
+		let atTheIcon = rig.controller.debugState
+		#expect(abs(atTheIcon.foot.y - Self.spot.y) < 150, "she is down at the icon")
+		#expect(atTheIcon.perchKey == rig.ledge.key, "the ledge is still her perch, untouched")
+
+		// The clip does not loop, and it ends inside the animation tick — so the first
+		// look that shows her out of the lick must show her already falling. The ledge
+		// is still there and still under her, so the ride would otherwise have put her
+		// back on it, one frame later.
+		run(rig, upTo: 300) { rig.controller.state != .licking }
+		let afterTheLick = rig.controller.debugState
+		#expect(afterTheLick.state == .falling, "the lick ends in a fall")
+		#expect(afterTheLick.perchKey == nil, "nothing holds her once the walk is over")
+		#expect(afterTheLick.movementPurpose == .none, "the walk's purpose is finished with")
+		#expect(abs(afterTheLick.foot.y - Self.spot.y) < 150, "she falls from the icon")
+
+		// Straight down, onto the edge she licked above.
+		run(rig, upTo: 900) { rig.controller.state == .landing }
+		let landed = rig.controller.debugState
+		#expect(landed.state == .landing)
+		#expect(landed.perchKey == rig.ledge.key)
+		#expect(landed.foot.y == Self.ledgeTop)
+	}
+
+	@Test("Eating off the floor leaves her up at the food, then lets her go")
+	func mealEndsInAFall() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+		// The floor is the perch to beat: its edge runs the width of the display, so
+		// it covers her feet whatever x she walked to.
+		rig.controller.debugPlaceOnSurface(rig.floor)
+
+		let accepted = rig.controller.enqueueMeals([
+			DeletedItem(
+				id: 1,
+				originalPath: "/tmp/a.txt",
+				displayName: "a.txt",
+				detectedAt: Date(),
+				cameFromTrash: true,
+				anchor: Self.spot,
+				exactAnchor: true
+			)
+		])
+		#expect(accepted == 1)
+		#expect(rig.controller.debugState.movementPurpose == .meal)
+
+		// She walks up, eats, and strikes a pose: `.satisfied` ends in idle.
+		run(rig, upTo: 1200) { rig.controller.state == .idle }
+		#expect(rig.controller.state == .idle, "the meal finishes")
+
+		let afterTheMeal = rig.controller.debugState
+		#expect(abs(afterTheMeal.foot.y - Self.spot.y) < 150, "she is still up at the food")
+		#expect(afterTheMeal.perchKey == rig.floor.key, "and still nominally on the floor")
+
+		// A perch is resolved by identity and the floor is exactly where it was, so
+		// only her own drift gives her away.
+		run(rig, upTo: 300) { rig.controller.state == .falling }
+		let falling = rig.controller.debugState
+		#expect(falling.state == .falling)
+		#expect(falling.perchKey == nil)
+		#expect(falling.movementPurpose == .none)
+		#expect(abs(falling.foot.y - Self.spot.y) < 150, "she falls from the food, not the floor")
+	}
+}

@@ -142,6 +142,61 @@ struct PlatformRideIntegrationTests {
 		}
 	}
 
+	@Test("A window dragged past the drift tolerance still carries her")
+	func fasterDragIsStillRidden() throws {
+		let rig = try makeRig(windowTop: 800)
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		// 10 pt in one frame is 600 pt/s, which is a plain drag. It is further than she
+		// may sit from where the ride last put her, and less than the 15 pt that counts
+		// as a yank — so if the two thresholds are read from the same quantity, a window
+		// moving at this speed reads as a lost perch and she is dropped from a ledge she
+		// is riding perfectly well.
+		var top = 800.0
+		for _ in 0..<40 {
+			top += 10
+			setWindow(rig, to: top)
+			rig.controller.debugMaintainGroundSupport(delta: Self.frame)
+			#expect(rig.controller.debugState.state != .falling, "released from a ride, not a yank")
+			#expect(rig.controller.debugState.foot.y == top)
+		}
+	}
+
+	@Test("Being sent home leaves her on the floor, not on the edge she was on")
+	func bringHomeReanchorsToTheFloor() throws {
+		let rig = try makeRig(windowTop: 800)
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		rig.controller.debugMaintainGroundSupport(delta: Self.frame)
+		#expect(
+			rig.controller.debugState.perchKey == SurfaceKey(owner: Self.windowID, kind: .windowTop)
+		)
+
+		rig.controller.bringHome()
+		rig.controller.debugMaintainGroundSupport(delta: Self.frame)
+
+		// Home is the floor, so that is what holds her from here on.
+		#expect(rig.controller.debugState.state != .falling)
+		#expect(rig.controller.debugState.perchKey == rig.floor.key)
+		#expect(rig.controller.debugState.foot.y == rig.floor.offset)
+	}
+
+	@Test("A floor that goes away drops her at once, with no grace")
+	func floorGoneDropsHerAtOnce() throws {
+		let rig = try makeRig(windowTop: 800)
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		rig.controller.debugPlaceOnSurface(rig.floor)
+		rig.provider.setSurfaces([])
+
+		// The grace exists for a dragged window that blinks out of the window
+		// server's list for a moment. A floor is a property of the display, so a floor
+		// that is gone is gone: waiting out the grace only postpones the fall.
+		rig.controller.debugMaintainGroundSupport(delta: Self.frame)
+		#expect(rig.controller.debugState.state == .falling)
+		#expect(rig.controller.debugState.perchKey == nil)
+	}
+
 	@Test("Losing the window drops her only after the grace expires")
 	func lostWindowGrace() throws {
 		let rig = try makeRig(windowTop: 800)

@@ -215,6 +215,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		if CommandLine.arguments.contains("--demo-pinch") {
 			runPinchDemo(on: controller)
 		}
+
+		// A scripted icon lick, so the walk out and the drop afterwards can be
+		// watched without waiting for her to get hungry.
+		if CommandLine.arguments.contains("--demo-lick") {
+			runIconLickDemo(on: controller)
+		}
 	}
 
 	private func runPinchDemo(on controller: PetController) {
@@ -235,6 +241,32 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		}
 		DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { [weak controller] in
 			controller?.endPinch()
+		}
+	}
+
+	/// Sends her off to lick a desktop icon a moment after launch.
+	///
+	/// The pause is for the launch, not for the simulation: nothing the walk reads is
+	/// set up by the first tick, but starting it on the same frame as the startup line
+	/// makes the two indistinguishable.
+	///
+	/// The one passing `ignoringQuietMode`: quiet mode otherwise refuses a lick
+	/// outright, and a demo that silently does nothing is worse than one that says
+	/// what it did.
+	private func runIconLickDemo(on controller: PetController) {
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self, weak controller] in
+			guard let controller, let self else { return }
+			let icons = self.desktopIcons?.icons.count ?? 0
+			DiagnosticsLog.shared.writeEvent(
+				"IconLickDemo",
+				[
+					// Zero means Accessibility is not granted, so the icons she walks to
+					// are the rough Finder-default layout rather than the real ones.
+					("Icons", "\(icons)"),
+					("QuietMode", "\(controller.quietMode)"),
+					("Started", "\(controller.tryBeginIconLick(manual: true, ignoringQuietMode: true))"),
+				]
+			)
 		}
 	}
 

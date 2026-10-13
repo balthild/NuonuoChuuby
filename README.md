@@ -103,7 +103,7 @@ xattr -dr com.apple.quarantine /Applications/NuonuoChuuby.app
 | `make reset-data`     | 清空设置与存档                     |
 | `make clean`          | 清理构建产物与素材副本             |
 
-调试用的启动参数：`--demo-pinch` 会自动演示一次捏脸。
+调试用的启动参数：`--demo-pinch` 会自动演示一次捏脸；`--demo-lick` 会在启动后半秒自动去舔一个桌面图标（用来验证走过去、舔完之后的坠落，不必等她自己饿）。
 
 用 `make run`（或 `open`）来启动：只有经 LaunchServices 启动，macOS 才会正常呈现授权请求。
 
