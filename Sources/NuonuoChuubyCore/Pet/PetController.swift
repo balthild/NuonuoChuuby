@@ -31,6 +31,8 @@ public final class PetController: SpriteAnimatorDelegate {
 		static let hopVelocity: Double = 420
 		static let arrivalTolerance: Double = 5
 		static let movementTimeout: Double = 8
+		/// How fast a ledge must be rising to catch her back up rather than pass her.
+		static let airborneCatchUpSpeed: Double = 360
 	}
 
 	private static let implementedActions: Set<AutonomousAction> = [
@@ -116,6 +118,10 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// So the grace is logged once, not per frame.
 	private var isInPerchGrace = false
 	private var perchLogGate = ChangeGate<PlatformMotionResponse>()
+	/// The window she is in the air because of, if any, and where its edge was last
+	/// frame, so one rising faster than she flies cannot pass through her.
+	private var airborneSupportWindowID: UInt32?
+	private var airborneSupportTop: Double?
 	private var pendingClimb: WindowClimbPlan?
 	private var activeClimb: WindowClimbPlan?
 	private var climbProgress: Double = 0
@@ -240,6 +246,17 @@ public final class PetController: SpriteAnimatorDelegate {
 		// No display (session locked, screen asleep) or a fullscreen app: suspend.
 		if displaySpace.displays.isEmpty || surfaceProvider.isFullscreenAppActive {
 			return
+		}
+
+		// A fall is short, and the landing question has to be answered with where the
+		// windows are *now* rather than where they were up to half a second ago.
+		// Asked of the stale graph, a window dragged down faster than she falls is
+		// judged at a position it has already left: she lands in mid-air on it, is
+		// released again by the live read, and repeats — pinned to one spot while
+		// the window descends without her, until the graph catches up and finds the
+		// window gone off the bottom of the work area.
+		if state == .falling {
+			surfaceProvider.refresh(displaySpace: displaySpace)
 		}
 
 		// Sampled on its own, faster clock than the terrain graph, and before the
@@ -633,6 +650,8 @@ public final class PetController: SpriteAnimatorDelegate {
 			previousBox: fitted.value.bounds,
 			isResting: false
 		)
+		airborneSupportWindowID = nil
+		airborneSupportTop = nil
 		movementPurpose = .none
 		state = .falling
 		stateElapsed = 0
@@ -1155,6 +1174,12 @@ public final class PetController: SpriteAnimatorDelegate {
 				surface: surface
 			)
 			releasePerch()
+			// The window moved out from under her rather than her being thrown by
+			// the user, so it is worth following for a moment: a ledge rising faster
+			// than she flies would otherwise overtake her, swallow her, and drop her
+			// past itself to the floor. Captured before `beginFall`, which clears it
+			// for every other reason.
+			let yankedWindowID = surface.key.kind == .windowTop ? surface.key.owner : nil
 			if upward {
 				// Thrown up, inheriting a fraction of the surface's speed.
 				let initial = min(max(velocityY * 0.88, -1150 * displayScale), -300 * displayScale)
@@ -1171,6 +1196,8 @@ public final class PetController: SpriteAnimatorDelegate {
 				// on the ledge as it comes back up.
 				beginFall(reason: "PlatformDownwardRelease")
 			}
+			airborneSupportWindowID = yankedWindowID
+			airborneSupportTop = surface.offset
 			return
 		}
 
@@ -1206,6 +1233,19 @@ public final class PetController: SpriteAnimatorDelegate {
 		)
 	}
 
+	/// The window's top edge as it is right now.
+	///
+	/// The graph lags by up to half a second, which is the difference between
+	/// riding a window and being punched through it, so anything that has to know
+	/// where a window *is* reads it here — the same single-window query throughout.
+	private func liveSurface(of windowID: UInt32) -> Surface? {
+		if let debugLiveWindowSurfaceOverride { return debugLiveWindowSurfaceOverride(windowID) }
+		return WindowSurfaceProvider.liveWindowSurface(
+			windowID: windowID,
+			monitors: displaySpace.displays
+		)
+	}
+
 	/// The surface a perch points at, read fresh.
 	///
 	/// A window is resolved **by identity** from the window server, never by
@@ -1218,16 +1258,8 @@ public final class PetController: SpriteAnimatorDelegate {
 		case .windowTop:
 			// The live read gives the drag its precision; the graph is the authority
 			// on whether the surface still exists at all.
-			if let debugLiveWindowSurfaceOverride {
-				return debugLiveWindowSurfaceOverride(perch.key.owner)
-			}
-			if let live = WindowSurfaceProvider.liveWindowSurface(
-				windowID: perch.key.owner,
-				monitors: displaySpace.displays
-			) {
-				return live
-			}
-			return surfaceProvider.surfaces.first { $0.key == perch.key }
+			return liveSurface(of: perch.key.owner)
+				?? surfaceProvider.surfaces.first { $0.key == perch.key }
 		default:
 			return surfaceProvider.surfaces.first { $0.key == perch.key }
 		}
@@ -1379,6 +1411,18 @@ public final class PetController: SpriteAnimatorDelegate {
 		remainderX = 0
 		remainderY = 0
 		if let purpose { movementPurpose = purpose }
+		// Only a window that moved out from under her is worth following: a throw by
+		// the user has put her somewhere else on purpose, and a catch-up would pin
+		// her to the window she was dragged off.
+		switch reason {
+		case "PlatformLaunch", "PlatformDownwardRelease":
+			airborneSupportWindowID =
+				perch.flatMap { $0.key.kind == .windowTop ? $0.key.owner : nil }
+			airborneSupportTop = perchSurface?.offset
+		default:
+			airborneSupportWindowID = nil
+			airborneSupportTop = nil
+		}
 		// She is airborne, so nothing holds her: the perch is dropped so a stale
 		// surface cannot pull her back to its edge when she lands.
 		releasePerch()
@@ -1429,6 +1473,15 @@ public final class PetController: SpriteAnimatorDelegate {
 			}
 		}
 
+		if resolveAirborneSupport(delta) {
+			// She is back on the edge she was thrown from, so this frame's fall is
+			// discarded rather than applied and then corrected.
+			foot.x = nextFootX
+			applyCeiling()
+			if abs(velocity.x) > 8 { facing = velocity.x < 0 ? -1 : 1 }
+			return
+		}
+
 		if movementY > 0,
 			let landing = surfaceProvider.landingSurface(
 				footX: nextFootX,
@@ -1461,6 +1514,37 @@ public final class PetController: SpriteAnimatorDelegate {
 		ignoredLandingSeconds = max(0, ignoredLandingSeconds - delta)
 	}
 
+	/// A window rising faster than she can fly must not pass through her.
+	///
+	/// The counterpart of the release rule, and a restoration of the original's
+	/// `resolveAirborneContact`, which went with the rest of the velocity matching.
+	/// Without it the release is one-sided: a window dragged upward faster than she
+	/// is thrown overtakes her from below, swallows her, and she drops past it to
+	/// the floor. She is put back on its edge, and given its speed unless she
+	/// already has a faster one of her own.
+	private func resolveAirborneSupport(_ delta: Double) -> Bool {
+		guard let windowID = airborneSupportWindowID, let live = liveSurface(of: windowID),
+			live.isReachable, let previousTop = airborneSupportTop
+		else { return false }
+
+		let top = live.offset
+		airborneSupportTop = top
+		let wallVelocity = (top - previousTop) / max(delta, 1.0 / 240)
+
+		// It has come up to her feet, and is still rising fast enough to be doing it.
+		let scale = displayScale
+		guard top <= foot.y, wallVelocity <= -Motion.airborneCatchUpSpeed * scale else {
+			return false
+		}
+		foot.y = top
+		velocity.y = min(
+			velocity.y,
+			min(max(wallVelocity * 0.88, -1150 * scale), -300 * scale)
+		)
+		remainderY = 0
+		return true
+	}
+
 	/// She must not fly out of the top of the screen.
 	///
 	/// A fast upward drag can throw her further than the sky above her: at the
@@ -1478,6 +1562,9 @@ public final class PetController: SpriteAnimatorDelegate {
 	private func land(on surface: Surface?) {
 		let fallDistance = max(0, foot.y - fallStartFootY)
 		let impactSpeed = max(0, velocity.y)
+		// She is down, so no window is following her any more.
+		airborneSupportWindowID = nil
+		airborneSupportTop = nil
 		let shouldReact = LandingVoicePolicy.shouldReact(
 			fallDistancePixels: fallDistance,
 			downwardImpactSpeed: impactSpeed,
@@ -1860,8 +1947,11 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	public func beginDrag(at cursor: PixelPoint) {
 		guard canBeginDrag() else { return }
-		// Picked up: whatever box was holding her no longer does.
+		// Picked up: whatever box was holding her no longer does, and no window is
+		// following her.
 		surrenderEnclosure(reason: "PickedUp")
+		airborneSupportWindowID = nil
+		airborneSupportTop = nil
 		// Being picked up interrupts a meal; it is re-queued so she finishes it
 		// after landing.
 		if movementPurpose == .meal {
