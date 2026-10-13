@@ -247,6 +247,7 @@ public final class PetController: SpriteAnimatorDelegate {
 
 		life.advance(elapsedSeconds: simulation, sleeping: state == .sleeping)
 		stateElapsed += simulation
+
 		// Kept refreshing while suspended too: this is where the fullscreen check
 		// below gets its data, so stopping it would mean never resuming.
 		surfaceProvider.refreshIfStale(displaySpace: displaySpace, delta: simulation)
@@ -496,9 +497,14 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// enough for her when she goes in is big enough until it — or she — is
 	/// resized. Where she is *inside* it is ``WindowEnclosurePhysics/resolve``'s
 	/// business, not this one's, so a window being dragged can never trip it.
-	private func enclosureFitsTheBox() -> Bool {
-		guard let current = enclosure else { return true }
-		guard let box = liveBounds(of: current.windowID) else {
+	///
+	/// `box` is the rectangle the caller already read this frame. Reading it again
+	/// here was a second window-server round trip per frame, and inside a box it was
+	/// the largest single item in the whole simulation step — larger than everything
+	/// the enclosure does with it.
+	private func enclosureFitsTheBox(_ box: PixelRect?) -> Bool {
+		guard enclosure != nil else { return true }
+		guard let box else {
 			surrenderEnclosure(reason: "WindowUnavailable")
 			beginFall(
 				reason: "EnclosureWindowLost",
@@ -519,6 +525,13 @@ public final class PetController: SpriteAnimatorDelegate {
 			return false
 		}
 		return true
+	}
+
+	/// The same check for callers that do not already have the rectangle, which are
+	/// the ones outside the per-frame path.
+	private func enclosureFitsTheBox() -> Bool {
+		guard let current = enclosure else { return true }
+		return enclosureFitsTheBox(liveBounds(of: current.windowID))
 	}
 
 	/// Steps her as a free body inside the window's walls.
@@ -607,8 +620,9 @@ public final class PetController: SpriteAnimatorDelegate {
 		// The capacity question — "is this box still big enough for her" — is asked
 		// here rather than before ``resolve``. It is about size and not position, so
 		// the order cannot change the answer; it sits at the end because the walls
-		// had to run first to have a box at all.
-		guard enclosureFitsTheBox() else { return true }
+		// had to run first to have a box at all. It reuses the rectangle read at the
+		// top of this method.
+		guard enclosureFitsTheBox(box) else { return true }
 
 		// A box covered by a window in front of it is no longer a place she can be
 		// seen standing in. Held for a moment first, because switching apps covers

@@ -59,14 +59,26 @@ final class SpeechBubbleView: NSView {
 	}
 
 	private func measuredTextSize(_ text: String) -> NSSize {
+		// Layout is what CoreText is slow at, and the text of a bubble does not change
+		// once it is up — but the placement is recomputed every time she moves, which
+		// measured the same line again on every frame she animated while speaking.
+		if let cached = measuredTextCache[text] { return cached }
 		let constraint = NSSize(width: maximumTextWidth, height: .greatestFiniteMagnitude)
 		let bounding = (text as NSString).boundingRect(
 			with: constraint,
 			options: [.usesLineFragmentOrigin],
 			attributes: textAttributes
 		)
-		return NSSize(width: ceil(bounding.width), height: ceil(bounding.height))
+		let size = NSSize(width: ceil(bounding.width), height: ceil(bounding.height))
+		// Her lines are a small fixed set, so this settles after a few bubbles.
+		if measuredTextCache.count > 64 { measuredTextCache.removeAll(keepingCapacity: true) }
+		measuredTextCache[text] = size
+		return size
 	}
+
+	/// Measured line sizes, keyed by the line, since the fonts and the width limit
+	/// are fixed for the life of the view.
+	private var measuredTextCache: [String: NSSize] = [:]
 
 	/// The bubble body for `text`, tail excluded — what the layout sizes against,
 	/// since which way the tail points is decided after the fit is known.
@@ -226,12 +238,15 @@ public final class SpeechBubbleWindowController {
 	}
 
 	private func apply(text: String, placement: SpeechBubblePlacement, displaySpace: DisplaySpace) {
+		// `text` and `tail` mark the view dirty themselves when they really change, and
+		// resizing its frame does too. Asking for a redisplay here as well meant that
+		// following her around — every frame while she moved — typeset and redrew the
+		// whole bubble, line and all, without a word of it having changed.
 		view.text = text
 		view.tail = placement.tail
 		let size = view.preferredSize
 		panel.setContentSize(size)
 		view.frame = NSRect(origin: .zero, size: size)
-		view.needsDisplay = true
 
 		let frame = DisplaySpace.toAppKit(
 			PixelRect(
