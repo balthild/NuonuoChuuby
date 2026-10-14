@@ -24,13 +24,16 @@ public enum CheekPinchRenderer {
 			)
 		else { return base }
 
+		let frame = CGRect(x: 0, y: 0, width: size, height: size)
+		context.interpolationQuality = .high
+		// `draw(_:in:)` maps the image's bottom-left origin onto the rect, so the
+		// base has to go in before the flip below — under the flipped CTM it would
+		// land upside down.
+		context.draw(base, in: frame)
+
 		// Canvas space is top-left, Y down; flip so the anchors can be used as-is.
 		context.translateBy(x: 0, y: size)
 		context.scaleBy(x: 1, y: -1)
-		context.interpolationQuality = .high
-
-		let frame = CGRect(x: 0, y: 0, width: size, height: size)
-		context.draw(base, in: frame)
 
 		let scale = SpriteGeometry.canvasToRuntime
 		let restCheek = CGPoint(
@@ -40,17 +43,27 @@ public enum CheekPinchRenderer {
 		let skin =
 			sampleColor(base, at: restCheek) ?? CGColor(red: 0.98, green: 0.90, blue: 0.89, alpha: 1)
 
-		drawStretchedCheek(
-			in: context,
-			geometry: geometry,
-			dynamics: dynamics,
-			scale: scale,
-			skin: skin
-		)
-		drawBlush(in: context, geometry: geometry, dynamics: dynamics, scale: scale)
+		// A pull that builds no tension — dragging inwards, say — draws nothing at
+		// all, rather than a cheek at rest.
+		if dynamics.tension > 0.001 {
+			drawStretchedCheek(
+				in: context,
+				geometry: geometry,
+				dynamics: dynamics,
+				scale: scale,
+				skin: skin
+			)
+			drawBlush(in: context, geometry: geometry, dynamics: dynamics, scale: scale)
 
-		if dynamics.tension > 0.45 {
-			drawMouth(in: context, geometry: geometry, dynamics: dynamics, scale: scale)
+			if dynamics.tension > 0.45 {
+				drawMouth(
+					in: context,
+					geometry: geometry,
+					dynamics: dynamics,
+					scale: scale,
+					skin: skin
+				)
+			}
 		}
 
 		return context.makeImage() ?? base
@@ -65,7 +78,7 @@ public enum CheekPinchRenderer {
 	) {
 		let restX = geometry.x(for: dynamics.side)
 		let center = CGPoint(
-			x: (restX + dynamics.x) * scale,
+			x: (restX + dynamics.outwardOffset) * scale,
 			y: (geometry.cheekY + dynamics.y) * scale
 		)
 
@@ -105,7 +118,7 @@ public enum CheekPinchRenderer {
 	) {
 		guard dynamics.tension > 0.05 else { return }
 		let center = CGPoint(
-			x: (geometry.x(for: dynamics.side) + dynamics.x * 0.8) * scale,
+			x: (geometry.x(for: dynamics.side) + dynamics.outwardOffset * 0.8) * scale,
 			y: (geometry.cheekY + dynamics.y * 0.8) * scale
 		)
 		let radius = geometry.hitRadiusX * scale * (0.62 + dynamics.tension * 0.2)
@@ -129,34 +142,49 @@ public enum CheekPinchRenderer {
 		in context: CGContext,
 		geometry: CheekPinchGeometry,
 		dynamics: CheekPinchDynamics,
-		scale: Double
+		scale: Double,
+		skin: CGColor
 	) {
-		let openness = (dynamics.tension - 0.45) / 0.55
-		let center = CGPoint(x: geometry.mouthX * scale, y: geometry.mouthY * scale)
+		let tension = dynamics.tension
+		let direction = dynamics.side == .left ? -1.0 : 1.0
+		let origin = CGPoint(x: geometry.mouthX * scale, y: geometry.mouthY * scale)
 
-		let height = (7 + 9 * openness) * (0.75 + dynamics.nibble * 0.5) * scale
-		let width = (11 + 5 * openness) * scale
+		// Radii are in runtime-frame pixels, matching the upstream rig's own units.
+		let radiusX = 4.5 + 2 * tension
+		let radiusY = 2.5 + 2.4 * tension + 3.5 * dynamics.nibble
+		let center = CGPoint(x: origin.x + direction * 5 * tension, y: origin.y + 1)
 
 		context.saveGState()
+		// Upstream erases the cel's own mouth before drawing the stretched one;
+		// without this the smaller ellipse leaves the artwork's mouth showing.
+		context.setFillColor(skin)
+		context.fillEllipse(in: CGRect(x: origin.x - 8, y: origin.y - 6, width: 16, height: 12))
+
 		context.setFillColor(CGColor(red: 0.35, green: 0.14, blue: 0.18, alpha: 1))
 		context.fillEllipse(
 			in: CGRect(
-				x: center.x - width,
-				y: center.y - height,
-				width: width * 2,
-				height: height * 2
+				x: center.x - radiusX,
+				y: center.y - radiusY,
+				width: radiusX * 2,
+				height: radiusY * 2
 			)
 		)
 
-		if openness > 0.4 {
-			context.setFillColor(CGColor(red: 0.94, green: 0.55, blue: 0.60, alpha: 1))
-			context.fillEllipse(
-				in: CGRect(
-					x: center.x - width * 0.55,
-					y: center.y - height * 0.1,
-					width: width * 1.1,
-					height: height * 1.0
-				)
+		let tongueRadiusY = max(1, radiusY * 0.35)
+		context.setFillColor(CGColor(red: 0.94, green: 0.55, blue: 0.60, alpha: 1))
+		context.fillEllipse(
+			in: CGRect(
+				x: center.x - 3,
+				y: center.y + radiusY * 0.38 - tongueRadiusY,
+				width: 6,
+				height: tongueRadiusY * 2
+			)
+		)
+
+		if dynamics.nibble > 0.15 {
+			context.setFillColor(CGColor(red: 1, green: 0.98, blue: 0.93, alpha: 1))
+			context.fill(
+				CGRect(x: center.x - 3, y: center.y - radiusY + 1, width: 6, height: 2)
 			)
 		}
 		context.restoreGState()
@@ -199,14 +227,10 @@ public enum CheekPinchRenderer {
 	private static func inkColor(from color: CGColor) -> CGColor {
 		let components = color.components ?? [0.5, 0.4, 0.4, 1]
 		return CGColor(
-			red: (components[0] * 0.62).clamped01(),
-			green: (components[1] * 0.55).clamped01(),
-			blue: (components[2] * 0.58).clamped01(),
+			red: (components[0] * 0.62).clamp(lower: 0, upper: 1),
+			green: (components[1] * 0.55).clamp(lower: 0, upper: 1),
+			blue: (components[2] * 0.58).clamp(lower: 0, upper: 1),
 			alpha: 0.85
 		)
 	}
-}
-
-extension Double {
-	func clamped01() -> Double { min(max(self, 0), 1) }
 }

@@ -34,11 +34,18 @@ struct CheekPinchGeometryTests {
 		#expect(feibi.mouthX != geometry.mouthX)
 	}
 
-	@Test("Anchors convert to view points by the canvas scale")
-	func canvasScale() {
-		let view = CheekPinchGeometry.geometry(for: .nuonuo)
-		let scale = 220.0 / SpriteGeometry.canvasSize
-		#expect(abs(Double(view.leftX) * scale - 122 * scale) < 0.001)
+	@Test("The anchors land where the rig was authored, in sprite pixels")
+	func spritePixelAnchors() {
+		// The upstream rig is authored against the 384 px sprite, so converting the
+		// canvas anchors back down has to reproduce its numbers.
+		let toSpritePixels = SpriteGeometry.canvasToRuntime
+		#expect(abs(geometry.leftX * toSpritePixels - 122) < 0.001)
+		#expect(abs(geometry.rightX * toSpritePixels - 239) < 0.001)
+		#expect(abs(geometry.cheekY * toSpritePixels - 232) < 0.001)
+		#expect(abs(geometry.hitRadiusX * toSpritePixels - 25) < 0.001)
+		#expect(abs(geometry.hitRadiusY * toSpritePixels - 18) < 0.001)
+		#expect(abs(geometry.mouthX * toSpritePixels - 178) < 0.001)
+		#expect(abs(geometry.mouthY * toSpritePixels - 227) < 0.001)
 	}
 }
 
@@ -115,5 +122,29 @@ struct CheekPinchDynamicsTests {
 		dynamics.tick(1.0 / 60)
 		#expect(!dynamics.isActive)
 		#expect(dynamics.x == 0)
+	}
+
+	@Test("An inward drag builds no tension")
+	func inwardDragHasNoTension() {
+		var dynamics = CheekPinchDynamics()
+		dynamics.begin(side: .right)
+		dynamics.drag(x: -CheekPinchDynamics.maximumHorizontal, y: 0)
+		for _ in 0..<200 { dynamics.tick(1.0 / 60) }
+		#expect(dynamics.x < -100)
+		#expect(dynamics.tension == 0)
+
+		// The same distance outwards still builds the full stretch.
+		var outward = CheekPinchDynamics()
+		outward.begin(side: .right)
+		outward.drag(x: CheekPinchDynamics.maximumHorizontal, y: 0)
+		for _ in 0..<200 { outward.tick(1.0 / 60) }
+		#expect(outward.tension > 0.99)
+
+		// A vertical drag is unaffected by which way the horizontal went.
+		var vertical = CheekPinchDynamics()
+		vertical.begin(side: .left)
+		vertical.drag(x: CheekPinchDynamics.maximumHorizontal, y: CheekPinchDynamics.maximumVertical)
+		for _ in 0..<200 { vertical.tick(1.0 / 60) }
+		#expect(vertical.tension > 0.99)
 	}
 }

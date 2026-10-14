@@ -7,6 +7,12 @@ public enum CheekSide: Sendable, Equatable {
 
 /// Where a character's cheeks are, in 512-unit canvas space.
 public struct CheekPinchGeometry: Sendable, Equatable {
+	/// The rig comes from the upstream renderer, which is authored against the
+	/// shipped sprite's own pixels (384 px) rather than the canvas, so its
+	/// anchors are scaled up here.
+	private static let spritePixelToCanvas =
+		SpriteGeometry.canvasSize / SpriteGeometry.runtimeFrameSize
+
 	public var leftX: Double
 	public var rightX: Double
 	public var cheekY: Double
@@ -18,22 +24,22 @@ public struct CheekPinchGeometry: Sendable, Equatable {
 	public static func geometry(for character: PetCharacterProfile) -> CheekPinchGeometry {
 		character.usesMischief
 			? CheekPinchGeometry(
-				leftX: 133,
-				rightX: 244,
-				cheekY: 239,
-				hitRadiusX: 25,
-				hitRadiusY: 18,
-				mouthX: 191,
-				mouthY: 241
+				leftX: 133 * spritePixelToCanvas,
+				rightX: 244 * spritePixelToCanvas,
+				cheekY: 239 * spritePixelToCanvas,
+				hitRadiusX: 25 * spritePixelToCanvas,
+				hitRadiusY: 18 * spritePixelToCanvas,
+				mouthX: 191 * spritePixelToCanvas,
+				mouthY: 241 * spritePixelToCanvas
 			)
 			: CheekPinchGeometry(
-				leftX: 122,
-				rightX: 239,
-				cheekY: 232,
-				hitRadiusX: 25,
-				hitRadiusY: 18,
-				mouthX: 178,
-				mouthY: 227
+				leftX: 122 * spritePixelToCanvas,
+				rightX: 239 * spritePixelToCanvas,
+				cheekY: 232 * spritePixelToCanvas,
+				hitRadiusX: 25 * spritePixelToCanvas,
+				hitRadiusY: 18 * spritePixelToCanvas,
+				mouthX: 178 * spritePixelToCanvas,
+				mouthY: 227 * spritePixelToCanvas
 			)
 	}
 
@@ -72,21 +78,29 @@ public struct CheekPinchDynamics: Sendable {
 
 	public init() {}
 
-	/// How far outwards the cheek is pulled, 0…1.
-	public var outwardTension: Double {
-		min(max((side == .left ? -x : x) / Self.maximumHorizontal, 0), 1)
+	/// The pull's outward component, in canvas units: never negative, and zero
+	/// for any pull that crosses the face the other way.
+	private var outward: Double {
+		side == .left ? max(-x, 0) : max(x, 0)
 	}
 
-	/// The overall stretch, 0…1 across both axes.
+	/// How far outwards the cheek is pulled, 0…1.
+	public var outwardTension: Double {
+		(outward / Self.maximumHorizontal).clamp(lower: 0, upper: 1)
+	}
+
+	/// The horizontal offset the renderer draws with: outwards only, so an
+	/// inward pull cannot drag the cheek across the face.
+	public var outwardOffset: Double {
+		side == .left ? -outward : outward
+	}
+
+	/// The overall stretch, 0…1. Only an outward pull counts: dragging inwards
+	/// across the face contributes no tension at all.
 	public var tension: Double {
-		min(
-			max(
-				((x * x) / (Self.maximumHorizontal * Self.maximumHorizontal)
-					+ (y * y) / (Self.maximumVertical * Self.maximumVertical)).squareRoot(),
-				0
-			),
-			1
-		)
+		let horizontal = outward / Self.maximumHorizontal
+		let vertical = y / Self.maximumVertical
+		return (horizontal * horizontal + vertical * vertical).squareRoot().clamp(lower: 0, upper: 1)
 	}
 
 	/// The chewing wobble when a cheek is pulled out hard.
