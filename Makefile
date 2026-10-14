@@ -19,6 +19,7 @@ BUNDLE_ID := com.balthild.NuonuoChuuby
 CORE_TARGET := NuonuoChuubyCore
 
 CONFIG ?= debug
+FLAGS ?=
 
 # Signing.
 #
@@ -49,7 +50,10 @@ BUILD_DIR := .build
 DIST_DIR := $(BUILD_DIR)/dist
 APP_DIR := $(BUILD_DIR)/app
 APP_BUNDLE := $(APP_DIR)/$(APP_NAME).app
-BIN_DIR := $(BUILD_DIR)/$(CONFIG)
+# Recursive, not `:=`: `run`/`rerun` set CONFIG with a target-specific variable, and
+# a simply-expanded BIN_DIR would freeze to `.build/debug` at parse time — so `app`
+# would keep copying a stale binary while `build` compiled the release one.
+BIN_DIR = $(BUILD_DIR)/$(CONFIG)
 
 # The manifest (pinned commit + file list) is generated into a git-ignored Swift
 # source and compiled in; the artwork is assembled into the .app by hand at
@@ -91,7 +95,7 @@ icon: ## Generate AppIcon.icns, drawing the artwork from source.
 	iconutil --convert icns --output "$(ICNS)" "$(ICONSET_DIR)"
 
 build: manifest ## Build the executable.
-	$(SWIFT) build -c $(CONFIG)
+	$(SWIFT) build -c $(CONFIG) $(FLAGS)
 
 test: manifest ## Run the test suite (assets hard-linked from the submodule).
 	@Tools/link-assets.sh "$(UPSTREAM_SUBMODULE)" "$(TEST_ASSETS_DIR)"
@@ -127,11 +131,15 @@ package: sign ## Produce a distributable zip in .build/dist.
 	@printf '%s\n' "Created $(DIST_DIR)/$(APP_NAME)-$(VERSION).zip"
 
 run: DEV_ASSETS := 1
+run: CONFIG = release
+run: FLAGS = -Xswiftc -g
 run: sign ## Build, bundle and launch the app.
 	open "$(APP_BUNDLE)"
 
 rerun: APP_ARGS ?=
 rerun: DEV_ASSETS := 1
+rerun: CONFIG = release
+rerun: FLAGS = -Xswiftc -g
 rerun: sign ## Build, bundle and relaunch the app with arguments.
 	@pkill -f "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)" || true
 	open -n "$(APP_BUNDLE)" --args $(APP_ARGS)
