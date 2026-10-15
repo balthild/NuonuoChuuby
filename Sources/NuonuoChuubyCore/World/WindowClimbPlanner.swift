@@ -102,11 +102,7 @@ public enum WindowClimbPlanner {
 			.prefix(4)
 		guard !pool.isEmpty else { return nil }
 
-		let index = min(
-			pool.count - 1,
-			Int((min(max(randomUnit, 0), 0.999999) * Double(pool.count)).rounded(.down))
-		)
-		return pool[index].plan
+		return pool[RandomSelection.index(in: pool.count, unit: randomUnit)].plan
 	}
 
 	/// Taller climbs take longer, bounded so the animation never drags.

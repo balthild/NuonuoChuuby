@@ -85,7 +85,7 @@ public enum IconLickTargetSelector {
 		let ordered =
 			candidates
 			.filter { seen.insert($0).inserted }
-			.map { (point: $0, distanceSquared: squaredDistance($0, origin)) }
+			.map { (point: $0, distanceSquared: $0.squaredDistance(to: origin)) }
 			.sorted { $0.distanceSquared < $1.distanceSquared }
 
 		let preferredThreshold = preferredMinimumDistance * preferredMinimumDistance
@@ -94,17 +94,7 @@ public enum IconLickTargetSelector {
 		let pool = preferred.isEmpty ? Array(ordered.prefix(poolSize)) : Array(preferred)
 		guard !pool.isEmpty else { return nil }
 
-		let index = min(
-			pool.count - 1,
-			Int((min(max(randomUnit, 0), 0.999999) * Double(pool.count)).rounded(.down))
-		)
-		return pool[index].point
-	}
-
-	static func squaredDistance(_ lhs: PixelPoint, _ rhs: PixelPoint) -> Double {
-		let dx = lhs.x - rhs.x
-		let dy = lhs.y - rhs.y
-		return dx * dx + dy * dy
+		return pool[RandomSelection.index(in: pool.count, unit: randomUnit)].point
 	}
 }
 
@@ -127,8 +117,7 @@ public enum GhostAnchorLayout {
 		let threshold = minimumDistance * minimumDistance
 		for offset in offsets {
 			let candidate = PixelPoint(x: preferred.x + offset.x, y: preferred.y + offset.y)
-			if occupied.allSatisfy({ IconLickTargetSelector.squaredDistance($0, candidate) >= threshold })
-			{
+			if occupied.allSatisfy({ $0.squaredDistance(to: candidate) >= threshold }) {
 				return candidate
 			}
 		}

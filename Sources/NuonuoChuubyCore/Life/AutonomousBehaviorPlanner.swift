@@ -64,7 +64,7 @@ public enum AutonomousBehaviorPlanner {
 		guard !choices.isEmpty else { return .rest }
 
 		let total = choices.reduce(0) { $0 + $1.weight }
-		var target = min(max(randomUnit, 0), 0.999999) * total
+		var target = RandomSelection.unit(randomUnit) * total
 		for choice in choices {
 			target -= choice.weight
 			if target <= 0 { return choice.action }

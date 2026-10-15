@@ -17,6 +17,13 @@ public struct PixelPoint: Sendable, Equatable, Hashable {
 		let dy = other.y - y
 		return (dx * dx + dy * dy).squareRoot()
 	}
+
+	/// The distance without the square root, for comparing distances.
+	public func squaredDistance(to other: PixelPoint) -> Double {
+		let dx = other.x - x
+		let dy = other.y - y
+		return dx * dx + dy * dy
+	}
 }
 
 public struct PixelRect: Sendable, Equatable {

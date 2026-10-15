@@ -193,7 +193,7 @@ struct GhostAnchorLayoutTests {
 		let preferred = PixelPoint(x: 500, y: 500)
 		let spot = GhostAnchorLayout.chooseDistinct(preferred: preferred, occupied: [preferred])
 		#expect(spot != preferred)
-		let distance = IconLickTargetSelector.squaredDistance(spot, preferred).squareRoot()
+		let distance = spot.squaredDistance(to: preferred).squareRoot()
 		#expect(distance >= 56)
 	}
 
@@ -206,7 +206,7 @@ struct GhostAnchorLayoutTests {
 				occupied: occupied
 			)
 			for other in occupied {
-				#expect(IconLickTargetSelector.squaredDistance(spot, other).squareRoot() >= 56)
+				#expect(spot.squaredDistance(to: other).squareRoot() >= 56)
 			}
 			occupied.append(spot)
 		}

@@ -12,7 +12,7 @@ public enum TerrainBehaviorPlanner {
 	/// On the desktop floor she mostly just turns around; on a window top she may
 	/// instead hop, slide down the side, or jump off.
 	public static func chooseAtEdge(isDesktopFloor: Bool, randomUnit: Double) -> TerrainEdgeAction {
-		let random = min(max(randomUnit, 0), 0.999999)
+		let random = RandomSelection.unit(randomUnit)
 		if isDesktopFloor {
 			return random < 0.22 ? .hop : .turnAround
 		}
