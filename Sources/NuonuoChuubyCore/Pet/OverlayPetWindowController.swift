@@ -52,7 +52,7 @@ final class OverlayPetPanel: NSPanel {
 		)
 		isFloatingPanel = true
 		becomesKeyOnlyIfNeeded = true
-		level = PetPanelLevel.belowFloating
+		level = PetPanelLevel.pet
 		collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
 		isOpaque = false
 		backgroundColor = .clear
@@ -181,7 +181,6 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 	private var overlays: [Overlay] = []
 	/// The overlay she is drawn into; the others are kept empty.
 	private var hostingIndex: Int?
-	private var lastAppliedLevel: NSWindow.Level?
 	private var isVisible = false
 
 	public var menuProvider: ((NSEvent) -> NSMenu?)?
@@ -275,7 +274,6 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 			)
 		}
 		hostingIndex = nil
-		lastAppliedLevel = nil
 		if isVisible {
 			for overlay in overlays {
 				overlay.panel.orderFrontRegardless()
@@ -378,27 +376,6 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 			FrameInterpolation.animate(move)
 		} else {
 			FrameInterpolation.withoutAnimation(move)
-		}
-
-		applyLevel(petFrame: petFrame)
-	}
-
-	/// Every overlay shares one level, decided from where the pet is — the same
-	/// rule the moving panel used. The transparent parts of an overlay cover
-	/// nothing, so raising the window while she reaches into the menu bar changes
-	/// nothing else on screen.
-	private func applyLevel(petFrame: PixelRect) {
-		let centre = PixelPoint(x: petFrame.centerX, y: petFrame.centerY)
-		guard let workArea = displaySpace.display(containing: centre)?.visibleFrame else { return }
-		let level = PetPanelLevel.level(
-			panelTop: petFrame.top,
-			workArea: workArea,
-			below: PetPanelLevel.belowFloating
-		)
-		guard lastAppliedLevel != level else { return }
-		lastAppliedLevel = level
-		for overlay in overlays {
-			overlay.panel.level = level
 		}
 	}
 

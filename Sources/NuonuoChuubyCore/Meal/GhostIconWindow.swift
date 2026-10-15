@@ -33,7 +33,7 @@ public final class GhostIconWindow {
 			defer: false
 		)
 		panel.isFloatingPanel = true
-		panel.level = .floating
+		panel.level = PetPanelLevel.abovePet
 		panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
 		panel.isOpaque = false
 		panel.backgroundColor = .clear

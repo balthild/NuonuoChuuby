@@ -10,7 +10,7 @@ public final class SpeechBubblePanel: NSPanel {
 			backing: .buffered,
 			defer: false
 		)
-		level = .floating
+		level = PetPanelLevel.abovePet
 		collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
 		isOpaque = false
 		backgroundColor = .clear

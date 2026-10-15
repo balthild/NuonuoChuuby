@@ -11,7 +11,7 @@ public final class PetPanel: NSPanel {
 		)
 		isFloatingPanel = true
 		becomesKeyOnlyIfNeeded = true
-		level = .floating
+		level = PetPanelLevel.pet
 		collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
 		isOpaque = false
 		backgroundColor = .clear

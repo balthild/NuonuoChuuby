@@ -18,24 +18,15 @@ struct PetPanelTests {
 		#expect(constrained == proposed)
 	}
 
-	/// The menu bar is composited above every ordinary window level, so the panel
-	/// has to rise above it while it reaches into it — and only then, or she
-	/// would cover the Dock too.
-	@Test("The panel rises above the menu bar only while it overlaps it")
-	func levelAboveMenuBar() {
-		let workArea = PixelRect(x: 0, y: 24, width: 1440, height: 876)
-		#expect(PetPanelLevel.level(panelTop: 10, workArea: workArea) == PetPanelLevel.aboveMenuBar)
-		#expect(PetPanelLevel.level(panelTop: 24, workArea: workArea) == .floating)
-		#expect(PetPanelLevel.level(panelTop: 400, workArea: workArea) == .floating)
-	}
-
-	/// The overlay sits below `.floating` so the bubble and the ghost icons, both
-	/// `.floating`, keep drawing over her. It must stay above 0: a level-0 window
-	/// filling a display is what `FullscreenDetector` takes for a fullscreen app,
-	/// and it does not exclude our own process.
-	@Test("The overlay sits just under the floating level, and above zero")
-	func overlayLevel() {
-		#expect(PetPanelLevel.belowFloating.rawValue == NSWindow.Level.floating.rawValue - 1)
-		#expect(PetPanelLevel.belowFloating.rawValue > 0)
+	/// The pet is stacked above the menu bar (24) and the Dock (20) so neither can
+	/// occlude her, and below open menus (101). The bubble and the ghost icons ride
+	/// one level higher so they keep drawing over her.
+	@Test("The pet clears the menu bar and the Dock; the bubble rides above her")
+	func stackingLevels() {
+		#expect(PetPanelLevel.pet.rawValue == NSWindow.Level.mainMenu.rawValue + 1)
+		#expect(PetPanelLevel.pet.rawValue > 20)
+		#expect(PetPanelLevel.pet.rawValue > 0)
+		#expect(PetPanelLevel.abovePet.rawValue > PetPanelLevel.pet.rawValue)
+		#expect(PetPanelLevel.abovePet.rawValue < NSWindow.Level.popUpMenu.rawValue)
 	}
 }

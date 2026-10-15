@@ -8,7 +8,6 @@ public final class PetWindowController: NSObject, PetControllerDelegate, PetPres
 	private let view: PetView
 	private let controller: PetController
 	private var displaySpace: DisplaySpace
-	private var lastAppliedLevel: NSWindow.Level?
 
 	/// Supplied by the menu bar layer; called on a right-click.
 	public var menuProvider: ((NSEvent) -> NSMenu?)?
@@ -104,23 +103,9 @@ public final class PetWindowController: NSObject, PetControllerDelegate, PetPres
 		if current.origin != frame.origin || sizeChanged {
 			panel.setFrame(frame, display: sizeChanged)
 		}
-		applyLevel(topLeft: topLeft, size: size)
 		view.bodyEllipse = controller.bodyEllipseInView
 		view.facing = controller.facing
 		onPlacementChanged?(controller.petFrame)
-	}
-
-	/// Her foot stops at the ceiling but the sprite is drawn above it, so her head
-	/// reaches into the menu bar whenever she stands or is thrown high. The menu
-	/// bar is composited above every ordinary window level, so a panel left at
-	/// `.floating` loses that part of the sprite.
-	private func applyLevel(topLeft: PixelPoint, size: Double) {
-		let center = PixelPoint(x: topLeft.x + size / 2, y: topLeft.y + size / 2)
-		guard let workArea = displaySpace.display(containing: center)?.visibleFrame else { return }
-		let level = PetPanelLevel.level(panelTop: topLeft.y, workArea: workArea)
-		guard lastAppliedLevel != level else { return }
-		panel.level = level
-		lastAppliedLevel = level
 	}
 
 	// MARK: - PetControllerDelegate
