@@ -29,4 +29,7 @@ public protocol PetPresenting: AnyObject {
 
 	func show()
 	func updateDisplaySpace(_ space: DisplaySpace)
+	/// Creates a fake icon for a deleted item, drawn the way this presenter draws
+	/// the pet: a panel of its own, or a layer of the overlay.
+	func makeGhostIcon() -> any GhostIconPresenting
 }

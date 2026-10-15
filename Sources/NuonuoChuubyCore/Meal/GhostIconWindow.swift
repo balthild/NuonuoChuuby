@@ -21,11 +21,13 @@ public enum ShellIconProvider {
 /// A small, click-through panel that shows a deleted item's icon where it used
 /// to be, so the pet visibly walks over and eats it.
 @MainActor
-public final class GhostIconWindow {
+public final class GhostIconWindow: GhostIconPresenting {
 	private let panel: GhostIconPanel
 	private let imageView: NSImageView
+	private let displaySpace: DisplaySpace
 
-	public init() {
+	public init(displaySpace: DisplaySpace) {
+		self.displaySpace = displaySpace
 		panel = GhostIconPanel(
 			contentRect: NSRect(x: 0, y: 0, width: 64, height: 64),
 			styleMask: [.borderless, .nonactivatingPanel],
@@ -48,8 +50,7 @@ public final class GhostIconWindow {
 		panel.contentView = imageView
 	}
 
-	public func show(icon: NSImage?, at center: PixelPoint, size: Double, displaySpace: DisplaySpace)
-	{
+	public func show(icon: NSImage?, at center: PixelPoint, size: Double) {
 		imageView.image = icon
 		let frame = DisplaySpace.toAppKit(
 			PixelRect(
@@ -66,13 +67,12 @@ public final class GhostIconWindow {
 		panel.orderFrontRegardless()
 	}
 
-	public func fadeOut(then completion: (() -> Void)? = nil) {
+	public func fadeOut() {
 		NSAnimationContext.runAnimationGroup { context in
 			context.duration = 0.25
 			panel.animator().alphaValue = 0
 		} completionHandler: { [weak self] in
 			self?.panel.orderOut(nil)
-			completion?()
 		}
 	}
 

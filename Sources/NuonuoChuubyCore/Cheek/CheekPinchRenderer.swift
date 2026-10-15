@@ -224,7 +224,7 @@ public enum CheekPinchRenderer {
 		)
 	}
 
-	private static func inkColor(from color: CGColor) -> CGColor {
+	static func inkColor(from color: CGColor) -> CGColor {
 		let components = color.components ?? [0.5, 0.4, 0.4, 1]
 		return CGColor(
 			red: (components[0] * 0.62).clamp(lower: 0, upper: 1),

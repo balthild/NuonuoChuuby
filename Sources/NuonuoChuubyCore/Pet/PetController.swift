@@ -8,6 +8,16 @@ public protocol PetControllerDelegate: AnyObject {
 	/// The simulation stopped or started again, so anything drawn alongside her
 	/// should go away or come back.
 	func petController(_ controller: PetController, didChangeSuspension suspended: Bool)
+	/// The cheek-pinch overlay changed, or ended (`nil`). It is drawn on top of the
+	/// sprite frame, which arrives through ``petController(_:didProduceFrame:)``.
+	func petController(_ controller: PetController, didUpdateCheekPinch pinch: CheekPinchState?)
+}
+
+extension PetControllerDelegate {
+	public func petController(
+		_ controller: PetController,
+		didUpdateCheekPinch pinch: CheekPinchState?
+	) {}
 }
 
 @MainActor
@@ -117,8 +127,6 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var fallStartFootY: Double = 0
 	private var fallReason = "support-lost"
 	private var cheek = CheekPinchDynamics()
-	/// The clip's own frame, before any pinch overlay is drawn on top.
-	private var baseFrame: CGImage?
 	/// Where the pinch started, in view points.
 	private var pinchOrigin: CGPoint = .zero
 
@@ -2361,6 +2369,12 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	public var isPinching: Bool { cheek.isActive }
 
+	/// The pinch overlay's current appearance, or `nil` when no cheek is pulled.
+	public var cheekPinchState: CheekPinchState? {
+		guard cheek.isActive else { return nil }
+		return CheekPinchState(geometry: CheekPinchGeometry.geometry(for: profile), dynamics: cheek)
+	}
+
 	/// How far the body leans, in degrees: a cheek being pulled, or being flung
 	/// across the inside of a window.
 	public var bodyLeanDegrees: Double {
@@ -2403,7 +2417,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		remainderX = 0
 		remainderY = 0
 		announce(.pickedUp, voice: .aggrieved, priority: .normal)
-		renderPinchedFrame()
+		notifyCheekPinch()
 	}
 
 	public func updatePinch(to viewPoint: CGPoint) {
@@ -2427,18 +2441,15 @@ public final class PetController: SpriteAnimatorDelegate {
 		if !cheek.isActive {
 			// The spring settled and reset itself.
 			if state == .pinching { returnToIdle() }
-			baseFrame.map { delegate?.petController(self, didProduceFrame: $0) }
+			notifyCheekPinch()
 			return
 		}
-		renderPinchedFrame()
+		notifyCheekPinch()
 	}
 
-	private func renderPinchedFrame() {
-		guard let baseFrame else { return }
-		let geometry = CheekPinchGeometry.geometry(for: profile)
-		let rendered = CheekPinchRenderer.render(base: baseFrame, geometry: geometry, dynamics: cheek)
-		guard let rendered else { return }
-		delegate?.petController(self, didProduceFrame: rendered)
+	/// Tells the presenter how the overlay looks now, or that it is gone.
+	private func notifyCheekPinch() {
+		delegate?.petController(self, didUpdateCheekPinch: cheekPinchState)
 	}
 
 	// MARK: - Test seams
@@ -2736,13 +2747,9 @@ public final class PetController: SpriteAnimatorDelegate {
 	// MARK: - SpriteAnimatorDelegate
 
 	public func spriteAnimator(_ animator: SpriteAnimator, didChangeTo frame: CGImage) {
-		baseFrame = frame
-		// While a cheek is being pulled the overlay is drawn on top of the cel.
-		if cheek.isActive {
-			renderPinchedFrame()
-		} else {
-			delegate?.petController(self, didProduceFrame: frame)
-		}
+		// The pinch, when there is one, is an overlay the presenter draws on top of
+		// this frame — so the frame is always the cel itself.
+		delegate?.petController(self, didProduceFrame: frame)
 	}
 
 	public func spriteAnimator(_ animator: SpriteAnimator, didFinishClip clip: String) {

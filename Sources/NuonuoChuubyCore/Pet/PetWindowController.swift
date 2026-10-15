@@ -8,6 +8,8 @@ public final class PetWindowController: NSObject, PetControllerDelegate, PetPres
 	private let view: PetView
 	private let controller: PetController
 	private var displaySpace: DisplaySpace
+	/// The last sprite frame, kept so the pinch can be composited onto it.
+	private var baseFrame: CGImage?
 
 	/// Supplied by the menu bar layer; called on a right-click.
 	public var menuProvider: ((NSEvent) -> NSMenu?)?
@@ -85,6 +87,10 @@ public final class PetWindowController: NSObject, PetControllerDelegate, PetPres
 		applyPlacement()
 	}
 
+	public func makeGhostIcon() -> any GhostIconPresenting {
+		GhostIconWindow(displaySpace: displaySpace)
+	}
+
 	/// The cursor in the simulation's global top-left coordinate space.
 	private var globalCursor: PixelPoint {
 		let location = NSEvent.mouseLocation
@@ -111,6 +117,33 @@ public final class PetWindowController: NSObject, PetControllerDelegate, PetPres
 	// MARK: - PetControllerDelegate
 
 	public func petController(_ controller: PetController, didProduceFrame image: CGImage) {
+		baseFrame = image
+		render(image)
+	}
+
+	public func petController(
+		_ controller: PetController,
+		didUpdateCheekPinch pinch: CheekPinchState?
+	) {
+		guard let baseFrame else { return }
+		render(baseFrame)
+	}
+
+	/// This renderer draws her into a view, so the pinch is composited onto the cel
+	/// here rather than drawn as layers of its own.
+	private func render(_ base: CGImage) {
+		let image: CGImage
+		if let pinch = controller.cheekPinchState,
+			let composited = CheekPinchRenderer.render(
+				base: base,
+				geometry: pinch.geometry,
+				dynamics: pinch.dynamics
+			)
+		{
+			image = composited
+		} else {
+			image = base
+		}
 		view.image = image
 		view.leanDegrees = controller.bodyLeanDegrees
 	}

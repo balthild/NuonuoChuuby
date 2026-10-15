@@ -167,6 +167,9 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 		let root: OverlayPetRootView
 		let pet: CALayer
 		let bubble: CALayer
+		/// The pulled cheek, drawn on top of her own layer so it takes the lean and
+		/// the mirror with her.
+		let pinch: CheekPinchLayer
 
 		/// The bubble's colours are dynamic, so its cached raster only holds for one
 		/// appearance.
@@ -182,6 +185,12 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 	/// The overlay she is drawn into; the others are kept empty.
 	private var hostingIndex: Int?
 	private var isVisible = false
+	/// The last sprite frame, kept so the cheek overlay can be drawn against it
+	/// without the controller having to hand it over again.
+	private var baseFrame: CGImage?
+	/// The live ghost icons, so a display change that rebuilds the overlays can put
+	/// theirs back on screen.
+	private var ghostIcons: [OverlayGhostIcon] = []
 
 	public var menuProvider: ((NSEvent) -> NSMenu?)?
 	/// The bubble is a layer of these overlays, above her, rather than a window of
@@ -221,6 +230,13 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 		applyPlacement(animated: false)
 	}
 
+	public func makeGhostIcon() -> any GhostIconPresenting {
+		ghostIcons.removeAll { $0.isDismissed }
+		let ghost = OverlayGhostIcon(host: self)
+		ghostIcons.append(ghost)
+		return ghost
+	}
+
 	// MARK: - Construction
 
 	/// One overlay per display, each covering its full bounds.
@@ -251,6 +267,10 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 			pet.actions = Self.petLayerActions
 			root.layer?.addSublayer(pet)
 
+			// The cheek overlay rides on the pet's own layer, above the sprite.
+			let pinch = CheekPinchLayer()
+			pet.addSublayer(pinch.container)
+
 			// The bubble rides above her, in the same never-moving window.
 			let bubble = CALayer()
 			bubble.anchorPoint = CGPoint(x: 0, y: 0)
@@ -270,7 +290,8 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 				panel: panel,
 				root: root,
 				pet: pet,
-				bubble: bubble
+				bubble: bubble,
+				pinch: pinch
 			)
 		}
 		hostingIndex = nil
@@ -279,6 +300,7 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 				overlay.panel.orderFrontRegardless()
 			}
 		}
+		for ghost in ghostIcons { ghost.rebind() }
 	}
 
 	/// Mouse handling is the same as the moving-panel controller's, but the point
@@ -383,12 +405,36 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 
 	public func petController(_ controller: PetController, didProduceFrame image: CGImage) {
 		guard let hostingIndex, hostingIndex < overlays.count else { return }
+		baseFrame = image
 		let overlay = overlays[hostingIndex]
 		overlay.pet.contents = image
 		overlay.pet.transform = petTransform(
 			lean: controller.bodyLeanDegrees,
 			facing: controller.facing
 		)
+	}
+
+	public func petController(
+		_ controller: PetController,
+		didUpdateCheekPinch pinch: CheekPinchState?
+	) {
+		guard let hostingIndex, hostingIndex < overlays.count else { return }
+		let overlay = overlays[hostingIndex]
+		// The lean follows the pull, and a pinch can hold one sprite frame for many
+		// ticks — so it has to be re-applied here, not only with a new frame.
+		overlay.pet.transform = petTransform(
+			lean: controller.bodyLeanDegrees,
+			facing: controller.facing
+		)
+		guard let pinch else {
+			overlay.pinch.clear()
+			return
+		}
+		overlay.pinch.setBounds(
+			CGRect(origin: .zero, size: overlay.pet.bounds.size),
+			contentsScale: overlay.monitor.scale
+		)
+		overlay.pinch.update(state: pinch, base: baseFrame)
 	}
 
 	public func petControllerDidChangePlacement(_ controller: PetController) {
@@ -424,6 +470,25 @@ extension OverlayPetWindowController: SpeechBubbleLayerHosting {
 			displayFrame: overlay.monitor.frame,
 			scale: CGFloat(overlay.monitor.scale),
 			isDark: overlay.isDarkAppearance
+		)
+	}
+}
+
+@MainActor
+extension OverlayPetWindowController: GhostIconLayerHosting {
+	public func ghostIconLayerTarget(at point: PixelPoint) -> GhostIconLayerTarget? {
+		guard
+			let index = OverlayPetGeometry.hostingDisplayIndex(
+				for: point,
+				displays: overlays.map(\.monitor)
+			),
+			let parent = overlays[index].root.layer
+		else { return nil }
+		let overlay = overlays[index]
+		return GhostIconLayerTarget(
+			parent: parent,
+			displayFrame: overlay.monitor.frame,
+			scale: CGFloat(overlay.monitor.scale)
 		)
 	}
 }

@@ -20,7 +20,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 	/// The fake icons standing in for the desktop icons being eaten, kept together
 	/// with the item they stand for: a suspension takes them away and has to be able
 	/// to put them back when the meal resumes.
-	private var ghostIcons: [Int: (item: DeletedItem, window: GhostIconWindow)] = [:]
+	private var ghostIcons: [Int: (item: DeletedItem, icon: any GhostIconPresenting)] = [:]
 	private var assetSetup: AssetSetupWindowController?
 
 	public func applicationDidFinishLaunching(_ notification: Notification) {
@@ -299,25 +299,29 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 				("Exact", "\(item.exactAnchor)"),
 			]
 		)
-		let ghost = GhostIconWindow()
+		let ghost = petWindow?.makeGhostIcon()
+		guard let ghost else { return }
 		showGhostIcon(ghost, for: item, petSize: controller.petSize)
-		ghostIcons[item.id] = (item: item, window: ghost)
+		ghostIcons[item.id] = (item: item, icon: ghost)
 	}
 
 	public func petController(_ controller: PetController, didFinishMeal item: DeletedItem) {
 		guard let entry = ghostIcons.removeValue(forKey: item.id) else { return }
-		entry.window.fadeOut()
+		entry.icon.fadeOut()
 	}
 
-	private func showGhostIcon(_ ghost: GhostIconWindow, for item: DeletedItem, petSize: Double) {
+	private func showGhostIcon(
+		_ ghost: any GhostIconPresenting,
+		for item: DeletedItem,
+		petSize: Double
+	) {
 		// A deleted icon's position and size cannot be re-read — it is gone. Both were
 		// resolved when the deletion was detected, while the element still existed, so
 		// the ghost matches the real icon instead of a guess scaled to her.
 		ghost.show(
 			icon: ShellIconProvider.icon(forPath: item.originalPath),
 			at: item.anchor,
-			size: item.iconSize ?? petSize * 0.34,
-			displaySpace: displaySpace ?? DisplaySpace()
+			size: item.iconSize ?? petSize * 0.34
 		)
 	}
 
@@ -329,9 +333,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		guard let controller else { return }
 		for entry in ghostIcons.values {
 			if suspended {
-				entry.window.hide()
+				entry.icon.hide()
 			} else {
-				showGhostIcon(entry.window, for: entry.item, petSize: controller.petSize)
+				showGhostIcon(entry.icon, for: entry.item, petSize: controller.petSize)
 			}
 		}
 	}
