@@ -101,7 +101,9 @@ struct FreeStandingWalkTests {
 
 		// One icon, put there by hand: the pick is otherwise random, and what this
 		// test is about is where she ends up, not which icon she chose.
-		let index = DesktopIconIndex(reader: { [DesktopIcon(name: "a.txt", position: Self.spot)] })
+		let index = DesktopIconIndex(reader: {
+			[DesktopIcon(name: "a.txt", position: Self.spot, size: 56)]
+		})
 		index.refresh()
 		rig.controller.desktopIcons = index
 

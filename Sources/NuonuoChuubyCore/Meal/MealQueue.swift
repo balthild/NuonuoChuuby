@@ -10,6 +10,9 @@ public struct DeletedItem: Sendable, Equatable, Identifiable {
 	public var anchor: PixelPoint
 	/// Whether the anchor is the icon's real position (from a click) or a guess.
 	public var exactAnchor: Bool
+	/// The icon's on-screen size in points, when it is known; the ghost icon is
+	/// drawn this big, so it matches the real desktop icon.
+	public var iconSize: Double?
 
 	public init(
 		id: Int,
@@ -17,7 +20,8 @@ public struct DeletedItem: Sendable, Equatable, Identifiable {
 		displayName: String,
 		detectedAt: Date,
 		anchor: PixelPoint,
-		exactAnchor: Bool
+		exactAnchor: Bool,
+		iconSize: Double? = nil
 	) {
 		self.id = id
 		self.originalPath = originalPath
@@ -25,6 +29,7 @@ public struct DeletedItem: Sendable, Equatable, Identifiable {
 		self.detectedAt = detectedAt
 		self.anchor = anchor
 		self.exactAnchor = exactAnchor
+		self.iconSize = iconSize
 	}
 }
 

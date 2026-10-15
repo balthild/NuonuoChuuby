@@ -7,6 +7,16 @@ public struct DesktopIcon: Sendable, Equatable {
 	/// The icon's centre, top-left origin, Y down — the same space as
 	/// ``DisplaySpace``, so no conversion is needed.
 	public var position: PixelPoint
+	/// The icon's on-screen size in points, as Finder draws it. It follows the
+	/// user's desktop icon-size setting, so a ghost drawn over a deleted icon
+	/// matches the real one rather than a fixed default.
+	public var size: Double
+
+	public init(name: String, position: PixelPoint, size: Double) {
+		self.name = name
+		self.position = position
+		self.size = size
+	}
 }
 
 /// Reads Finder's **real** desktop icon positions through Accessibility.
@@ -41,7 +51,7 @@ public final class DesktopIconIndex {
 			.map(\.position)
 	}
 
-	public func position(of name: String) -> PixelPoint? { icons[name]?.position }
+	public func icon(of name: String) -> DesktopIcon? { icons[name] }
 
 	public func refresh() {
 		if let read = reader() {
@@ -106,7 +116,8 @@ public final class DesktopIconIndex {
 					position: PixelPoint(
 						x: Double(origin.x + size.width / 2),
 						y: Double(origin.y + size.height / 2)
-					)
+					),
+					size: Double(size.width)
 				)
 			)
 		}

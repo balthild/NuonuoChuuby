@@ -188,10 +188,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		// while the confirmed meal may start several seconds later.
 		let deletionWatcher = FileDeletionWatcher(anchorProvider: {
 			[weak desktopIcons, weak mouseMonitor] name in
-			if let position = desktopIcons?.position(of: name) {
-				return (position, true)
+			if let icon = desktopIcons?.icon(of: name) {
+				return FileDeletionWatcher.Anchor(
+					point: icon.position,
+					exact: true,
+					iconSize: icon.size
+				)
 			}
-			return mouseMonitor?.anchor() ?? (PixelPoint(x: 0, y: 0), false)
+			let fallback = mouseMonitor?.anchor() ?? (point: PixelPoint(x: 0, y: 0), isExact: false)
+			return FileDeletionWatcher.Anchor(point: fallback.point, exact: fallback.isExact)
 		})
 		deletionWatcher.onMealsReady = { [weak self] items in
 			self?.controller?.enqueueMeals(items)
@@ -290,6 +295,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 			[
 				("Name", item.displayName),
 				("Anchor", "\(Int(item.anchor.x)),\(Int(item.anchor.y))"),
+				("Size", item.iconSize.map { String(format: "%.0f", $0) } ?? "fallback"),
 				("Exact", "\(item.exactAnchor)"),
 			]
 		)
@@ -304,12 +310,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 	}
 
 	private func showGhostIcon(_ ghost: GhostIconWindow, for item: DeletedItem, petSize: Double) {
-		// A deleted icon's position cannot be re-read — it is gone. The anchor was
-		// resolved when the deletion was detected, while the element still existed.
+		// A deleted icon's position and size cannot be re-read — it is gone. Both were
+		// resolved when the deletion was detected, while the element still existed, so
+		// the ghost matches the real icon instead of a guess scaled to her.
 		ghost.show(
 			icon: ShellIconProvider.icon(forPath: item.originalPath),
 			at: item.anchor,
-			size: petSize * 0.34,
+			size: item.iconSize ?? petSize * 0.34,
 			displaySpace: displaySpace ?? DisplaySpace()
 		)
 	}

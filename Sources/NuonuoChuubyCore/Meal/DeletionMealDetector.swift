@@ -13,6 +13,8 @@ public struct DeletionMealDetector: Sendable {
 		public var detectedAt: Date
 		public var anchor: PixelPoint
 		public var exactAnchor: Bool
+		/// The icon's on-screen size in points, when the index knew it.
+		public var iconSize: Double?
 	}
 
 	/// How long a removal must stand before it is accepted. It only has to

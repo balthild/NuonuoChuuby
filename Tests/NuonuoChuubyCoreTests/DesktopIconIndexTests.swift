@@ -12,16 +12,18 @@ struct DesktopIconIndexTests {
 	func indexesByName() {
 		let index = DesktopIconIndex(reader: {
 			[
-				DesktopIcon(name: "b", position: PixelPoint(x: 10, y: 20)),
-				DesktopIcon(name: "a", position: PixelPoint(x: 5, y: 5)),
+				DesktopIcon(name: "b", position: PixelPoint(x: 10, y: 20), size: 64),
+				DesktopIcon(name: "a", position: PixelPoint(x: 5, y: 5), size: 56),
 			]
 		})
 		index.refresh()
 
 		#expect(index.isAvailable)
-		#expect(index.position(of: "a") == PixelPoint(x: 5, y: 5))
-		#expect(index.position(of: "b") == PixelPoint(x: 10, y: 20))
-		#expect(index.position(of: "missing") == nil)
+		#expect(index.icon(of: "a")?.position == PixelPoint(x: 5, y: 5))
+		#expect(index.icon(of: "b")?.position == PixelPoint(x: 10, y: 20))
+		#expect(index.icon(of: "missing") == nil)
+		// The size Finder reported is kept, so a ghost can match the real icon.
+		#expect(index.icon(of: "a")?.size == 56)
 		// Ordered by (y, x), so a random pick from `positions` is reproducible.
 		#expect(index.positions == [PixelPoint(x: 5, y: 5), PixelPoint(x: 10, y: 20)])
 	}
@@ -38,15 +40,15 @@ struct DesktopIconIndexTests {
 
 	@Test("A later reading replaces the previous one")
 	func refreshReplaces() {
-		var icons = [DesktopIcon(name: "a", position: PixelPoint(x: 1, y: 1))]
+		var icons = [DesktopIcon(name: "a", position: PixelPoint(x: 1, y: 1), size: 56)]
 		let index = DesktopIconIndex(reader: { icons })
 		index.refresh()
-		#expect(index.position(of: "a") != nil)
+		#expect(index.icon(of: "a") != nil)
 
 		// The icon is deleted, so the next reading does not see it.
 		icons = []
 		index.refresh()
-		#expect(index.position(of: "a") == nil)
+		#expect(index.icon(of: "a") == nil)
 		#expect(!index.isAvailable)
 	}
 

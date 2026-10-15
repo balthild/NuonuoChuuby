@@ -12,12 +12,26 @@ public final class FileDeletionWatcher {
 	private var pump: Timer?
 	private var nextIdentifier = 1
 
-	/// Resolves where the deleted icon was, by file name. The icon's accessibility
-	/// element still exists for a fraction of a second after the deletion, so this
-	/// is asked right here rather than when she sets off.
-	private let anchorProvider: (String) -> (point: PixelPoint, isExact: Bool)
+	/// Where a deleted icon was, and how big it was, resolved by file name. The
+	/// icon's accessibility element still exists for a fraction of a second after
+	/// the deletion, so this is asked right here rather than when she sets off.
+	public struct Anchor: Sendable {
+		public var point: PixelPoint
+		/// True when the point is the icon's real position rather than a guess.
+		public var exact: Bool
+		/// The icon's on-screen size in points, when it is known.
+		public var iconSize: Double?
 
-	public init(anchorProvider: @escaping (String) -> (point: PixelPoint, isExact: Bool)) {
+		public init(point: PixelPoint, exact: Bool, iconSize: Double? = nil) {
+			self.point = point
+			self.exact = exact
+			self.iconSize = iconSize
+		}
+	}
+
+	private let anchorProvider: (String) -> Anchor
+
+	public init(anchorProvider: @escaping (String) -> Anchor) {
 		self.anchorProvider = anchorProvider
 	}
 
@@ -77,7 +91,8 @@ public final class FileDeletionWatcher {
 					path: directory.appendingPathComponent(name).path,
 					detectedAt: now,
 					anchor: anchor.point,
-					exactAnchor: anchor.isExact
+					exactAnchor: anchor.exact,
+					iconSize: anchor.iconSize
 				)
 			)
 		}
@@ -105,7 +120,8 @@ public final class FileDeletionWatcher {
 				displayName: entry.name,
 				detectedAt: entry.detectedAt,
 				anchor: anchor,
-				exactAnchor: entry.exactAnchor
+				exactAnchor: entry.exactAnchor,
+				iconSize: entry.iconSize
 			)
 			nextIdentifier += 1
 			return item

@@ -573,7 +573,7 @@ d=3 role=AXImage desc=sing-box       pos=(1513,32)  size=(56,56)
 > - 位置取图标 **中心**（AX `position` + `size`/2），直接就是 `DisplaySpace` 的
 >   左上原点、Y 向下坐标，无需换算。
 > - `PetController.tryBeginIconLick` 优先用索引坐标，索引为空时退回 `DesktopIconGrid`；
->   `AppDelegate` 的幽灵图标锚点也优先用 `index.position(of: item.displayName)`。
+>   `AppDelegate` 的幽灵图标锚点在**检测到删除的瞬间**取 `index.icon(of:)`（位置与真实尺寸）。
 > - 授权：启动时 `requestTrustIfNeeded(prompt: true)` 请求一次；未授权则索引为空、全程降级。
 > - ⚠️ **仍未验证**：负坐标（第二显示器在左侧）与多显示器情形 —— 实验环境没有这样的布局。
 > - 测试：`DesktopIconIndexTests` 4 个（注入 reader，不需要辅助功能）。总数 165 → 169。
