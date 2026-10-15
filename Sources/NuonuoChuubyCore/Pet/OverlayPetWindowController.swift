@@ -306,6 +306,7 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate {
 				overlay.panel.orderFrontRegardless()
 			}
 		}
+		ghostIcons.removeAll { $0.isDismissed }
 		for ghost in ghostIcons { ghost.rebind() }
 	}
 

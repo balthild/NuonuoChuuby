@@ -204,4 +204,59 @@ struct FreeStandingWalkTests {
 		run(rig, upTo: 1200) { rig.controller.state == .idle }
 		#expect(rig.controller.state == .idle, "the meal finishes")
 	}
+
+	/// Records the two ends of a meal, which is where the ghost icon lives.
+	@MainActor
+	private final class MealSpy: PetMealDelegate {
+		var begun: [Int] = []
+		var finished: [Int] = []
+
+		func petController(_ controller: PetController, didBeginMeal item: DeletedItem) {
+			begun.append(item.id)
+		}
+
+		func petController(_ controller: PetController, didFinishMeal item: DeletedItem) {
+			finished.append(item.id)
+		}
+	}
+
+	@Test("An interruption that is not a drag hands the meal back instead of losing it")
+	func pinchDuringAMealRequeuesIt() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+		rig.controller.debugPlaceOnSurface(rig.floor)
+
+		let spy = MealSpy()
+		rig.controller.mealDelegate = spy
+
+		let accepted = rig.controller.enqueueMeals([
+			DeletedItem(
+				id: 1,
+				originalPath: "/tmp/a.txt",
+				displayName: "a.txt",
+				detectedAt: Date(),
+				anchor: Self.spot,
+				exactAnchor: true
+			)
+		])
+		#expect(accepted == 1)
+		#expect(spy.begun == [1], "its ghost icon is up")
+
+		// A pinch takes her out of the walk. Only a drag used to give the item back,
+		// so this left the icon on the display for ever and the queue unable to move
+		// on — a meal she abandoned is indistinguishable from one she never began.
+		rig.controller.beginPinch(side: .right, at: CGPoint(x: 40, y: 60))
+		#expect(rig.controller.state == .pinching)
+		rig.controller.debugStep(delta: Self.frame)
+		#expect(spy.finished == [1], "the icon comes down with the walk")
+
+		rig.controller.endPinch()
+		run(rig, upTo: 1200) { rig.controller.debugState.movementPurpose == .meal }
+		#expect(rig.controller.debugState.movementPurpose == .meal, "she sets off for it again")
+		#expect(spy.begun == [1, 1], "with a new icon standing in for it")
+
+		run(rig, upTo: 2400) { rig.controller.state == .idle }
+		#expect(rig.controller.state == .idle, "the meal still finishes")
+		#expect(spy.finished == [1, 1])
+	}
 }

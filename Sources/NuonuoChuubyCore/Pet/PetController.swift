@@ -89,7 +89,7 @@ public final class PetController: SpriteAnimatorDelegate {
 			// Turning quiet mode on stops her mid-walk; an interrupted meal goes back
 			// on the queue rather than being lost.
 			if quietMode {
-				requeueActiveMeal()
+				requeueActiveMeal(reason: "QuietMode")
 				if state == .running || state == .chomping || state == .licking {
 					returnToIdle()
 				}
@@ -383,6 +383,16 @@ public final class PetController: SpriteAnimatorDelegate {
 			// window moves her whether or not she happens to be walking.
 			maintainGroundSupport(simulation)
 			updateState(simulation)
+		}
+
+		// A meal lives in the two states that carry it and nowhere else. Whatever
+		// pulls her out of them without finishing it — a pinch, a window's edge
+		// throwing her, being sent home — hands the item back to the queue, which is
+		// also what takes its ghost icon off the display and lets the queue move on.
+		if activeMeal != nil, state != .chomping,
+			!(state == .running && movementPurpose == .meal)
+		{
+			requeueActiveMeal(reason: state.rawValue)
 		}
 
 		animator.tick(timing.animationSeconds)
@@ -1219,11 +1229,18 @@ public final class PetController: SpriteAnimatorDelegate {
 	}
 
 	/// Turns an interrupted meal back into a queued one rather than losing it.
-	private func requeueActiveMeal() {
+	///
+	/// `reason` is only for the log: from the outside, a meal she abandoned and a
+	/// meal she never went for look exactly the same.
+	private func requeueActiveMeal(reason: String) {
 		guard let item = activeMeal else { return }
 		mealQueue.requeueAtFront(item)
 		activeMeal = nil
 		mealDelegate?.petController(self, didFinishMeal: item)
+		DiagnosticsLog.shared.writeEvent(
+			"MealRequeued",
+			[("Name", item.displayName), ("Reason", reason)]
+		)
 	}
 
 	private func completeActiveMeal() {
@@ -2566,7 +2583,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		// Being picked up interrupts a meal; it is re-queued so she finishes it
 		// after landing.
 		if movementPurpose == .meal {
-			requeueActiveMeal()
+			requeueActiveMeal(reason: "PickedUp")
 		}
 		isDragging = true
 		state = .dragging

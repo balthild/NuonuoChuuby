@@ -61,9 +61,11 @@ public final class OverlayGhostIcon {
 	}
 
 	/// Re-attaches to the overlay after a display change rebuilt it. A no-op when
-	/// the icon is not on screen.
+	/// the icon is off screen, or already dismissed: a dismissed icon's layer is
+	/// only on its way out, and re-attaching it leaves the ghost on the display for
+	/// ever.
 	func rebind() {
-		guard !layer.isHidden else { return }
+		guard !layer.isHidden, !isDismissed else { return }
 		attach()
 	}
 

@@ -11,7 +11,9 @@ import Testing
 @Suite("Overlay ghost icon")
 struct OverlayGhostIconTests {
 	private final class Host: GhostIconLayerHosting {
-		let parent = CALayer()
+		/// Settable, so a test can stand in for a display change rebuilding the
+		/// overlay the icon was attached to.
+		var parent = CALayer()
 		var displayFrame: PixelRect
 		var scale: CGFloat = 2
 
@@ -67,5 +69,27 @@ struct OverlayGhostIconTests {
 		ghost.show(icon: nil, at: PixelPoint(x: 30, y: 40), size: 40)
 		#expect(!layer.isHidden)
 		#expect(layer.position == CGPoint(x: 30, y: 40))
+	}
+
+	/// The icon is dismissed when the meal it stands for is over, and the fade that
+	/// follows takes its layer out of the tree and puts its opacity back. A dismissed
+	/// icon stays in the presenter's list until the next meal prunes it, so an overlay
+	/// rebuilt during that window used to hand it a fresh parent — a fully opaque ghost
+	/// with nothing left to take it down.
+	///
+	/// The wait is what makes this the real sequence rather than a race with the fade:
+	/// the fade has already finished when the overlay is rebuilt.
+	@Test("A dismissed icon is not put back by a display change")
+	func dismissedIconIsNotReattached() async throws {
+		let host = Host()
+		let ghost = OverlayGhostIcon(host: host)
+		ghost.show(icon: nil, at: PixelPoint(x: 10, y: 20), size: 40)
+		ghost.fadeOut()
+		try await Task.sleep(nanoseconds: 500_000_000)
+
+		host.parent = CALayer()
+		ghost.rebind()
+
+		#expect(host.parent.sublayers == nil)
 	}
 }
