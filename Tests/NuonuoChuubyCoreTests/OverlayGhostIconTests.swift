@@ -92,4 +92,74 @@ struct OverlayGhostIconTests {
 
 		#expect(host.parent.sublayers == nil)
 	}
+
+	/// The meal animation is a per-frame reshape: the icon keeps its natural size and
+	/// is scaled by the transform, so one frame cannot leave a stale `bounds` behind.
+	@Test("A meal animation frame moves, scales and fades the layer")
+	func mealAnimationReshapesTheLayer() {
+		let host = Host()
+		let ghost = OverlayGhostIcon(host: host)
+		ghost.show(icon: nil, at: PixelPoint(x: 500, y: 300), size: 56)
+		ghost.update(
+			MealConsumptionVisual(
+				center: PixelPoint(x: 520, y: 320),
+				scaleX: 0.5,
+				scaleY: 0.25,
+				rotationDegrees: 0,
+				opacity: 0.4
+			)
+		)
+
+		let layer = try! #require(attachedLayer(host))
+		#expect(layer.position == CGPoint(x: 520, y: 320))
+		#expect(layer.bounds.size == CGSize(width: 56, height: 56))
+		#expect(layer.transform.m11 == 0.5)
+		#expect(layer.transform.m22 == 0.25)
+		#expect(layer.opacity == 0.4)
+	}
+
+	@Test("A turn is applied as well as the scale")
+	func mealAnimationTurnsTheLayer() {
+		let host = Host()
+		let ghost = OverlayGhostIcon(host: host)
+		ghost.show(icon: nil, at: PixelPoint(x: 0, y: 0), size: 56)
+		ghost.update(
+			MealConsumptionVisual(
+				center: PixelPoint(x: 0, y: 0),
+				scaleX: 1,
+				scaleY: 1,
+				rotationDegrees: 90,
+				opacity: 1
+			)
+		)
+
+		let layer = try! #require(attachedLayer(host))
+		#expect(abs(layer.transform.m11) < 0.0001)
+		#expect(abs(layer.transform.m12 - 1) < 0.0001)
+	}
+
+	/// An icon already on its way out must not be re-shaped: the meal's end and the
+	/// animation's last frame can arrive in the same tick, and a frame applied after
+	/// the dismissal would put a swallowed icon back on the display.
+	@Test("A dismissed icon ignores further animation frames")
+	func dismissedIconIgnoresAnimationFrames() async throws {
+		let host = Host()
+		let ghost = OverlayGhostIcon(host: host)
+		ghost.show(icon: nil, at: PixelPoint(x: 10, y: 20), size: 40)
+		let layer = try #require(attachedLayer(host))
+
+		ghost.fadeOut()
+		ghost.update(
+			MealConsumptionVisual(
+				center: PixelPoint(x: 900, y: 900),
+				scaleX: 1,
+				scaleY: 1,
+				rotationDegrees: 0,
+				opacity: 1
+			)
+		)
+		try await Task.sleep(nanoseconds: 500_000_000)
+
+		#expect(layer.position == CGPoint(x: 10, y: 20))
+	}
 }

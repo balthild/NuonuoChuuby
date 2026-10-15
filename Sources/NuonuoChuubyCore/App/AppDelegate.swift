@@ -303,6 +303,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		entry.icon.fadeOut()
 	}
 
+	/// The icon shivers where the desktop icon was and is then swallowed, which is
+	/// what her open mouth is doing in the chewing clip.
+	public func petController(
+		_ controller: PetController,
+		didUpdateMeal item: DeletedItem,
+		visual: MealConsumptionVisual
+	) {
+		ghostIcons[item.id]?.icon.update(visual)
+	}
+
 	private func showGhostIcon(
 		_ ghost: OverlayGhostIcon,
 		for item: DeletedItem,

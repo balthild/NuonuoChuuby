@@ -73,9 +73,27 @@ public final class OverlayGhostIcon {
 		self.center = center
 		self.size = size
 		layer.contents = icon?.cgImage(forProposedRect: nil, context: nil, hints: nil)
-		layer.opacity = 1
+		FrameInterpolation.withoutAnimation {
+			layer.opacity = 1
+			layer.transform = CATransform3DIdentity
+		}
 		layer.isHidden = false
 		attach()
+	}
+
+	/// Moves and reshapes the icon for one frame of the meal animation.
+	///
+	/// The step is one frame long, so it is applied without animation: an implicit
+	/// animation would ease every frame towards a target that has already been
+	/// replaced by the time it arrives. Only ``fadeOut()`` is meant to be animated.
+	public func update(_ visual: MealConsumptionVisual) {
+		guard !isDismissed else { return }
+		center = visual.center
+		FrameInterpolation.withoutAnimation {
+			layer.opacity = Float(visual.opacity)
+			layer.transform = Self.animationTransform(visual)
+			attach()
+		}
 	}
 
 	public func fadeOut() {
@@ -93,6 +111,19 @@ public final class OverlayGhostIcon {
 
 	public func hide() {
 		layer.isHidden = true
+	}
+
+	/// The original's own transform order: scale first, then turn.
+	private static func animationTransform(_ visual: MealConsumptionVisual) -> CATransform3D {
+		let scale = CATransform3DMakeScale(CGFloat(visual.scaleX), CGFloat(visual.scaleY), 1)
+		guard visual.rotationDegrees != 0 else { return scale }
+		let rotate = CATransform3DMakeRotation(
+			CGFloat(visual.rotationDegrees) * .pi / 180,
+			0,
+			0,
+			1
+		)
+		return CATransform3DConcat(rotate, scale)
 	}
 
 	private func attach() {

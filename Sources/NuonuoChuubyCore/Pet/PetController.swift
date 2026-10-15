@@ -24,6 +24,21 @@ extension PetControllerDelegate {
 public protocol PetMealDelegate: AnyObject {
 	func petController(_ controller: PetController, didBeginMeal item: DeletedItem)
 	func petController(_ controller: PetController, didFinishMeal item: DeletedItem)
+	/// Where the fake icon is and how it is drawn for this tick of the chomping
+	/// state. `visual.center` is in the simulation's global top-left coordinates.
+	func petController(
+		_ controller: PetController,
+		didUpdateMeal item: DeletedItem,
+		visual: MealConsumptionVisual
+	)
+}
+
+extension PetMealDelegate {
+	public func petController(
+		_ controller: PetController,
+		didUpdateMeal item: DeletedItem,
+		visual: MealConsumptionVisual
+	) {}
 }
 
 /// The pet's brain: it owns the simulation position, the behavioural state
@@ -394,6 +409,8 @@ public final class PetController: SpriteAnimatorDelegate {
 		{
 			requeueActiveMeal(reason: state.rawValue)
 		}
+
+		reportMealVisual()
 
 		animator.tick(timing.animationSeconds)
 		// The pinch spring runs independently of the walk cycle.
@@ -1226,6 +1243,22 @@ public final class PetController: SpriteAnimatorDelegate {
 		velocity = .zero
 		animator.play("roll")
 		announce(.hungryRoll, voice: .sad, priority: .important)
+	}
+
+	private func reportMealVisual() {
+		guard state == .chomping, let item = activeMeal else { return }
+		let geometry = profile.geometry
+		var visual = MealConsumptionAnimation.visual(
+			elapsed: stateElapsed,
+			from: PixelPoint(x: geometry.mouthCanvasX, y: geometry.mouthCanvasY),
+			to: PixelPoint(
+				x: geometry.suctionMouthCanvasX,
+				y: geometry.suctionMouthCanvasY
+			)
+		)
+		// The path is authored in canvas units; the presenter draws in screen points.
+		visual.center = screenPoint(canvasX: visual.center.x, canvasY: visual.center.y)
+		mealDelegate?.petController(self, didUpdateMeal: item, visual: visual)
 	}
 
 	/// Turns an interrupted meal back into a queued one rather than losing it.
