@@ -167,8 +167,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 			]
 		)
 
-		// The index has to be kept warm: a deleted icon's element is gone by the
-		// time it is deleted.
+		// Read at the moment a deletion is detected, when the icon's element is
+		// still there — it disappears about half a second later.
 		let desktopIcons = DesktopIconIndex()
 		DesktopIconIndex.requestTrustIfNeeded(prompt: true)
 		desktopIcons.start()
@@ -177,13 +177,21 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 
 		statusItem = makeStatusItem(character: character)
 
-		// The monitor supplies the anchor guess, since macOS exposes no icon
-		// positions.
+		// The monitor is only a fallback now: it supplies the last click or the
+		// cursor, for a folder the desktop icon index does not cover.
 		let mouseMonitor = MouseMonitor(displaySpace: displaySpace)
 		mouseMonitor.start()
 		self.mouseMonitor = mouseMonitor
-		let deletionWatcher = FileDeletionWatcher(anchorProvider: { [weak mouseMonitor] in
-			mouseMonitor?.anchor() ?? (PixelPoint(x: 0, y: 0), false)
+
+		// The anchor is resolved here, at detection, not when she sets off: the
+		// deleted icon's accessibility element is gone within about half a second,
+		// while the confirmed meal may start several seconds later.
+		let deletionWatcher = FileDeletionWatcher(anchorProvider: {
+			[weak desktopIcons, weak mouseMonitor] name in
+			if let position = desktopIcons?.position(of: name) {
+				return (position, true)
+			}
+			return mouseMonitor?.anchor() ?? (PixelPoint(x: 0, y: 0), false)
 		})
 		deletionWatcher.onMealsReady = { [weak self] items in
 			self?.controller?.enqueueMeals(items)
@@ -275,6 +283,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 	// MARK: - PetMealDelegate
 
 	public func petController(_ controller: PetController, didBeginMeal item: DeletedItem) {
+		// Logged with its anchor and whether that anchor is the icon's real position
+		// or a fallback, so "the ghost is in the wrong place" is answerable from the log.
+		DiagnosticsLog.shared.writeEvent(
+			"GhostShown",
+			[
+				("Name", item.displayName),
+				("Anchor", "\(Int(item.anchor.x)),\(Int(item.anchor.y))"),
+				("Exact", "\(item.exactAnchor)"),
+			]
+		)
 		let ghost = GhostIconWindow()
 		showGhostIcon(ghost, for: item, petSize: controller.petSize)
 		ghostIcons[item.id] = (item: item, window: ghost)
@@ -286,12 +304,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 	}
 
 	private func showGhostIcon(_ ghost: GhostIconWindow, for item: DeletedItem, petSize: Double) {
-		// Both are looked up again rather than remembered, so restoring one after a
-		// suspension puts it where the icon and the desktop are *now*.
-		let anchor = desktopIcons?.position(of: item.displayName) ?? item.anchor
+		// A deleted icon's position cannot be re-read — it is gone. The anchor was
+		// resolved when the deletion was detected, while the element still existed.
 		ghost.show(
 			icon: ShellIconProvider.icon(forPath: item.originalPath),
-			at: anchor,
+			at: item.anchor,
 			size: petSize * 0.34,
 			displaySpace: displaySpace ?? DisplaySpace()
 		)

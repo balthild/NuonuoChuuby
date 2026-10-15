@@ -13,10 +13,12 @@ public final class FileDeletionWatcher {
 	private var pump: Timer?
 	private var nextIdentifier = 1
 
-	/// The most recent click, used to guess where the deleted icon was.
-	private let anchorProvider: () -> (point: PixelPoint, isExact: Bool)
+	/// Resolves where the deleted icon was, by file name. The icon's accessibility
+	/// element still exists for a fraction of a second after the deletion, so this
+	/// is asked right here rather than when she sets off.
+	private let anchorProvider: (String) -> (point: PixelPoint, isExact: Bool)
 
-	public init(anchorProvider: @escaping () -> (point: PixelPoint, isExact: Bool)) {
+	public init(anchorProvider: @escaping (String) -> (point: PixelPoint, isExact: Bool)) {
 		self.anchorProvider = anchorProvider
 	}
 
@@ -85,8 +87,8 @@ public final class FileDeletionWatcher {
 
 	private func handle(_ change: FolderWatcher.Change, in directory: URL) {
 		let now = Date()
-		let anchor = anchorProvider()
 		for name in change.removed {
+			let anchor = anchorProvider(name)
 			detectors.noteRemoval(
 				DeletionMealDetector.Pending(
 					name: name,
