@@ -111,6 +111,30 @@ struct WindowEnclosureIntegrationTests {
 		#expect(rig.controller.state == .falling, "inside the box she is a falling body")
 	}
 
+	@Test("Settled on a box's floor, her feet are on it — not below the window")
+	func restingPutsHerFeetOnTheBoxFloor() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		// Whatever is aligned to the floor must be the feet, so the fault this pins
+		// scales with her size: the gap between the body's bottom and the foot anchor
+		// is a fixed fraction of the sprite. Try the smallest and the largest size.
+		let floor = Self.box.bottom
+		for size in [PetSizePolicy.fromPercent(60), PetSizePolicy.fromPercent(150)] {
+			rig.controller.setSize(size)
+			drop(rig, at: PixelPoint(x: 900, y: 900))
+			#expect(rig.controller.debugState.enclosureWindowID == Self.windowID)
+			advance(rig, seconds: 5)
+
+			let foot = rig.controller.debugState.foot.y
+			#expect(rig.controller.debugState.state == .idle, "at \(Int(size)) she had not settled")
+			#expect(
+				abs(foot - floor) < 1,
+				"at \(Int(size)) expected her feet on the window's bottom edge at \(Int(floor)), found \(Int(foot))"
+			)
+		}
+	}
+
 	@Test("Half in is not in: only a body wholly inside is taken")
 	func halfInsideIsNotEnough() throws {
 		let rig = try makeRig()
@@ -715,12 +739,14 @@ struct WindowEnclosureIntegrationTests {
 			"she was in mid-air when the drag stopped, but is \(rig.controller.debugState.state)"
 		)
 
-		// And then she comes down onto the floor it left behind.
+		// And then she comes down onto the floor it left behind, standing on it at
+		// the feet — the window's own bottom edge.
+		let floor = box.bottom
 		advance(rig, seconds: 5)
 		#expect(rig.controller.debugState.state == .idle, "she should have settled")
 		#expect(
-			abs(rig.controller.debugState.foot.y - (box.bottom + 8)) < 1,
-			"expected her on the new floor at \(Int(box.bottom + 8)), found \(Int(rig.controller.debugState.foot.y))"
+			abs(rig.controller.debugState.foot.y - floor) < 1,
+			"expected her on the new floor at \(Int(floor)), found \(Int(rig.controller.debugState.foot.y))"
 		)
 	}
 

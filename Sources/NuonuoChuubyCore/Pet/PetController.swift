@@ -574,6 +574,18 @@ public final class PetController: SpriteAnimatorDelegate {
 		)
 	}
 
+	/// Her rectangle as a window enclosure sees it: ``bodyRect(bottomCanvasY:)`` with
+	/// the **feet included**, unlike the plain ``bodyRect()``.
+	///
+	/// A box holds her at the feet — they are what rests on its floor — so the feet must
+	/// be inside the rectangle the walls are measured against. Excluding them leaves her
+	/// standing with her feet below the window's bottom edge by the gap between the body's
+	/// bottom and the foot anchor, which grows with her size. The original draws the same
+	/// line: its enclosure passes `FootCanvasY`, while its side-impact hitbox omits the feet.
+	private var enclosureBodyRect: PixelRect {
+		bodyRect(bottomCanvasY: profile.geometry.footCanvasY)
+	}
+
 	/// Forgets everything that measures movement **across frames**, because the frames
 	/// it is measured over did not happen.
 	///
@@ -635,7 +647,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		}
 		guard
 			WindowEnclosurePhysics.boxHasRoom(
-				for: bodyRect(),
+				for: enclosureBodyRect,
 				in: box,
 				inset: WindowEnclosurePhysics.wallInset * displayScale
 			)
@@ -696,7 +708,7 @@ public final class PetController: SpriteAnimatorDelegate {
 
 		let scale = displayScale
 		let step = WindowEnclosurePhysics.resolve(
-			pet: bodyRect(),
+			pet: enclosureBodyRect,
 			previousBox: current.previousBox,
 			currentBox: box,
 			baselineSeconds: enclosureBoxAgeSeconds,
@@ -793,7 +805,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		// say — and moving her into it would seal her against the screen.
 		if let bounds = surfaceProvider.windowBodies.enclosureCandidates[cover]?.bounds,
 			WindowEnclosurePhysics.bodyFits(
-				bodyRect(),
+				enclosureBodyRect,
 				in: bounds,
 				inset: WindowEnclosurePhysics.wallInset * scale
 			)
@@ -838,7 +850,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// as falling twice. Whether a window may hold her at all was decided when it
 	/// was sampled.
 	private func tryBeginWindowEnclosure(velocityX: Double, velocityY: Double) -> Bool {
-		let body = bodyRect()
+		let body = enclosureBodyRect
 		let inset = WindowEnclosurePhysics.wallInset * displayScale
 		let holders = surfaceProvider.windowBodies.enclosureCandidates.filter {
 			WindowEnclosurePhysics.bodyFits(body, in: $0.value.bounds, inset: inset)

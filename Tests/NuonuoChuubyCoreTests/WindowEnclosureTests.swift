@@ -65,7 +65,7 @@ struct WindowEnclosureTests {
 
 	@Test("A gentle touch on the floor settles her instead of bouncing")
 	func gentleFloorTouchSettles() {
-		let result = step(pet: pet(left: 400, top: 466), to: box(), velocityY: 50)
+		let result = step(pet: pet(left: 400, top: 472), to: box(), velocityY: 50)
 		#expect(result.hitBottom)
 		#expect(result.isResting)
 		#expect(result.velocityY == 0)
@@ -361,12 +361,13 @@ struct WindowEnclosureTests {
 
 	@Test("Every threshold scales with the display")
 	func thresholdsScale() {
-		// At scale 2 the walls are 12 pt in, so the same body is already past the
-		// floor; and the rest threshold doubles to 230 pt/s.
-		let result = step(pet: pet(left: 400, top: 466), to: box(), velocityY: 50, scale: 2)
+		// At scale 2 the side walls are 12 pt in, so a body flush against the wall at
+		// scale 1 is already past it; and the rest threshold doubles to 230 pt/s, so
+		// 105 pt/s still settles her on the floor.
+		let result = step(pet: pet(left: 306, top: 472), to: box(), velocityY: 50, scale: 2)
+		#expect(result.hitLeft, "6 pt in at scale 1, 12 pt at scale 2")
 		#expect(result.hitBottom)
 		#expect(result.isResting, "105 pt/s is still a settle at scale 2")
-		#expect(abs(result.offsetY - -6) < 1e-9)
 	}
 
 	// MARK: - Capacity
@@ -382,10 +383,11 @@ struct WindowEnclosureTests {
 				inset: walls
 			)
 		)
-		// Touching the wall exactly still fits.
+		// Touching the wall exactly still fits. The floor of the box is the window's
+		// own bottom edge, so a body reaching all the way down to it is inside.
 		#expect(
 			WindowEnclosurePhysics.bodyFits(
-				PixelRect(x: 306, y: 206, width: 110, height: 388),
+				PixelRect(x: 306, y: 206, width: 110, height: 394),
 				in: frameAndWalls,
 				inset: walls
 			)
@@ -400,7 +402,7 @@ struct WindowEnclosureTests {
 		)
 		#expect(
 			!WindowEnclosurePhysics.bodyFits(
-				PixelRect(x: 400, y: 300, width: 110, height: 300),
+				PixelRect(x: 400, y: 300, width: 110, height: 301),
 				in: frameAndWalls,
 				inset: walls
 			)

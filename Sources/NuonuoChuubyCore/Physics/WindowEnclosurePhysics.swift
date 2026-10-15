@@ -24,9 +24,27 @@ public struct WindowEnclosureStep: Sendable, Equatable {
 /// Every constant is ported unchanged from the original Windows implementation
 /// so the two behave the same at the same frame rate.
 public enum WindowEnclosurePhysics {
-	/// How far inside the window's frame the walls sit. Without it she would
-	/// visually clip through the window's shadow and rounded corners.
+	/// How far inside the window's frame the walls sit. Without it her **body** would
+	/// visually clip through the window's shadow and rounded corners. See ``walls(of:inset:)``
+	/// for why the floor is not inset with the rest.
 	public static let wallInset: Double = 6
+
+	/// The walls, as a rectangle: the window's frame with its **sides and ceiling**
+	/// pulled in by `inset`, and its **floor left on the window's own bottom edge**.
+	///
+	/// The sides and the ceiling need the margin, because her body is a rounded shape
+	/// drawn over the window's own rounded corners. The feet do not: the sprite's
+	/// lowest opaque row *is* the foot anchor (``SpriteGeometry/footCanvasY``), so an
+	/// inset floor leaves her visibly hovering a margin above the window's bottom edge,
+	/// by an amount that grows with her size.
+	public static func walls(of box: PixelRect, inset: Double) -> PixelRect {
+		PixelRect(
+			x: box.left + inset,
+			y: box.top + inset,
+			width: box.width - inset * 2,
+			height: box.height - inset
+		)
+	}
 
 	private enum Motion {
 		static let maximumStep: Double = 0.08
@@ -54,7 +72,7 @@ public enum WindowEnclosurePhysics {
 		in box: PixelRect,
 		inset: Double
 	) -> Bool {
-		box.insetBy(inset).contains(body)
+		walls(of: box, inset: inset).contains(body)
 	}
 
 	/// Whether the box has room for a body that size at all, wherever it sits.
@@ -72,7 +90,7 @@ public enum WindowEnclosurePhysics {
 		in box: PixelRect,
 		inset: Double
 	) -> Bool {
-		let inner = box.insetBy(inset)
+		let inner = walls(of: box, inset: inset)
 		return inner.width >= body.width && inner.height >= body.height
 	}
 
@@ -112,10 +130,11 @@ public enum WindowEnclosurePhysics {
 		let scale = max(0.5, scale)
 		let inset = wallInset * scale
 
-		let leftBoundary = currentBox.left + inset
-		let topBoundary = currentBox.top + inset
-		let rightBoundary = currentBox.right - inset
-		let bottomBoundary = currentBox.bottom - inset
+		let inner = walls(of: currentBox, inset: inset)
+		let leftBoundary = inner.left
+		let topBoundary = inner.top
+		let rightBoundary = inner.right
+		let bottomBoundary = inner.bottom
 		let petWidth = pet.right - pet.left
 		let petHeight = pet.bottom - pet.top
 
