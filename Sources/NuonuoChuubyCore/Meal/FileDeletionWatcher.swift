@@ -53,8 +53,8 @@ public final class FileDeletionWatcher {
 
 		for directory in directories where manager.fileExists(atPath: directory.path) {
 			let watcher = FolderWatcher(url: directory)
-			watcher.onChange = { [weak self] change in
-				Task { @MainActor in self?.handle(change, in: directory) }
+			watcher.onEvents = { [weak self] outcome in
+				Task { @MainActor in self?.handle(outcome) }
 			}
 			watcher.start()
 			watchers.append(watcher)
@@ -81,14 +81,28 @@ public final class FileDeletionWatcher {
 		watchers.removeAll()
 	}
 
-	private func handle(_ change: FolderWatcher.Change, in directory: URL) {
+	private func handle(_ outcome: FolderEventBatch.Outcome) {
+		// A name change inside the folder is not a meal, but it is logged: from the
+		// outside, "she ignored a rename" and "she never saw the file at all" are
+		// otherwise the same report.
+		if !outcome.renamed.isEmpty {
+			DiagnosticsLog.shared.writeEvent(
+				"DeletionIgnored",
+				[
+					("Reason", "renamed"),
+					("Count", "\(outcome.renamed.count)"),
+				]
+			)
+		}
+
 		let now = Date()
-		for name in change.removed {
+		for path in outcome.deleted {
+			let name = (path as NSString).lastPathComponent
 			let anchor = anchorProvider(name)
 			detectors.noteRemoval(
 				DeletionMealDetector.Pending(
 					name: name,
-					path: directory.appendingPathComponent(name).path,
+					path: path,
 					detectedAt: now,
 					anchor: anchor.point,
 					exactAnchor: anchor.exact,
