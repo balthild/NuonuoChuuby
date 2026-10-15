@@ -2309,22 +2309,35 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// across the inside of a window.
 	public var bodyLeanDegrees: Double {
 		if cheek.isActive {
-			return min(max(-cheek.x / CheekPinchDynamics.maximumHorizontal * 3.5, -3.5), 3.5)
+			// The offset is authored, but the lean is read off the screen, so it
+			// has to be mirrored with her — as upstream does with its ScaleX.
+			let pull = -cheek.x / CheekPinchDynamics.maximumHorizontal * 3.5 * facing
+			return min(max(pull, -3.5), 3.5)
 		}
 		guard enclosure != nil else { return 0 }
 		return min(max(velocity.x / (1200 * displayScale) * 10, -10), 10)
 	}
 
+	/// A point in the pet's own square, mirrored back into the authored space the
+	/// cheek rig, the renderer and the sprite all live in. She is drawn mirrored
+	/// when she faces left, so without this a pinch is taken from the cheek on the
+	/// other side of her face and drawn on the wrong side of it.
+	private func authoredPoint(_ viewPoint: CGPoint) -> CGPoint {
+		guard facing < 0 else { return viewPoint }
+		return CGPoint(x: CGFloat(petSize) - viewPoint.x, y: viewPoint.y)
+	}
+
 	/// The cheek under a point in the view's own point space, if any.
 	public func cheekHitTest(viewPoint: CGPoint) -> CheekSide? {
 		guard DragInteractionPolicy.canStart(from: state) || state == .pinching else { return nil }
-		return cheekGeometryInView.hitTest(x: Double(viewPoint.x), y: Double(viewPoint.y))
+		let point = authoredPoint(viewPoint)
+		return cheekGeometryInView.hitTest(x: Double(point.x), y: Double(point.y))
 	}
 
 	public func beginPinch(side: CheekSide, at viewPoint: CGPoint) {
 		guard !cheek.isActive, DragInteractionPolicy.canStart(from: state) else { return }
 		cheek.begin(side: side)
-		pinchOrigin = viewPoint
+		pinchOrigin = authoredPoint(viewPoint)
 		state = .pinching
 		movementPurpose = .none
 		stateElapsed = 0
@@ -2337,10 +2350,11 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	public func updatePinch(to viewPoint: CGPoint) {
 		guard cheek.isActive else { return }
+		let point = authoredPoint(viewPoint)
 		let scale = max(0.0001, canvasScale)
 		cheek.drag(
-			x: Double(viewPoint.x - pinchOrigin.x) / scale,
-			y: Double(viewPoint.y - pinchOrigin.y) / scale
+			x: Double(point.x - pinchOrigin.x) / scale,
+			y: Double(point.y - pinchOrigin.y) / scale
 		)
 	}
 
@@ -2437,6 +2451,16 @@ public final class PetController: SpriteAnimatorDelegate {
 	func debugBeginHop() {
 		beginHop()
 	}
+
+	/// Faces her a given way, which the simulation otherwise only does by walking
+	/// her somewhere.
+	func debugSetFacing(_ value: Double) {
+		facing = value
+	}
+
+	/// The pinch's current offset in canvas units, positive towards her right in
+	/// the authored art.
+	var debugCheekOffset: (x: Double, y: Double) { (cheek.x, cheek.y) }
 
 	/// Stands in for the per-frame live window read.
 	///
