@@ -59,7 +59,8 @@ struct PlatformRideIntegrationTests {
 			catalog: AssetCatalog(locator: AssetLocator(root: root)),
 			surfaceProvider: provider,
 			lifeStore: PetLifeStateStore(stateDirectory: directory),
-			displaySpace: space
+			displaySpace: space,
+			randomSeed: TestAssets.randomSeed
 		)
 		controller.debugPlaceOnSurface(windowSurface(top: windowTop))
 		return Rig(controller: controller, provider: provider, floor: floor, directory: directory)
@@ -412,7 +413,8 @@ struct PlatformRideIntegrationTests {
 			catalog: AssetCatalog(locator: AssetLocator(root: root)),
 			surfaceProvider: SurfaceProvider(platform: MockPlatform()),
 			lifeStore: PetLifeStateStore(stateDirectory: directory),
-			displaySpace: DisplaySpace(monitors: [], primaryHeight: 0)
+			displaySpace: DisplaySpace(monitors: [], primaryHeight: 0),
+			randomSeed: TestAssets.randomSeed
 		)
 
 		let before = controller.debugState.foot

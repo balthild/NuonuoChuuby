@@ -58,7 +58,8 @@ struct WindowEnclosureIntegrationTests {
 			catalog: AssetCatalog(locator: AssetLocator(root: root)),
 			surfaceProvider: provider,
 			lifeStore: PetLifeStateStore(stateDirectory: directory),
-			displaySpace: space
+			displaySpace: space,
+			randomSeed: TestAssets.randomSeed
 		)
 		// The live read and the sampled bodies answer from the same place, as they
 		// would on a real desktop, so a test cannot assert against one while the

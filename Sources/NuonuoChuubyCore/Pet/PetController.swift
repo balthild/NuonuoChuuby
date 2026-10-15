@@ -98,6 +98,8 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var remainderY: Double = 0
 	private var stateElapsed: Double = 0
 	private var idleRemaining: Double
+	/// Every random draw she makes. Seeded in tests so a run is reproducible.
+	private var random: PetRandom
 	private var dragTracker = DragMotionTracker()
 	private var dragOffset = PixelPoint.zero
 	private var isDragging = false
@@ -258,7 +260,8 @@ public final class PetController: SpriteAnimatorDelegate {
 		lifeStore: PetLifeStateStore,
 		displaySpace: DisplaySpace,
 		profile: PetCharacterProfile = .nuonuo,
-		petSize: Double = PetSizePolicy.defaultSize
+		petSize: Double = PetSizePolicy.defaultSize,
+		randomSeed: UInt64? = nil
 	) {
 		self.profile = profile
 		self.catalog = catalog
@@ -267,6 +270,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		self.displaySpace = displaySpace
 		self.petSize = PetSizePolicy.clampPreferredSize(petSize)
 		self.life = lifeStore.load()
+		self.random = randomSeed.map(PetRandom.init(seed:)) ?? PetRandom()
 
 		let animator = SpriteAnimator(catalog: catalog, profile: profile)
 		self.animator = animator
@@ -274,7 +278,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		let home =
 			displaySpace.displays.first?.visibleFrame ?? PixelRect(x: 0, y: 0, width: 1440, height: 900)
 		self.foot = PixelPoint(x: home.centerX, y: home.bottom)
-		self.idleRemaining = Double.random(in: 0.5...1.6)
+		self.idleRemaining = Double.random(in: 0.5...1.6, using: &random)
 
 		animator.delegate = self
 		animator.play("idle")
@@ -455,7 +459,7 @@ public final class PetController: SpriteAnimatorDelegate {
 			life: life,
 			hasGroundSupport: hasSupport,
 			availableActions: available,
-			randomUnit: Double.random(in: 0..<1),
+			randomUnit: Double.random(in: 0..<1, using: &random),
 			profile: profile
 		)
 		DiagnosticsLog.shared.writeEvent(
@@ -499,7 +503,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	}
 
 	private func resetIdleTimer(factor: Double = 1) {
-		idleRemaining = Double.random(in: 1.2...profile.maximumIdleSeconds) * factor
+		idleRemaining = Double.random(in: 1.2...profile.maximumIdleSeconds, using: &random) * factor
 	}
 
 	// MARK: - Meals and icon licks
@@ -1108,7 +1112,7 @@ public final class PetController: SpriteAnimatorDelegate {
 			let target = IconLickTargetSelector.choose(
 				candidates: candidates,
 				origin: lickPoint,
-				randomUnit: Double.random(in: 0..<1)
+				randomUnit: Double.random(in: 0..<1, using: &random)
 			)
 		else { return false }
 
@@ -1220,7 +1224,7 @@ public final class PetController: SpriteAnimatorDelegate {
 
 		life.registerMeal(
 			path: item.originalPath,
-			nourishment: Double.random(in: 6...14)
+			nourishment: Double.random(in: 6...14, using: &random)
 		)
 		persistLifeStateQuietly()
 		mealDelegate?.petController(self, didFinishMeal: item)
@@ -1281,7 +1285,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		let inset = 20 * displayScale
 		let minimum = run.start + inset
 		let maximum = max(minimum, run.end - inset)
-		targetX = Double.random(in: minimum...maximum)
+		targetX = Double.random(in: minimum...maximum, using: &random)
 		movementPurpose = purpose
 		state = .running
 		stateElapsed = 0
@@ -1705,7 +1709,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		guard atEdge else { return nil }
 		return TerrainBehaviorPlanner.chooseAtEdge(
 			isDesktopFloor: false,
-			randomUnit: Double.random(in: 0..<1)
+			randomUnit: Double.random(in: 0..<1, using: &random)
 		)
 	}
 
@@ -2140,7 +2144,7 @@ public final class PetController: SpriteAnimatorDelegate {
 				currentSupport: support,
 				footX: foot.x,
 				scale: displayScale,
-				randomUnit: Double.random(in: 0..<1)
+				randomUnit: Double.random(in: 0..<1, using: &random)
 			)
 		else { return false }
 
@@ -2178,8 +2182,8 @@ public final class PetController: SpriteAnimatorDelegate {
 		// The original succeeds most of the time, less often on a very tall wall,
 		// and can slip part way up.
 		let successChance = plan.height > 700 * displayScale ? 0.58 : 0.74
-		climbWillSucceed = Double.random(in: 0..<1) < successChance
-		climbSlipAt = 0.56 + Double.random(in: 0..<0.20)
+		climbWillSucceed = Double.random(in: 0..<1, using: &random) < successChance
+		climbSlipAt = 0.56 + Double.random(in: 0..<0.20, using: &random)
 
 		state = .climbing
 		movementPurpose = .none

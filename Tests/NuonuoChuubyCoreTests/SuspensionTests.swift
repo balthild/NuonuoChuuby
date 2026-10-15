@@ -50,10 +50,15 @@ struct SuspensionTests {
 			catalog: AssetCatalog(locator: AssetLocator(root: root)),
 			surfaceProvider: SurfaceProvider(platform: platform),
 			lifeStore: PetLifeStateStore(stateDirectory: directory),
-			displaySpace: space
+			displaySpace: space,
+			randomSeed: TestAssets.randomSeed
 		)
 		let spy = DelegateSpy()
 		controller.delegate = spy
+		// She has to stay where she is put. Left to act on her own she would move
+		// during the settle below, and the tests' preconditions would then depend on
+		// which random draws she happened to make.
+		controller.quietMode = true
 		// Let the graph settle before anything is asserted about it.
 		step(controller, frames: Self.framesPerRefresh)
 		return Rig(controller: controller, platform: platform, spy: spy, directory: directory)

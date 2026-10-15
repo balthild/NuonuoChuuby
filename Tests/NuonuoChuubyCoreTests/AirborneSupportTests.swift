@@ -70,10 +70,14 @@ struct AirborneSupportTests {
 			catalog: AssetCatalog(locator: AssetLocator(root: root)),
 			surfaceProvider: provider,
 			lifeStore: PetLifeStateStore(stateDirectory: directory),
-			displaySpace: space
+			displaySpace: space,
+			randomSeed: TestAssets.randomSeed
 		)
 		guard let perchSurface = provider.surfaces.first(where: { $0.key.kind == .windowTop })
 		else { throw TestSkip.missingAssets }
+		// These are physics scenarios: she must not wander, hop or go licking an icon
+		// part way through, which would otherwise make the outcome depend on the RNG.
+		controller.quietMode = true
 		controller.debugPlaceOnSurface(perchSurface)
 		return Rig(
 			controller: controller,

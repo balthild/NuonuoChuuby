@@ -39,7 +39,8 @@ struct PetControllerPlacementTests {
 			lifeStore: PetLifeStateStore(stateDirectory: directory),
 			displaySpace: space,
 			profile: .nuonuo,
-			petSize: PetSizePolicy.defaultSize
+			petSize: PetSizePolicy.defaultSize,
+			randomSeed: TestAssets.randomSeed
 		)
 		let spy = DelegateSpy()
 		controller.delegate = spy

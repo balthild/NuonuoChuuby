@@ -67,7 +67,8 @@ struct FreeStandingWalkTests {
 			catalog: AssetCatalog(locator: AssetLocator(root: root)),
 			surfaceProvider: provider,
 			lifeStore: PetLifeStateStore(stateDirectory: directory),
-			displaySpace: space
+			displaySpace: space,
+			randomSeed: TestAssets.randomSeed
 		)
 
 		let ledge = try #require(provider.surfaces.first { $0.key.kind == .windowTop })

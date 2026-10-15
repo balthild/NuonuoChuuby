@@ -32,7 +32,8 @@ struct CheekPinchFacingTests {
 			lifeStore: PetLifeStateStore(stateDirectory: directory),
 			displaySpace: space,
 			profile: .nuonuo,
-			petSize: PetSizePolicy.defaultSize
+			petSize: PetSizePolicy.defaultSize,
+			randomSeed: TestAssets.randomSeed
 		)
 		controller.delegate = DelegateSpy()
 		return (controller, directory)

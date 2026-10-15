@@ -12,4 +12,12 @@ enum TestAssets {
 		let url = URL(fileURLWithPath: path)
 		return FileManager.default.fileExists(atPath: url.path) ? url : nil
 	}
+
+	/// The seed every test rig hands the pet's random source.
+	///
+	/// Without it the draws come from the global generator, so what she does
+	/// depends on how much randomness the *other* suites happened to consume —
+	/// swift-testing runs them in parallel, which made a couple of physics tests
+	/// pass or fail run to run. A fixed seed makes each run identical.
+	static let randomSeed: UInt64 = 0x5EED_1E55
 }
