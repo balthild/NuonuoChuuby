@@ -49,6 +49,36 @@ struct CheekPinchGeometryTests {
 	}
 }
 
+@Suite("Cheek pinch interaction")
+struct CheekPinchInteractionTests {
+	@Test("A nap cannot be interrupted by the face")
+	func sleepingIsRefused() {
+		#expect(!CheekPinchInteractionPolicy.canStart(from: .sleeping))
+		#expect(!CheekPinchInteractionPolicy.canStart(from: .waking))
+	}
+
+	@Test("Climbing is refused")
+	func climbingIsRefused() {
+		#expect(!CheekPinchInteractionPolicy.canStart(from: .climbing))
+	}
+
+	@Test("Free states still allow a pinch")
+	func freeStatesAllowed() {
+		for state in [PetState.idle, .curious, .running, .falling, .landing] {
+			#expect(CheekPinchInteractionPolicy.canStart(from: state))
+		}
+	}
+
+	@Test("Whatever a drag cannot interrupt, a pinch cannot either")
+	func followsTheDragPolicy() {
+		for state in PetState.allCases {
+			if !DragInteractionPolicy.canStart(from: state) {
+				#expect(!CheekPinchInteractionPolicy.canStart(from: state))
+			}
+		}
+	}
+}
+
 @Suite("Cheek pinch dynamics")
 struct CheekPinchDynamicsTests {
 	@Test("A pinch starts at rest and follows the drag")

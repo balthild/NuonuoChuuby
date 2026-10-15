@@ -2329,13 +2329,15 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	/// The cheek under a point in the view's own point space, if any.
 	public func cheekHitTest(viewPoint: CGPoint) -> CheekSide? {
-		guard DragInteractionPolicy.canStart(from: state) || state == .pinching else { return nil }
+		guard CheekPinchInteractionPolicy.canStart(from: state) || state == .pinching else {
+			return nil
+		}
 		let point = authoredPoint(viewPoint)
 		return cheekGeometryInView.hitTest(x: Double(point.x), y: Double(point.y))
 	}
 
 	public func beginPinch(side: CheekSide, at viewPoint: CGPoint) {
-		guard !cheek.isActive, DragInteractionPolicy.canStart(from: state) else { return }
+		guard !cheek.isActive, CheekPinchInteractionPolicy.canStart(from: state) else { return }
 		cheek.begin(side: side)
 		pinchOrigin = authoredPoint(viewPoint)
 		state = .pinching
