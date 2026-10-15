@@ -21,6 +21,31 @@ redistribution, and prohibits commercial use. It is not an OSI-approved open
 source licence. **This project is therefore also non-commercial.**
 
 
+Additional permission
+---------------------
+
+Beyond the licence above, the maintainer grants one additional permission: for
+code in this project that the maintainer wrote independently and holds the
+copyright to, you will not be sued for copyright infringement even if you use it
+for commercial purposes, by any means (running, copying, modifying,
+distributing, etc.).
+
+No boundary was drawn in advance separating the freely usable part of this
+project from the part under PolyForm Noncommercial 1.0.0. It is therefore your
+own responsibility to ensure that the code you use derives only from the
+independently written part of this project, and not from the upstream project or
+from code derived from it. The maintainer cannot control whether the upstream
+authors take action, and has no authority to grant you any rights on their
+behalf.
+
+This section covers no non-code assets, including but not limited to character
+designs, images, audio and video; the rights in those assets belong to their
+respective third parties.
+
+This section is in addition to, and does not modify, the terms in LICENSE.
+Where the two conflict, the more permissive reading applies.
+
+
 Character artwork and recordings
 --------------------------------
 

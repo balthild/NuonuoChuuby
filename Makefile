@@ -110,6 +110,7 @@ app: build icon ## Assemble the .app bundle.
 			"$(APP_BUNDLE)/Contents/Resources/Assets.bundle/Assets"; \
 	fi
 	@if [ -f "$(ICNS)" ]; then cp "$(ICNS)" "$(APP_BUNDLE)/Contents/Resources/AppIcon.icns"; fi
+	@cp LICENSE NOTICE "$(APP_BUNDLE)/Contents/Resources/"
 	@cp "$(INFO_PLIST)" "$(APP_BUNDLE)/Contents/Info.plist"
 	@$(PLIST_BUDDY) -c "Set :CFBundleShortVersionString $(VERSION)" "$(APP_BUNDLE)/Contents/Info.plist"
 	@$(PLIST_BUDDY) -c "Set :CFBundleVersion $(BUILD_NUMBER)" "$(APP_BUNDLE)/Contents/Info.plist"
