@@ -50,10 +50,9 @@ public enum SpeechBubbleLayout {
 		}
 
 		// No room above: tuck it into the pet's upper fifth and move to a side.
-		let sideTop = clamp(
-			petFrame.top + petFrame.height / 5,
-			workArea.top,
-			max(workArea.top, workArea.bottom - contentHeight)
+		let sideTop = (petFrame.top + petFrame.height / 5).clamp(
+			lower: workArea.top,
+			upper: max(workArea.top, workArea.bottom - contentHeight)
 		)
 		if petFrame.right + sideGap + contentWidth + tailHeight <= workArea.right {
 			// The tail sits on the bubble's left edge, pointing back left at her.
@@ -77,10 +76,9 @@ public enum SpeechBubbleLayout {
 		return SpeechBubblePlacement(
 			topLeft: PixelPoint(
 				x: centredX(petFrame: petFrame, width: contentWidth, workArea: workArea),
-				y: clamp(
-					petFrame.top + petFrame.height / 5,
-					workArea.top,
-					max(workArea.top, workArea.bottom - contentHeight - tailHeight)
+				y: (petFrame.top + petFrame.height / 5).clamp(
+					lower: workArea.top,
+					upper: max(workArea.top, workArea.bottom - contentHeight - tailHeight)
 				)
 			),
 			tail: .down
@@ -89,14 +87,9 @@ public enum SpeechBubbleLayout {
 
 	/// Horizontally centred on the pet but never pushed off the display.
 	private static func centredX(petFrame: PixelRect, width: Double, workArea: PixelRect) -> Double {
-		clamp(
-			petFrame.centerX - width / 2,
-			workArea.left,
-			max(workArea.left, workArea.right - width)
+		(petFrame.centerX - width / 2).clamp(
+			lower: workArea.left,
+			upper: max(workArea.left, workArea.right - width)
 		)
-	}
-
-	private static func clamp(_ value: Double, _ lower: Double, _ upper: Double) -> Double {
-		min(max(value, lower), upper)
 	}
 }

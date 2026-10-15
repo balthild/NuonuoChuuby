@@ -2202,7 +2202,7 @@ public final class PetController: SpriteAnimatorDelegate {
 			let t = climbHopFraction > 0 ? climbProgress / climbHopFraction : 1
 			foot = PixelPoint(
 				x: plan.approachX,
-				y: climbStart.y + (climbWallStartY - climbStart.y) * Self.smoothstep(t)
+				y: climbStart.y + (climbWallStartY - climbStart.y) * t.smoothstep()
 			)
 		} else {
 			if animator.currentClip != "climb" { animator.play("climb") }
@@ -2210,7 +2210,7 @@ public final class PetController: SpriteAnimatorDelegate {
 			let t = (climbProgress - climbHopFraction) / span
 			// y follows the wall; x stays against it and only steps inward on top,
 			// so she is never seen climbing thin air beside the window.
-			let easedY = Self.smoothstep(t)
+			let easedY = t.smoothstep()
 			let easedX = t * t
 			foot = PixelPoint(
 				x: plan.approachX + (plan.landingX - plan.approachX) * easedX,
@@ -2227,11 +2227,6 @@ public final class PetController: SpriteAnimatorDelegate {
 			land(on: surfaceProvider.surfaces.first { $0.key.owner == plan.targetSurfaceID })
 			announce(.climbSuccess, voice: .affirmative, priority: .normal)
 		}
-	}
-
-	private static func smoothstep(_ t: Double) -> Double {
-		let clamped = min(max(t, 0), 1)
-		return clamped * clamped * (3 - 2 * clamped)
 	}
 
 	// MARK: - Descending

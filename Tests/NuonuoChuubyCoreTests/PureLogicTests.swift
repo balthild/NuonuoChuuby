@@ -42,6 +42,26 @@ struct SubpixelMotionTests {
 	}
 }
 
+@Suite("Double helpers")
+struct DoubleHelperTests {
+	@Test("Clamping saturates at the bounds and passes values through")
+	func clamp() {
+		#expect(0.5.clamp(lower: 0, upper: 1) == 0.5)
+		#expect((-3.0).clamp(lower: 0, upper: 1) == 0)
+		#expect(7.0.clamp(lower: 0, upper: 1) == 1)
+	}
+
+	@Test("Smoothstep eases between its plateaus")
+	func smoothstep() {
+		#expect(0.0.smoothstep() == 0)
+		#expect(1.0.smoothstep() == 1)
+		#expect(abs(0.5.smoothstep() - 0.5) < 0.0001)
+		// Out-of-range input sits on a plateau rather than overshooting.
+		#expect((-2.0).smoothstep() == 0)
+		#expect(3.0.smoothstep() == 1)
+	}
+}
+
 @Suite("Drag release physics")
 struct DragReleasePhysicsTests {
 	private func tracker(
