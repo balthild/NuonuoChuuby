@@ -1,7 +1,11 @@
 import Foundation
 
-/// Turns raw filesystem observations into confirmed meals: a name disappears from
-/// a watched folder, and a matching arrival in `~/.Trash` corroborates it.
+/// Turns a filesystem observation into a meal: a name disappears from a watched
+/// folder and stays gone for a short settling window.
+///
+/// There is deliberately no Trash corroboration. `rm`, and any other tool that
+/// unlinks a file directly, never puts anything in the Trash — so "nothing
+/// arrived in the Trash" cannot tell a deletion from a move and proves nothing.
 public struct DeletionMealDetector: Sendable {
 	public struct Pending: Sendable, Equatable {
 		public var name: String
@@ -11,67 +15,43 @@ public struct DeletionMealDetector: Sendable {
 		public var exactAnchor: Bool
 	}
 
-	/// How long to wait for a Trash arrival before accepting the deletion anyway.
-	public var confirmTimeout: Double = 2.5
-	/// How long a Trash arrival stays available to corroborate a removal.
-	public var corroborationWindow: Double = 8
+	/// How long a removal must stand before it is accepted. It only has to
+	/// outlast the transient notifications a single deletion can produce.
+	public var settleDelay: Double = 0.5
+	/// Removals of the same path closer together than this are one deletion. A
+	/// single Finder deletion is sometimes reported twice — a rename, then a
+	/// rename+create a fraction of a second later.
+	public var duplicateWindow: Double = 2.0
 
 	private var pending: [Pending] = []
-	private var trashArrivals: [String: Date] = [:]
+	private var recentPaths: [String: Date] = [:]
 
 	public init() {}
 
 	public var pendingCount: Int { pending.count }
 
 	public mutating func noteRemoval(_ item: Pending) {
+		// Prune against this event, which is the newest one seen.
+		recentPaths = recentPaths.filter {
+			item.detectedAt.timeIntervalSince($0.value) <= duplicateWindow
+		}
+		guard recentPaths[item.path] == nil else { return }
+		recentPaths[item.path] = item.detectedAt
 		pending.append(item)
 	}
 
-	public mutating func noteTrashArrival(name: String, at: Date) {
-		trashArrivals[DeletionMealDetector.normalizedTrashName(name)] = at
-	}
-
-	/// Removals that are either corroborated or have waited long enough.
-	public mutating func collectReady(now: Date) -> [(item: Pending, cameFromTrash: Bool)] {
-		trashArrivals = trashArrivals.filter { now.timeIntervalSince($0.value) <= corroborationWindow }
-
-		var ready: [(item: Pending, cameFromTrash: Bool)] = []
+	/// Removals that have settled.
+	public mutating func collectReady(now: Date) -> [Pending] {
+		var ready: [Pending] = []
 		var remaining: [Pending] = []
-
 		for item in pending {
-			let key = DeletionMealDetector.normalizedTrashName(item.name)
-			if let arrival = trashArrivals[key] {
-				// The Trash entry can lag the removal slightly, but never lead it
-				// by much — a same-named file trashed earlier is not this deletion.
-				if arrival >= item.detectedAt.addingTimeInterval(-corroborationWindow) {
-					ready.append((item, true))
-					continue
-				}
+			if now.timeIntervalSince(item.detectedAt) >= settleDelay {
+				ready.append(item)
+			} else {
+				remaining.append(item)
 			}
-			if now.timeIntervalSince(item.detectedAt) >= confirmTimeout {
-				ready.append((item, false))
-				continue
-			}
-			remaining.append(item)
 		}
-
 		pending = remaining
 		return ready
-	}
-
-	/// macOS appends " N" before a duplicate's extension, so `a.txt` trashed twice
-	/// becomes `a.txt` then `a 2.txt`. Both normalise to `a.txt`.
-	static func normalizedTrashName(_ name: String) -> String {
-		let url = URL(fileURLWithPath: name)
-		let ext = url.pathExtension
-		var base = url.deletingPathExtension().lastPathComponent
-		if ext.isEmpty {
-			base = name
-		}
-		let parts = base.split(separator: " ")
-		if parts.count >= 2, let suffix = parts.last, Int(suffix) != nil, parts.count > 1 {
-			base = parts.dropLast().joined(separator: " ")
-		}
-		return ext.isEmpty ? base : "\(base).\(ext)"
 	}
 }

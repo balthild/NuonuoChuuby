@@ -148,7 +148,6 @@ struct FreeStandingWalkTests {
 				originalPath: "/tmp/a.txt",
 				displayName: "a.txt",
 				detectedAt: Date(),
-				cameFromTrash: true,
 				anchor: Self.spot,
 				exactAnchor: true
 			)
@@ -172,5 +171,34 @@ struct FreeStandingWalkTests {
 		#expect(falling.perchKey == nil)
 		#expect(falling.movementPurpose == .none)
 		#expect(abs(falling.foot.y - Self.spot.y) < 150, "she falls from the food, not the floor")
+	}
+
+	@Test("A meal wakes her instead of waiting for the nap to end")
+	func mealWakesHer() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+		rig.controller.debugPlaceOnSurface(rig.floor)
+		rig.controller.debugBeginSleep()
+		#expect(rig.controller.state == .sleeping)
+
+		let accepted = rig.controller.enqueueMeals([
+			DeletedItem(
+				id: 1,
+				originalPath: "/tmp/a.txt",
+				displayName: "a.txt",
+				detectedAt: Date(),
+				anchor: Self.spot,
+				exactAnchor: true
+			)
+		])
+		#expect(accepted == 1)
+		#expect(rig.controller.state == .waking, "the meal wakes her")
+
+		// The get-up clip runs, and then she sets off on her own.
+		run(rig, upTo: 1200) { rig.controller.debugState.movementPurpose == .meal }
+		#expect(rig.controller.debugState.movementPurpose == .meal, "she goes to the meal")
+
+		run(rig, upTo: 1200) { rig.controller.state == .idle }
+		#expect(rig.controller.state == .idle, "the meal finishes")
 	}
 }

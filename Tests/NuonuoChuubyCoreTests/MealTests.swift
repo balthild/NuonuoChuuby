@@ -11,7 +11,6 @@ struct MealQueueTests {
 			originalPath: "/tmp/\(name)",
 			displayName: name,
 			detectedAt: Date(),
-			cameFromTrash: true,
 			anchor: PixelPoint(x: 100, y: 200),
 			exactAnchor: true
 		)
@@ -63,51 +62,77 @@ struct MealQueueTests {
 struct DeletionMealDetectorTests {
 	private let base = Date(timeIntervalSince1970: 1_000_000)
 
-	private func removal(_ name: String, at offset: Double = 0) -> DeletionMealDetector.Pending {
+	private func removal(
+		_ name: String,
+		path: String? = nil,
+		at offset: Double = 0
+	) -> DeletionMealDetector.Pending {
 		DeletionMealDetector.Pending(
 			name: name,
-			path: "/tmp/\(name)",
+			path: path ?? "/tmp/\(name)",
 			detectedAt: base.addingTimeInterval(offset),
 			anchor: PixelPoint(x: 10, y: 20),
 			exactAnchor: true
 		)
 	}
 
-	@Test("A removal is accepted once the Trash confirms it")
-	func corroborated() {
-		var detector = DeletionMealDetector()
-		detector.noteRemoval(removal("a.txt"))
-		detector.noteTrashArrival(name: "a.txt", at: base.addingTimeInterval(0.3))
-
-		let ready = detector.collectReady(now: base.addingTimeInterval(0.5))
-		#expect(ready.count == 1)
-		#expect(ready.first?.cameFromTrash == true)
-	}
-
-	@Test("A locally renamed duplicate still matches")
-	func duplicateSuffixMatches() {
-		var detector = DeletionMealDetector()
-		detector.noteRemoval(removal("report.pdf"))
-		// Finder renames the second copy to "report 2.pdf".
-		detector.noteTrashArrival(name: "report 2.pdf", at: base.addingTimeInterval(0.2))
-
-		let ready = detector.collectReady(now: base.addingTimeInterval(0.4))
-		#expect(ready.count == 1)
-		#expect(ready.first?.cameFromTrash == true)
-	}
-
-	@Test("A removal is accepted on timeout even without a Trash entry")
-	func uncorroboratedTimeout() {
+	@Test("A removal is accepted once it has settled")
+	func acceptedAfterSettle() {
 		var detector = DeletionMealDetector()
 		detector.noteRemoval(removal("a.txt"))
 
-		// Immediately after, nothing is ready yet.
-		let early = detector.collectReady(now: base.addingTimeInterval(0.5))
+		// Still inside the settle window: nothing yet.
+		let early = detector.collectReady(now: base.addingTimeInterval(0.2))
 		#expect(early.isEmpty)
-		// After the confirm window, it is accepted as a plain delete.
-		let ready = detector.collectReady(now: base.addingTimeInterval(3))
+
+		let ready = detector.collectReady(now: base.addingTimeInterval(1))
 		#expect(ready.count == 1)
-		#expect(ready.first?.cameFromTrash == false)
+		#expect(ready.first?.name == "a.txt")
+	}
+
+	@Test("One deletion reported twice is still one meal")
+	func duplicateCollapsed() {
+		var detector = DeletionMealDetector()
+		// Finder can report a single deletion as a rename and then a rename+create.
+		detector.noteRemoval(removal("a.txt", at: 0))
+		detector.noteRemoval(removal("a.txt", at: 0.2))
+
+		let ready = detector.collectReady(now: base.addingTimeInterval(1))
+		#expect(ready.count == 1)
+	}
+
+	@Test("A duplicate arriving after the first was taken is still collapsed")
+	func duplicateAfterDelivery() {
+		var detector = DeletionMealDetector()
+		detector.noteRemoval(removal("a.txt", at: 0))
+		_ = detector.collectReady(now: base.addingTimeInterval(1))
+
+		// The second report lands a moment later, already after the first meal.
+		detector.noteRemoval(removal("a.txt", at: 1.2))
+		let ready = detector.collectReady(now: base.addingTimeInterval(2))
+		#expect(ready.isEmpty)
+	}
+
+	@Test("The same name in a different folder is a separate meal")
+	func differentPathIsSeparate() {
+		var detector = DeletionMealDetector()
+		detector.noteRemoval(removal("a.txt", path: "/tmp/desktop/a.txt", at: 0))
+		detector.noteRemoval(removal("a.txt", path: "/tmp/downloads/a.txt", at: 0.2))
+
+		let ready = detector.collectReady(now: base.addingTimeInterval(1))
+		#expect(ready.count == 2)
+	}
+
+	@Test("A path deleted twice well apart is two meals")
+	func spacedOutIsTwo() {
+		var detector = DeletionMealDetector()
+		detector.noteRemoval(removal("a.txt", at: 0))
+		_ = detector.collectReady(now: base.addingTimeInterval(1))
+		// Re-created and deleted again, well after the duplicate window.
+		detector.noteRemoval(removal("a.txt", at: 10))
+
+		let ready = detector.collectReady(now: base.addingTimeInterval(11))
+		#expect(ready.count == 1)
 	}
 
 	@Test("Each removal is reported exactly once")
@@ -118,17 +143,6 @@ struct DeletionMealDetectorTests {
 		let second = detector.collectReady(now: base.addingTimeInterval(4))
 		#expect(first.count == 1)
 		#expect(second.isEmpty)
-	}
-
-	@Test("A stale Trash arrival does not corroborate a later removal")
-	func staleTrashArrivalIgnored() {
-		var detector = DeletionMealDetector()
-		// The same name was trashed long before this removal.
-		detector.noteTrashArrival(name: "a.txt", at: base)
-		detector.noteRemoval(removal("a.txt", at: 60))
-
-		let ready = detector.collectReady(now: base.addingTimeInterval(63))
-		#expect(ready.first?.cameFromTrash == false)
 	}
 }
 

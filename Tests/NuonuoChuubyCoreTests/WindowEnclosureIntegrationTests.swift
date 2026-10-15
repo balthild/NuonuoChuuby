@@ -350,7 +350,6 @@ struct WindowEnclosureIntegrationTests {
 				originalPath: "/tmp/a.txt",
 				displayName: "a.txt",
 				detectedAt: Date(),
-				cameFromTrash: true,
 				anchor: PixelPoint(x: 300, y: 300),
 				exactAnchor: true
 			)

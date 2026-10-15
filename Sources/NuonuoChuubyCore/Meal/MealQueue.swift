@@ -6,9 +6,6 @@ public struct DeletedItem: Sendable, Equatable, Identifiable {
 	public var originalPath: String
 	public var displayName: String
 	public var detectedAt: Date
-	/// True when the disappearance was corroborated by a matching arrival in the
-	/// Trash folder.
-	public var cameFromTrash: Bool
 	/// Where the icon was on screen, in global top-left coordinates.
 	public var anchor: PixelPoint
 	/// Whether the anchor is the icon's real position (from a click) or a guess.
@@ -19,7 +16,6 @@ public struct DeletedItem: Sendable, Equatable, Identifiable {
 		originalPath: String,
 		displayName: String,
 		detectedAt: Date,
-		cameFromTrash: Bool,
 		anchor: PixelPoint,
 		exactAnchor: Bool
 	) {
@@ -27,7 +23,6 @@ public struct DeletedItem: Sendable, Equatable, Identifiable {
 		self.originalPath = originalPath
 		self.displayName = displayName
 		self.detectedAt = detectedAt
-		self.cameFromTrash = cameFromTrash
 		self.anchor = anchor
 		self.exactAnchor = exactAnchor
 	}

@@ -1,7 +1,7 @@
 import AppKit
 
-/// Watches the folders a deletion can happen in, plus the Trash, and reports
-/// meals once a disappearance is corroborated (or has waited long enough).
+/// Watches the folders a deletion can happen in, and reports meals once a
+/// disappearance has settled.
 @MainActor
 public final class FileDeletionWatcher {
 	/// Called with the items that are ready to be eaten.
@@ -9,7 +9,6 @@ public final class FileDeletionWatcher {
 
 	private var detectors = DeletionMealDetector()
 	private var watchers: [FolderWatcher] = []
-	private var trashWatcher: FolderWatcher?
 	private var pump: Timer?
 	private var nextIdentifier = 1
 
@@ -47,20 +46,8 @@ public final class FileDeletionWatcher {
 			watchers.append(watcher)
 		}
 
-		let trash = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".Trash")
-		if manager.fileExists(atPath: trash.path) {
-			let watcher = FolderWatcher(url: trash)
-			watcher.onChange = { [weak self] change in
-				Task { @MainActor in
-					let now = Date()
-					for name in change.added { self?.detectors.noteTrashArrival(name: name, at: now) }
-				}
-			}
-			watcher.start()
-			trashWatcher = watcher
-		}
-
-		// Removals wait a moment for Trash corroboration, so a pump drains them.
+		// A removal settles for a moment before it is accepted, so a burst of raw
+		// events is drained together rather than one at a time.
 		let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
 			MainActor.assumeIsolated { self?.drain() }
 		}
@@ -69,10 +56,7 @@ public final class FileDeletionWatcher {
 
 		DiagnosticsLog.shared.writeEvent(
 			"DeletionWatcherStarted",
-			[
-				("Count", "\(watchers.count)"),
-				("Trash", "\(trashWatcher != nil)"),
-			]
+			[("Count", "\(watchers.count)")]
 		)
 	}
 
@@ -80,9 +64,7 @@ public final class FileDeletionWatcher {
 		pump?.invalidate()
 		pump = nil
 		for watcher in watchers { watcher.stop() }
-		trashWatcher?.stop()
 		watchers.removeAll()
-		trashWatcher = nil
 	}
 
 	private func handle(_ change: FolderWatcher.Change, in directory: URL) {
@@ -110,21 +92,20 @@ public final class FileDeletionWatcher {
 		var occupied: [PixelPoint] = []
 		let items = ready.map { entry -> DeletedItem in
 			let anchor: PixelPoint
-			if entry.item.exactAnchor {
-				anchor = entry.item.anchor
+			if entry.exactAnchor {
+				anchor = entry.anchor
 			} else {
-				anchor = GhostAnchorLayout.chooseDistinct(preferred: entry.item.anchor, occupied: occupied)
+				anchor = GhostAnchorLayout.chooseDistinct(preferred: entry.anchor, occupied: occupied)
 			}
 			occupied.append(anchor)
 
 			let item = DeletedItem(
 				id: nextIdentifier,
-				originalPath: entry.item.path,
-				displayName: entry.item.name,
-				detectedAt: entry.item.detectedAt,
-				cameFromTrash: entry.cameFromTrash,
+				originalPath: entry.path,
+				displayName: entry.name,
+				detectedAt: entry.detectedAt,
 				anchor: anchor,
-				exactAnchor: entry.item.exactAnchor
+				exactAnchor: entry.exactAnchor
 			)
 			nextIdentifier += 1
 			return item

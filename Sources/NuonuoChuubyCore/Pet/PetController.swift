@@ -436,6 +436,10 @@ public final class PetController: SpriteAnimatorDelegate {
 		idleRemaining -= delta
 		guard idleRemaining <= 0 else { return }
 
+		// A queued meal is picked up before anything else she might decide to do,
+		// so one that arrived while she was airborne or mid-clip is not forgotten.
+		if !mealQueue.isEmpty, beginNextMeal() { return }
+
 		let hasSupport = surfaceProvider.support(at: foot) != nil
 
 		// A strongly sleepy pet naps regardless of the weighted draw.
@@ -959,11 +963,13 @@ public final class PetController: SpriteAnimatorDelegate {
 		case .running: updateRunning(delta)
 		case .falling: updateFalling(delta)
 		case .climbing: updateClimbing(delta)
-		case .landing, .curious, .waking, .satisfied, .rolling:
+		case .landing, .curious, .satisfied, .rolling:
 			if stateElapsed >= transientDuration {
-				if state == .waking { announce(.wakeNormally, voice: .calm) }
 				returnToIdle()
 			}
+		case .waking:
+			guard stateElapsed >= transientDuration else { return }
+			finishWaking()
 		case .sleeping: updateSleeping(delta)
 		case .chomping, .licking:
 			// Driven by the clip finishing, not by a timer.
@@ -1023,8 +1029,25 @@ public final class PetController: SpriteAnimatorDelegate {
 			isEnclosed: enclosure != nil,
 			pendingMeals: mealQueue.count
 		)
-		if activeMeal == nil, escaping || state == .idle || state == .curious {
+		guard activeMeal == nil else { return accepted }
+		if escaping {
 			_ = beginNextMeal()
+			return accepted
+		}
+		// A meal is not something she sleeps through: she is woken for it. The
+		// other steps she can be interrupted at are the ones she is not already
+		// busy eating in.
+		switch state {
+		case .sleeping:
+			beginWake(forMeal: true)
+		case .waking:
+			wakeForMeal = true
+		case .idle, .curious, .licking:
+			_ = beginNextMeal()
+		case .running where movementPurpose != .meal:
+			_ = beginNextMeal()
+		default:
+			break
 		}
 		return accepted
 	}
@@ -1035,6 +1058,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		guard activeMeal == nil, !quietMode else { return false }
 		guard let item = mealQueue.dequeue() else { return false }
 
+		wakeForMeal = false
 		releaseEnclosureForMeal(target: item.anchor)
 		activeMeal = item
 		targetPoint = item.anchor
@@ -1241,6 +1265,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		stateElapsed = 0
 		velocity = .zero
 		remainderX = 0
+		wakeForMeal = false
 		animator.play("idle")
 		resetIdleTimer()
 	}
@@ -2263,6 +2288,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	// MARK: - Sleep
 
 	private func beginSleep() {
+		wakeForMeal = false
 		state = .sleeping
 		stateElapsed = 0
 		velocity = .zero
@@ -2272,6 +2298,24 @@ public final class PetController: SpriteAnimatorDelegate {
 	}
 
 	private var sleepRemaining: Double = 0
+	/// Whether the wake-up in progress should end in a meal.
+	private var wakeForMeal = false
+
+	/// Starts the get-up animation. A wake already running just records the reason.
+	private func beginWake(forMeal: Bool) {
+		let starting = state != .waking
+		wakeForMeal = wakeForMeal || forMeal
+		guard starting else { return }
+		state = .waking
+		movementPurpose = .none
+		stateElapsed = 0
+		transientDuration = animator.durationSeconds
+		velocity = .zero
+		animator.play("sleep_exit")
+		if forMeal {
+			announce(.wakeForFood, voice: .question, priority: .normal)
+		}
+	}
 
 	private func updateSleeping(_ delta: Double) {
 		if animator.currentClip == "sleep_enter", animator.isCompleted {
@@ -2279,11 +2323,19 @@ public final class PetController: SpriteAnimatorDelegate {
 		}
 		sleepRemaining -= delta
 		if sleepRemaining <= 0, life.sleepiness <= 10 {
-			state = .waking
-			stateElapsed = 0
-			transientDuration = animator.durationSeconds
-			animator.play("sleep_exit")
+			beginWake(forMeal: false)
 		}
+	}
+
+	/// Ends a wake-up, whichever way it ended. Woken for a meal, she goes for it;
+	/// woken on her own, she simply says so. Both entry points must agree, so the
+	/// decision lives here rather than at each of them.
+	private func finishWaking() {
+		let wokenForMeal = wakeForMeal
+		wakeForMeal = false
+		if wokenForMeal, beginNextMeal() { return }
+		announce(.wakeNormally, voice: .calm)
+		returnToIdle()
 	}
 
 	// MARK: - Cheek pinch
@@ -2452,6 +2504,11 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// Triggers a hop, which is normally chosen by the autonomy planner.
 	func debugBeginHop() {
 		beginHop()
+	}
+
+	/// Naps, which the autonomy planner would otherwise only choose by weight.
+	func debugBeginSleep() {
+		beginSleep()
 	}
 
 	/// Faces her a given way, which the simulation otherwise only does by walking
@@ -2695,9 +2752,14 @@ public final class PetController: SpriteAnimatorDelegate {
 			beginFall(reason: "IconLickFinished", purpose: MovementPurpose.none)
 		case "satisfied", "satisfied_quick":
 			advanceAfterMeal()
-		case "land", "curious", "sleep_exit":
-			if state == .landing || state == .curious || state == .waking {
+		case "land", "curious":
+			if state == .landing || state == .curious {
 				returnToIdle()
+			}
+		case "sleep_exit":
+			// The wake can end on the clip finishing as well as on the timer.
+			if state == .waking {
+				finishWaking()
 			}
 		default:
 			break
