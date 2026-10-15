@@ -31,7 +31,10 @@ public protocol SpeechBubbleLayerHosting: AnyObject {
 /// raster is rebuilt only when the line, the tail, the size or the appearance
 /// really changes.
 @MainActor
-public final class OverlaySpeechBubbleController: SpeechBubblePresenting {
+public final class OverlaySpeechBubbleController {
+	/// How long a bubble stays up unless the caller says otherwise.
+	public static let defaultDuration: Double = 3.2
+
 	private let host: any SpeechBubbleLayerHosting
 	private var hideWorkItem: DispatchWorkItem?
 
@@ -66,6 +69,19 @@ public final class OverlaySpeechBubbleController: SpeechBubblePresenting {
 	public func bodySize(for text: String) -> (width: Double, height: Double) {
 		let size = SpeechBubbleDrawing.bodySize(for: text)
 		return (Double(size.width), Double(size.height))
+	}
+
+	public func show(
+		_ text: String,
+		placement: SpeechBubblePlacement,
+		displaySpace: DisplaySpace
+	) {
+		show(
+			text,
+			placement: placement,
+			displaySpace: displaySpace,
+			duration: Self.defaultDuration
+		)
 	}
 
 	public func show(

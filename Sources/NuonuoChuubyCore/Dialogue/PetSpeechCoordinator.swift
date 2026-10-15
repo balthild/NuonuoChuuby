@@ -5,7 +5,7 @@ import AppKit
 @MainActor
 public final class PetSpeechCoordinator {
 	private let voice: VoicePlaybackService
-	private let bubble: any SpeechBubblePresenting
+	private let bubble: OverlaySpeechBubbleController
 	private var selector: PetDialogueSelector
 	private let displaySpace: DisplaySpace
 
@@ -21,7 +21,7 @@ public final class PetSpeechCoordinator {
 
 	public init(
 		voice: VoicePlaybackService,
-		bubble: any SpeechBubblePresenting,
+		bubble: OverlaySpeechBubbleController,
 		displaySpace: DisplaySpace,
 		character: PetCharacterProfile = .nuonuo
 	) {

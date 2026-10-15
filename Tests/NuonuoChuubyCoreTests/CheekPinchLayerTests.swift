@@ -6,9 +6,8 @@ import Testing
 
 /// The vector shapes the pinch overlay is built from, in the pet's own points.
 ///
-/// These are the layer renderer's version of `CheekPinchRenderer`, so they are
-/// checked against the same rig: the cheek sits on the anchor, only moves outwards,
-/// and the mouth group only appears past the tension it needs.
+/// They are checked against the rig: the cheek sits on the anchor, only moves
+/// outwards, and the mouth group only appears past the tension it needs.
 @Suite("Cheek pinch shapes")
 struct CheekPinchShapesTests {
 	/// `pointsPerPixel: 1` keeps every coordinate in the rig's own pixels.
@@ -95,6 +94,24 @@ struct CheekPinchShapesTests {
 		let pulled = shapes(settled(dx: CheekPinchDynamics.maximumHorizontal))
 			.cheek!.path.boundingBoxOfPath.midX
 		#expect(pulled > rest + 50, "the cheek should travel a long way out")
+	}
+
+	/// The mouth is the rig's own size, in the rig's own runtime-frame pixels, not
+	/// scaled to the cel artwork's mouth.
+	@Test("The pinched mouth is the rig's size")
+	func mouthMatchesTheRig() {
+		var dynamics = CheekPinchDynamics()
+		dynamics.begin(side: .right)
+		dynamics.drag(x: CheekPinchDynamics.maximumHorizontal, y: 0)
+		for _ in 0..<300 { dynamics.tick(1.0 / 60) }
+		#expect(dynamics.tension > 0.99)
+
+		let box = shapes(dynamics).mouth!.path.boundingBoxOfPath
+		// The upstream rig: radiusX = 4.5 + 2·tension, radiusY = 2.5 + 2.4·tension + 3.5·nibble.
+		let expectedWidth = 2 * (4.5 + 2 * dynamics.tension)
+		let expectedHeight = 2 * (2.5 + 2.4 * dynamics.tension + 3.5 * dynamics.nibble)
+		#expect(abs(box.width - expectedWidth) < 0.5)
+		#expect(abs(box.height - expectedHeight) < 0.5)
 	}
 }
 

@@ -10,7 +10,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 	private var displaySpace: DisplaySpace?
 	private var surfaceProvider: SurfaceProvider?
 	private var controller: PetController?
-	private var petWindow: (any PetPresenting)?
+	private var petWindow: OverlayPetWindowController?
 	private var speech: PetSpeechCoordinator?
 	private var voice: VoicePlaybackService?
 	private var statusItem: StatusItemController?
@@ -20,7 +20,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 	/// The fake icons standing in for the desktop icons being eaten, kept together
 	/// with the item they stand for: a suspension takes them away and has to be able
 	/// to put them back when the meal resumes.
-	private var ghostIcons: [Int: (item: DeletedItem, icon: any GhostIconPresenting)] = [:]
+	private var ghostIcons: [Int: (item: DeletedItem, icon: OverlayGhostIcon)] = [:]
 	private var assetSetup: AssetSetupWindowController?
 
 	public func applicationDidFinishLaunching(_ notification: Notification) {
@@ -120,19 +120,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		)
 		self.voice = voice
 
-		// The full-display overlay is the default renderer: it keeps the window still
-		// and moves the pet inside it, which measured ~39% less CPU while dragging and
-		// ~32% less at idle than moving a panel every frame. `--pet-panel` falls back to
-		// the moving-panel renderer until the overlay has been checked on a multi-display
-		// setup.
-		//
-		// It comes before the speech coordinator because the presenter also decides how
-		// the head bubble is drawn — as a panel of its own, or as another layer of the
-		// overlay — and the coordinator needs whichever it chose.
-		let petWindow: any PetPresenting =
-			CommandLine.arguments.contains("--pet-panel")
-			? PetWindowController(controller: controller, displaySpace: displaySpace)
-			: OverlayPetWindowController(controller: controller, displaySpace: displaySpace)
+		// The full-display overlay keeps the window still and moves the pet inside it,
+		// which measured ~39% less CPU while dragging and ~32% less at idle than moving
+		// a panel every frame. It also owns the head bubble and the ghost icons — layers
+		// of that same window — so it is built before the speech coordinator, which
+		// needs the bubble it chose.
+		let petWindow = OverlayPetWindowController(
+			controller: controller,
+			displaySpace: displaySpace
+		)
 		petWindow.menuProvider = { [weak self] _ in
 			// The status item owns the menu; borrow it for a right-click on the pet.
 			self?.statusItem?.popUpMenu(atScreenPoint: NSEvent.mouseLocation)
@@ -157,14 +153,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 			if suspended { self.speech?.hideBubble() }
 			self.placeGhostIcons(suspended: suspended)
 		}
-		// Self-labelling, so a performance trace can be told apart from one taken
-		// with the other renderer without guessing from the launch command.
+		// Self-labelling, so a performance trace can be told apart without guessing
+		// from the launch command.
 		DiagnosticsLog.shared.writeEvent(
 			"PetPresenter",
-			[
-				("Kind", CommandLine.arguments.contains("--pet-panel") ? "panel" : "overlay"),
-				("Displays", "\(displaySpace.displays.count)"),
-			]
+			[("Displays", "\(displaySpace.displays.count)")]
 		)
 
 		// Read at the moment a deletion is detected, when the icon's element is
@@ -311,7 +304,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 	}
 
 	private func showGhostIcon(
-		_ ghost: any GhostIconPresenting,
+		_ ghost: OverlayGhostIcon,
 		for item: DeletedItem,
 		petSize: Double
 	) {

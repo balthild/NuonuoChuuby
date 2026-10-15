@@ -1,13 +1,10 @@
 import AppKit
 
-/// The bubble's metrics and its one drawing implementation, shared by both
-/// renderers.
+/// The bubble's metrics and the one drawing routine they describe.
 ///
-/// The bubble is drawn into an `NSView` when it is a window of its own
-/// (`SpeechBubbleWindowController`) and into a `CGImage` cached on a `CALayer` when
-/// it lives in the pet's full-display overlay (`OverlaySpeechBubbleController`).
-/// Both have to produce the same picture, so the geometry and the drawing are here
-/// rather than in either renderer.
+/// It lives apart from `OverlaySpeechBubbleController`, which only rasterises the
+/// result and caches it, so the geometry and the picture can be tested without a
+/// window or a layer.
 @MainActor
 public enum SpeechBubbleDrawing {
 	public static let horizontalPadding: CGFloat = 12

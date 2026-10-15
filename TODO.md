@@ -278,7 +278,8 @@ landing / curious` 五种落地状态运行，且只有两条路：
      `position` 都被 CA 用 ~0.25 s 缓动动画过去，症状是「**她追着鼠标跑**」（方向永远指向鼠标、
      追不上、鼠标停下后过一会儿才到；气泡无此问题，因为它是 `NSWindow`）。
      修法：`pet.actions = ["position"/"bounds"/"transform"/"contents"/"hidden": NSNull()]`。
-  旧路径保留在 `--pet-panel` 后面（由 `Pet/PetPresenting.swift` 协议隔离），用于回退与对照。
+  旧路径当时保留在 `--pet-panel` 后面用于回退与对照；**已于 2026-10-15 连同渲染层协议一起删除**，
+  现在只有 overlay 这一条渲染路径。
   **未验证 / 已知行为差异：**
   - **多显示器完全未验证**（开发机单屏）。实现为每屏一块 overlay，宠物画在「含其中心点」的那块上，
     其余 overlay 的子层隐藏（完全不绘制 ⇒ 全透明 ⇒ 点击穿透）。
@@ -287,8 +288,8 @@ landing / curious` 五种落地状态运行，且只有两条路：
     不排除自身 PID，层级为 0 会让它自触发挂起 → 隐藏 → 恢复 → 挂起，形成可见闪烁。
 - **对话气泡也搬进了 overlay 图层（2026-10-13）**：气泡原先是一块独立的 `NSPanel`，跟着她每帧
   `setFrame`。现在它是同一块 overlay 里、宠物图层**之上**的 `CALayer`（`Dialogue/OverlaySpeechBubbleController.swift`），
-  只改 `position`。窗口版气泡保留给 `--pet-panel`（`SpeechBubbleWindowController`），两者共用一个
-  `Dialogue/SpeechBubbleDrawing.swift`，所以画的形状与量出的尺寸必然一致。
+  只改 `position`。当时窗口版气泡保留给 `--pet-panel`（`SpeechBubbleWindowController`），两者共用一个
+  `Dialogue/SpeechBubbleDrawing.swift`；窗口版随 `--pet-panel` 于 2026-10-15 一并删除，该文件现在只服务 overlay。
   实测（12 s「拖到窗口外→落屏幕底」，与同一场景的旧 trace 对照，主线程 Running / 12 s）：
   主线程 **1221 → 929 ms（−24%）**，全线程 **1676 → 1241 ms（−26%）**；
   `updatePetFrame` 子树 **148 → 22**（其中气泡本身 146 → 18）；`setFrame` **165 → 0**；
@@ -305,9 +306,8 @@ landing / curious` 五种落地状态运行，且只有两条路：
      而这笔开销只有 A/B（同一脚本跑新旧两版）才能归给它。**只做栈归因会系统性低估窗口移动的代价。**
   实现上必须注意：气泡的三种颜色都是动态颜色（随明暗主题变），所以缓存位图的键**必须含 appearance**；
   位图要按 `contentsScale` 光栅化，否则文字发虚；气泡层级从 `floating`(3) 一并降到 overlay 的层级
-  （2，进菜单栏条时 25），副作用是它与其它 floating 窗口的相对次序变了；`PetPresenting` 现在自己持有
-  `speechBubble`，因为两种渲染方式决定了气泡是窗口还是图层。`--pet-panel` 回退路径已实测仍走窗口气泡
-  （`speechBubble.getter → init → show → reposition` 都在协议身后被调用过）。
+  （2，进菜单栏条时 25），副作用是它与其它 floating 窗口的相对次序变了。（原先 `PetPresenting` 协议自己持有
+  `speechBubble`，因为两种渲染方式决定气泡是窗口还是图层；该协议与 `--pet-panel` 已于 2026-10-15 删除。）
 - **位置插值：1/60 s 的短动画（2026-10-13）**：模拟仍按 60 Hz tick，但 `position` 交给 CA 用
   **恰好一个 tick** 的线性动画插值，于是渲染服务器按显示器自身的 120 Hz 采样这条位置曲线。
   效果是位置从「每 16.7 ms 一跳」变成连续滑动（本机 `NSScreen.maximumFramesPerSecond == 120`）。

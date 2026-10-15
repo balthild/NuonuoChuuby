@@ -4,11 +4,11 @@ import Foundation
 /// The shapes the cheek-pinch overlay draws, in the pet's own point space
 /// (top-left origin, Y down) — the space the sprite is drawn in.
 ///
-/// This is `CheekPinchRenderer`'s sequence of Core Graphics calls restated as
-/// paths, one shape per call and in the same order, so the layer overlay and the
-/// bitmap composite are the same picture. The only conversion is the rig's
-/// runtime-frame pixels into the pet layer's points; every literal stays in the
-/// rig's own units.
+/// The overlay was once a bitmap composite of a copy of the cel, drawn with a
+/// sequence of Core Graphics calls; this is that same sequence, one shape per
+/// call and in the same order, so the layer renderer reproduces the picture. The
+/// only conversion is the rig's runtime-frame pixels into the pet layer's points;
+/// every literal stays in the rig's own units.
 enum CheekPinchShapes {
 	/// What a shape is painted with.
 	///

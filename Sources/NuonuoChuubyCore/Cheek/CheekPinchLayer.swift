@@ -4,13 +4,13 @@ import QuartzCore
 /// The pulled cheek drawn as vector sublayers of the pet's layer, instead of
 /// being composited into a copy of the sprite's bitmap.
 ///
-/// `CheekPinchRenderer` repaints a 384×384 image every frame the spring moves,
-/// which is a full CPU allocation and resample per frame — the cost the
-/// full-display overlay exists to avoid. The overlay is three to six small
-/// ellipses and a rectangle, so the render server can rasterise them instead.
+/// Compositing repainted a 384×384 image every frame the spring moved, which is a
+/// full CPU allocation and resample per frame — the cost the full-display overlay
+/// exists to avoid. The overlay is three to six small ellipses and a rectangle, so
+/// the render server can rasterise them instead.
 ///
 /// It is a sublayer of the pet's own layer, so it inherits the lean and the
-/// mirror flip for free, exactly as the baked-in version did.
+/// mirror flip for free.
 @MainActor
 final class CheekPinchLayer {
 	/// Everything the overlay never animates: every shape lands in the frame it
@@ -75,7 +75,7 @@ final class CheekPinchLayer {
 			y: state.geometry.cheekY * scale
 		)
 		let skin =
-			base.flatMap { CheekPinchRenderer.sampleColor($0, at: restPoint) }
+			base.flatMap { Self.sampleColor($0, at: restPoint) }
 			?? CGColor(red: 0.98, green: 0.90, blue: 0.89, alpha: 1)
 
 		let width = Double(container.bounds.width)
@@ -109,7 +109,7 @@ final class CheekPinchLayer {
 		case .skin:
 			return skin
 		case .ink:
-			return CheekPinchRenderer.inkColor(from: skin)
+			return Self.inkColor(from: skin)
 		case .blush(let alpha):
 			return CGColor(red: 0.96, green: 0.55, blue: 0.58, alpha: alpha)
 		case .mouth:
@@ -126,5 +126,51 @@ final class CheekPinchLayer {
 		layer.isHidden = true
 		layer.masksToBounds = false
 		return layer
+	}
+
+	/// The pixel colour of the sprite frame at a point, or nil if it is transparent
+	/// there — the cheek anchor can sit outside the silhouette mid-pull.
+	private static func sampleColor(_ image: CGImage, at point: CGPoint) -> CGColor? {
+		let x = Int(point.x.rounded())
+		let y = Int(point.y.rounded())
+		guard x >= 0, y >= 0, x < image.width, y < image.height else { return nil }
+
+		var pixel = [UInt8](repeating: 0, count: 4)
+		guard
+			let context = CGContext(
+				data: &pixel,
+				width: 1,
+				height: 1,
+				bitsPerComponent: 8,
+				bytesPerRow: 4,
+				space: CGColorSpaceCreateDeviceRGB(),
+				bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+			)
+		else { return nil }
+		context.draw(
+			image,
+			in: CGRect(x: -x, y: -(image.height - 1 - y), width: image.width, height: image.height)
+		)
+
+		let alpha = Double(pixel[3]) / 255
+		guard alpha > 0.2 else { return nil }
+		return CGColor(
+			red: Double(pixel[0]) / 255 / alpha,
+			green: Double(pixel[1]) / 255 / alpha,
+			blue: Double(pixel[2]) / 255 / alpha,
+			alpha: 1
+		)
+	}
+
+	/// The darker outline colour the cheek is stroked with, derived from the skin
+	/// it is filled with.
+	private static func inkColor(from color: CGColor) -> CGColor {
+		let components = color.components ?? [0.5, 0.4, 0.4, 1]
+		return CGColor(
+			red: (components[0] * 0.62).clamp(lower: 0, upper: 1),
+			green: (components[1] * 0.55).clamp(lower: 0, upper: 1),
+			blue: (components[2] * 0.58).clamp(lower: 0, upper: 1),
+			alpha: 0.85
+		)
 	}
 }

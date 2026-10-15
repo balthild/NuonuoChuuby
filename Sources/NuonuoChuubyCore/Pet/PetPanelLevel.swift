@@ -10,8 +10,4 @@ public enum PetPanelLevel {
 	/// filling a display and does not exclude our own process, so a level-0 pet
 	/// window would put her into a suspension loop with herself.
 	public static let pet = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 1)
-
-	/// The level of the windows that must keep drawing over her: the speech bubble
-	/// and the ghost icons.
-	public static let abovePet = NSWindow.Level(rawValue: pet.rawValue + 1)
 }

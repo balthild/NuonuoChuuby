@@ -27,7 +27,7 @@ public protocol GhostIconLayerHosting: AnyObject {
 /// server for every meal; a sublayer is composited with the pet she is walking
 /// towards, inside a window that never moves.
 @MainActor
-public final class OverlayGhostIcon: GhostIconPresenting {
+public final class OverlayGhostIcon {
 	/// Everything the icon never animates. `opacity` is deliberately absent, so the
 	/// fade-out is the one implicit animation it does get.
 	private static let noActions: [String: CAAction] = [

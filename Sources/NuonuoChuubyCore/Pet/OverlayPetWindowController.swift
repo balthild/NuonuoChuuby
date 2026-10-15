@@ -97,7 +97,15 @@ final class OverlayPetRootView: NSView {
 	override func hitTest(_ point: NSPoint) -> NSView? {
 		let local = convert(point, from: superview)
 		guard bounds.contains(local), petRect.contains(local) else { return nil }
-		return PetView.ellipseContains(bodyEllipse, petLocal(fromRoot: local)) ? self : nil
+		return Self.ellipseContains(bodyEllipse, petLocal(fromRoot: local)) ? self : nil
+	}
+
+	/// Whether `point` falls inside the pet's body ellipse, in the pet's own space.
+	static func ellipseContains(_ ellipse: CGRect, _ point: CGPoint) -> Bool {
+		guard ellipse.width > 0, ellipse.height > 0 else { return false }
+		let normalizedX = (point.x - ellipse.midX) / (ellipse.width / 2)
+		let normalizedY = (point.y - ellipse.midY) / (ellipse.height / 2)
+		return normalizedX * normalizedX + normalizedY * normalizedY <= 1
 	}
 
 	/// A point in the pet's own coordinate space, the space `cheekHitTest` and the
@@ -117,8 +125,7 @@ final class OverlayPetRootView: NSView {
 }
 
 /// Puts the pet on screen by drawing her into a full-display transparent window
-/// that never moves, instead of moving a small panel to where she is. This is the
-/// default renderer; `--pet-panel` selects `PetWindowController` instead.
+/// that never moves, instead of moving a small panel to where she is.
 ///
 /// The cost being attacked is the window-move transaction — `NSWindow._setFrameCommon:`
 /// plus the Core Animation commit — that a per-frame `setFrame` pays.
@@ -129,7 +136,7 @@ final class OverlayPetRootView: NSView {
 /// ~28% of main-thread CPU, more than the window move this overlay removes. A
 /// sublayer with `contents` set is only composited, so moving her is free.
 @MainActor
-public final class OverlayPetWindowController: NSObject, PetControllerDelegate, PetPresenting {
+public final class OverlayPetWindowController: NSObject, PetControllerDelegate {
 	/// What the pet's layer must never animate.
 	///
 	/// `position` is deliberately absent: it rides `FrameInterpolation`, so the render
@@ -195,9 +202,7 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 	public var menuProvider: ((NSEvent) -> NSMenu?)?
 	/// The bubble is a layer of these overlays, above her, rather than a window of
 	/// its own — which is what makes following her free for the bubble too.
-	public lazy var speechBubble: any SpeechBubblePresenting = OverlaySpeechBubbleController(
-		host: self
-	)
+	public lazy var speechBubble = OverlaySpeechBubbleController(host: self)
 	public var onPlacementChanged: ((PixelRect) -> Void)?
 	public var onSuspensionChanged: ((Bool) -> Void)?
 
@@ -230,7 +235,7 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 		applyPlacement(animated: false)
 	}
 
-	public func makeGhostIcon() -> any GhostIconPresenting {
+	public func makeGhostIcon() -> OverlayGhostIcon {
 		ghostIcons.removeAll { $0.isDismissed }
 		let ghost = OverlayGhostIcon(host: self)
 		ghostIcons.append(ghost)
@@ -257,7 +262,8 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 			root.layer?.isGeometryFlipped = true
 
 			let pet = CALayer()
-			// Pivot at the pet's bottom centre, matching the lean in `PetView`.
+			// Pivot at the pet's bottom centre, so the lean rotates on the ground
+			// rather than sliding her sideways.
 			pet.anchorPoint = CGPoint(x: 0.5, y: 1)
 			pet.contentsGravity = .resize
 			pet.minificationFilter = .linear
@@ -303,9 +309,8 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 		for ghost in ghostIcons { ghost.rebind() }
 	}
 
-	/// Mouse handling is the same as the moving-panel controller's, but the point
-	/// is taken in the **pet's** space so `cheekHitTest` and the pinch keep working
-	/// in the coordinates they already expect.
+	/// The point is taken in the **pet's** space, so `cheekHitTest` and the pinch keep
+	/// working in the coordinates they already expect.
 	private func wireGestures(root: OverlayPetRootView) {
 		root.onMouseDown = { [weak self] _, petLocal in
 			guard let self else { return }
@@ -345,7 +350,9 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 		return PixelPoint(x: Double(location.x), y: displaySpace.primaryHeight - Double(location.y))
 	}
 
-	/// Mirroring is applied after the lean, matching the order `PetView` uses.
+	/// Mirroring is applied after the lean: the lean is a rotation about her foot, and
+	/// mirroring that afterwards is what puts a pulled cheek's lean on the same side of
+	/// the screen as the pointer.
 	private func petTransform(lean: Double, facing: Double) -> CATransform3D {
 		let rotate = CATransform3DMakeRotation(CGFloat(lean) * .pi / 180, 0, 0, 1)
 		guard facing < 0 else { return rotate }
