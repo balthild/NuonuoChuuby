@@ -52,6 +52,54 @@ struct DesktopIconIndexTests {
 		#expect(!index.isAvailable)
 	}
 
+	@Test("A deletion is read from the live tree, not only from the index")
+	func deletionReadsTheLiveTree() {
+		var read = [DesktopIcon(name: "kept", position: PixelPoint(x: 1, y: 1), size: 56)]
+		let index = DesktopIconIndex(reader: { read })
+		index.refresh()
+
+		// A folder created, and deleted, since the last refresh: the index never
+		// held it, so a deletion of it must not fall back to the cursor.
+		read = [DesktopIcon(name: "fresh", position: PixelPoint(x: 700, y: 400), size: 56)]
+		#expect(index.icon(of: "fresh") == nil)
+		#expect(index.iconForDeletion(of: "fresh")?.position == PixelPoint(x: 700, y: 400))
+		#expect(index.iconForDeletion(of: "fresh")?.size == 56)
+
+		// The eaten icon is dropped from the cache, so it is not offered as a
+		// spot to walk over to and lick while the element is still in Finder's
+		// tree.
+		#expect(!index.positions.contains(PixelPoint(x: 700, y: 400)))
+		#expect(index.icon(of: "fresh") == nil)
+	}
+
+	@Test("A failed read falls back to the snapshot for this call and empties the cache")
+	func deletionFallsBackToTheIndex() {
+		var read: [DesktopIcon]? = [
+			DesktopIcon(name: "a", position: PixelPoint(x: 2, y: 3), size: 64),
+			// A second icon, so "the cache was emptied" and "the eaten name was
+			// dropped" cannot produce the same dictionary.
+			DesktopIcon(name: "kept", position: PixelPoint(x: 9, y: 9), size: 56),
+		]
+		let index = DesktopIconIndex(reader: { read })
+		index.refresh()
+
+		// Accessibility lost, or Finder gone: the live read answers nothing. The
+		// icon's last known position still answers this deletion, so she walks to
+		// it rather than to the cursor...
+		read = nil
+		#expect(index.icon(of: "a") != nil)
+		#expect(index.iconForDeletion(of: "a")?.position == PixelPoint(x: 2, y: 3))
+
+		// ...but the snapshot is not kept alive to do so: the cache always says
+		// what the last read said, and a failed read says nothing.
+		#expect(index.icons.isEmpty)
+		#expect(index.icon(of: "kept") == nil)
+
+		let empty = DesktopIconIndex(reader: { nil })
+		empty.refresh()
+		#expect(empty.iconForDeletion(of: "a") == nil)
+	}
+
 	@Test("The real reader is safe to call whatever the permission state")
 	func realReaderDoesNotTrap() {
 		_ = DesktopIconIndex.readFinderIcons()

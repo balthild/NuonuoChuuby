@@ -184,7 +184,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		// while the confirmed meal may start several seconds later.
 		let deletionWatcher = FileDeletionWatcher(anchorProvider: {
 			[weak desktopIcons, weak mouseMonitor] name in
-			if let icon = desktopIcons?.icon(of: name) {
+			if let icon = desktopIcons?.iconForDeletion(of: name) {
 				return FileDeletionWatcher.Anchor(
 					point: icon.position,
 					exact: true,

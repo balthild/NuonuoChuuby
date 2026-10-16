@@ -21,8 +21,10 @@ public struct DesktopIcon: Sendable, Equatable {
 
 /// Reads Finder's **real** desktop icon positions through Accessibility.
 ///
-/// The icon's accessibility element disappears the instant it is deleted, so this
-/// has to be a periodic index (name → position) that a deletion event looks up.
+/// The icon's accessibility element disappears shortly after it is deleted, so
+/// this is a periodic index (name → position) that a deletion event looks up —
+/// plus one live read at the moment of detection, while the element is still
+/// there.
 ///
 /// Accessibility is a **soft** dependency: without it (or with Finder not running)
 /// `icons` is empty and callers fall back to ``DesktopIconGrid``.
@@ -53,17 +55,41 @@ public final class DesktopIconIndex {
 
 	public func icon(of name: String) -> DesktopIcon? { icons[name] }
 
+	/// The icon behind a name at the moment a deletion is detected.
+	///
+	/// Reads the tree rather than trusting the periodic snapshot, because an icon
+	/// created and deleted between two refreshes was never in the snapshot at all
+	/// — and the deleted icon's own element is still in Finder's tree at this
+	/// instant (measured: it survives the unlink by about 0.7 s), so this is the
+	/// last chance to ask where it really was. The reading becomes the new
+	/// snapshot, and the name is dropped from it: an icon known to be gone must not
+	/// be offered as one to walk over to and lick. Dropping it after the read also
+	/// covers the element still being there, which is the common case.
+	///
+	/// The pre-read snapshot is kept only as this call's fallback, so a failed read
+	/// (or an element that has already gone) still answers with where the icon was
+	/// instead of sending her to the cursor. The snapshot itself is not kept — the
+	/// cache always says what the last read said, and a failed read says nothing,
+	/// exactly as in ``refresh``.
+	public func iconForDeletion(of name: String) -> DesktopIcon? {
+		let cached = icons[name]
+		refresh()
+		return icons.removeValue(forKey: name) ?? cached
+	}
+
 	public func refresh() {
-		if let read = reader() {
-			icons = Dictionary(read.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
-		} else {
-			icons = [:]
-		}
+		icons = readIcons() ?? [:]
 		// Logged only when the count changes; a count of 0 means Accessibility
 		// was not granted.
 		guard icons.count != lastLoggedCount else { return }
 		lastLoggedCount = icons.count
 		DiagnosticsLog.shared.writeEvent("DesktopIconIndex", [("Icons", "\(icons.count)")])
+	}
+
+	/// The live reading keyed by name, or nil when the read itself failed.
+	private func readIcons() -> [String: DesktopIcon]? {
+		guard let read = reader() else { return nil }
+		return Dictionary(read.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
 	}
 
 	public func start(interval: Double = 2) {
