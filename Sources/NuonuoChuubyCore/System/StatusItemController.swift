@@ -218,6 +218,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 		public var setQuiet: (Bool) -> Void
 		public var setDeleteReaction: (Bool) -> Void
 		public var setBubbles: (Bool) -> Void
+		public var setLogging: (Bool) -> Void
 		public var setMuted: (Bool) -> Void
 		public var setLaunchAtLogin: (Bool) -> Void
 		public var isLaunchAtLogin: () -> Bool
@@ -230,6 +231,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 			setQuiet: @escaping (Bool) -> Void,
 			setDeleteReaction: @escaping (Bool) -> Void,
 			setBubbles: @escaping (Bool) -> Void,
+			setLogging: @escaping (Bool) -> Void,
 			setMuted: @escaping (Bool) -> Void,
 			setLaunchAtLogin: @escaping (Bool) -> Void,
 			isLaunchAtLogin: @escaping () -> Bool,
@@ -241,6 +243,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 			self.setQuiet = setQuiet
 			self.setDeleteReaction = setDeleteReaction
 			self.setBubbles = setBubbles
+			self.setLogging = setLogging
 			self.setMuted = setMuted
 			self.setLaunchAtLogin = setLaunchAtLogin
 			self.isLaunchAtLogin = isLaunchAtLogin
@@ -258,6 +261,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 	private let quietItem = NSMenuItem()
 	private let deleteReactionItem = NSMenuItem()
 	private let bubblesItem = NSMenuItem()
+	private let loggingItem = NSMenuItem()
 	private let mutedItem = NSMenuItem()
 	private let launchItem = NSMenuItem()
 	private let quitItem = NSMenuItem()
@@ -365,6 +369,13 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 
 		menu.addItem(.separator())
 
+		// The two switches about the app rather than about her. Logging trades the
+		// ~26 µs a line that writing one costs.
+		loggingItem.title = "记录日志"
+		loggingItem.target = self
+		loggingItem.action = #selector(toggleLogging)
+		menu.addItem(loggingItem)
+
 		launchItem.title = "开机自启"
 		launchItem.target = self
 		launchItem.action = #selector(toggleLaunchAtLogin)
@@ -383,6 +394,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 		quietItem.state = settings.quietMode ? .on : .off
 		deleteReactionItem.state = settings.reactToDeletes ? .on : .off
 		bubblesItem.state = settings.showSpeechBubbles ? .on : .off
+		loggingItem.state = settings.loggingEnabled ? .on : .off
 		// The item reads as "mute", so it is checked when sound is off.
 		mutedItem.state = settings.soundEnabled ? .off : .on
 		launchItem.state = callbacks.isLaunchAtLogin() ? .on : .off
@@ -427,6 +439,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 		callbacks.setDeleteReaction(!settings.reactToDeletes)
 	}
 	@objc private func toggleBubbles() { callbacks.setBubbles(!settings.showSpeechBubbles) }
+	@objc private func toggleLogging() { callbacks.setLogging(!settings.loggingEnabled) }
 	@objc private func toggleMuted() { callbacks.setMuted(settings.soundEnabled) }
 	@objc private func toggleLaunchAtLogin() {
 		callbacks.setLaunchAtLogin(!callbacks.isLaunchAtLogin())

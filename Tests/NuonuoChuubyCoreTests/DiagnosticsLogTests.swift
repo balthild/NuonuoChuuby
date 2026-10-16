@@ -83,4 +83,72 @@ struct DiagnosticsLogTests {
 		// would take, which is what an unreopened handle would have produced.
 		#expect(liveText.count < 300)
 	}
+
+	/// The switch and the lines around it. A log that simply stops looks the same
+	/// whether it was turned off or the app died, so the change itself is recorded —
+	/// and the "off" line has to land *before* the flag moves, or it is the first
+	/// line dropped.
+	@Test("Logging off records the change last, and then stays quiet")
+	func disablingLogsTheChangeItself() throws {
+		let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+			.appendingPathComponent("nuonuo-gate-\(UUID().uuidString)")
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let url = directory.appendingPathComponent("activity.log")
+
+		let log = DiagnosticsLog()
+		log.configure(fileURL: url)
+		log.writeEvent("BeforeOff")
+
+		log.setEnabled(false)
+		log.writeEvent("WhileOff")
+		log.write("while off")
+
+		let text = try String(contentsOf: url, encoding: .utf8)
+		#expect(text.contains("event=BeforeOff"))
+		#expect(text.contains("event=LoggingDisabled"), "the switch itself is recorded")
+		#expect(!text.contains("WhileOff"), "and nothing after it is")
+		#expect(!text.contains("while off"))
+		// The off line is the last one there is.
+		let lines = text.split(separator: "\n").map(String.init)
+		#expect(lines.last?.contains("event=LoggingDisabled") == true)
+		// Setting it off again changes nothing, so it must not add another line.
+		log.setEnabled(false)
+		#expect(try String(contentsOf: url, encoding: .utf8).count == text.count)
+	}
+
+	@Test("Logging on again records the change and resumes")
+	func enablingResumesAndLogs() throws {
+		let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+			.appendingPathComponent("nuonuo-gate-\(UUID().uuidString)")
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let url = directory.appendingPathComponent("activity.log")
+
+		let log = DiagnosticsLog()
+		log.configure(fileURL: url)
+		log.setEnabled(false)
+		log.setEnabled(true)
+		log.writeEvent("AfterOn")
+
+		let text = try String(contentsOf: url, encoding: .utf8)
+		#expect(text.contains("event=LoggingDisabled"))
+		#expect(text.contains("event=LoggingEnabled"))
+		#expect(text.contains("event=AfterOn"))
+		#expect(log.isEnabled)
+	}
+
+	/// A run that starts with logging off writes nothing at all — not even a
+	/// ProcessStarted line — which is what the launch order in AppDelegate is for.
+	@Test("A run configured off writes nothing from the start")
+	func startsQuiet() throws {
+		let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+			.appendingPathComponent("nuonuo-quiet-\(UUID().uuidString)")
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let url = directory.appendingPathComponent("activity.log")
+
+		let log = DiagnosticsLog()
+		log.configure(fileURL: url, enabled: false)
+		log.writeEvent("ProcessStarted")
+
+		#expect(!FileManager.default.fileExists(atPath: url.path))
+	}
 }

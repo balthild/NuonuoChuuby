@@ -29,6 +29,14 @@ public final class DiagnosticsLog: @unchecked Sendable {
 	private var handle: FileHandle?
 	/// The log directory only needs creating once per configured file.
 	private var hasCreatedDirectory = false
+	/// Whether lines are written at all. Off means every caller keeps calling and
+	/// nothing is written, which is the point: the alternative is a flag at every
+	/// call site, and a diagnostic that is missing because its caller was gated is
+	/// indistinguishable from one that never happened.
+	///
+	/// Never changed behind the caller's back — ``setEnabled(_:)`` is the only way,
+	/// and it records the change either way.
+	public private(set) var isEnabled = true
 
 	public init() {}
 
@@ -38,7 +46,8 @@ public final class DiagnosticsLog: @unchecked Sendable {
 
 	public func configure(
 		fileURL: URL,
-		maximumBytes: Int = DiagnosticsLog.defaultMaximumLogBytes
+		maximumBytes: Int = DiagnosticsLog.defaultMaximumLogBytes,
+		enabled: Bool = true
 	) {
 		lock.lock()
 		defer { lock.unlock() }
@@ -47,6 +56,10 @@ public final class DiagnosticsLog: @unchecked Sendable {
 		hasCreatedDirectory = false
 		maximumLogBytes = maximumBytes
 		self.fileURL = fileURL
+		// Set here rather than through ``setEnabled(_:)``, because a launch is not the
+		// operation of switching logging off: a run that starts quiet must not leave
+		// a line saying it was turned off.
+		isEnabled = enabled
 	}
 
 	public func write(_ message: String) {
@@ -66,13 +79,41 @@ public final class DiagnosticsLog: @unchecked Sendable {
 	/// carries a per-run id instead, which orders lines within one run and cannot
 	/// date any of them.
 	public func writeEvent(_ name: String, _ fields: [(String, String)] = []) {
+		append(eventLine(name, fields))
+	}
+
+	/// Turns logging on or off, recording the change either way.
+	///
+	/// This is the one line that is never suppressed: a log that simply stops looks
+	/// the same whether it was switched off, the app hung, or the app died. Turning
+	/// it off is therefore written *before* the flag moves, so it is the last line in
+	/// the file rather than the first one dropped.
+	///
+	/// Nothing is pending at that moment and so nothing can be lost: every line is
+	/// written to the file as it arrives, with no queue between the caller and the
+	/// file descriptor. The ordering above is what makes that structural rather than
+	/// a coincidence of the current implementation.
+	public func setEnabled(_ enabled: Bool) {
+		lock.lock()
+		defer { lock.unlock() }
+		guard isEnabled != enabled else { return }
+		if enabled {
+			isEnabled = true
+			writeLineLocked(eventLine("LoggingEnabled", []))
+		} else {
+			writeLineLocked(eventLine("LoggingDisabled", []))
+			isEnabled = false
+		}
+	}
+
+	private func eventLine(_ name: String, _ fields: [(String, String)]) -> String {
 		let rendered =
 			fields
 			.map {
 				"\($0.0)=\"\(DiagnosticsPrivacy.field(key: $0.0, value: $0.1, reference: reference))\" "
 			}
 			.joined()
-		append("[\(timestamp())] TRACE event=\(name) \(rendered)")
+		return "[\(timestamp())] TRACE event=\(name) \(rendered)"
 	}
 
 	/// A stable-within-this-session, irreversible stand-in for user content.
@@ -89,6 +130,12 @@ public final class DiagnosticsLog: @unchecked Sendable {
 	private func append(_ line: String) {
 		lock.lock()
 		defer { lock.unlock() }
+		guard isEnabled else { return }
+		writeLineLocked(line)
+	}
+
+	/// Writes one line. The lock is already held.
+	private func writeLineLocked(_ line: String) {
 		guard let fileURL else { return }
 		do {
 			let manager = FileManager.default

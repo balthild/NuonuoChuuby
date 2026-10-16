@@ -30,15 +30,22 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 
 		let environment = AppEnvironment()
 		self.environment = environment
-		DiagnosticsLog.shared.configure(fileURL: environment.logPath)
+
+		// Settings first, because the log needs to know whether to record anything
+		// before its first line: a run with logging off writes nothing at all rather
+		// than a burst of startup events followed by silence.
+		let settingsStore = SettingsStore(path: environment.settingsPath)
+		self.settingsStore = settingsStore
+		settings = settingsStore.load()
+
+		DiagnosticsLog.shared.configure(
+			fileURL: environment.logPath,
+			enabled: settings.loggingEnabled
+		)
 		DiagnosticsLog.shared.writeEvent(
 			"ProcessStarted",
 			[("Bundle", AppEnvironment.bundleIdentifier)]
 		)
-
-		let settingsStore = SettingsStore(path: environment.settingsPath)
-		self.settingsStore = settingsStore
-		settings = settingsStore.load()
 
 		Task { @MainActor in
 			guard let locator = await resolveAssets(environment: environment) else {
@@ -425,6 +432,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 				},
 				setBubbles: { [weak self] on in
 					self?.update { $0.showSpeechBubbles = on }
+				},
+				setLogging: { [weak self] on in
+					guard let self else { return }
+					self.update { $0.loggingEnabled = on }
+					// Applied after the setting is stored, so the line recording the
+					// change is the last one written before it goes quiet.
+					DiagnosticsLog.shared.setEnabled(self.settings.loggingEnabled)
 				},
 				setMuted: { [weak self] soundEnabled in
 					guard let self else { return }

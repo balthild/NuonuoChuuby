@@ -17,6 +17,9 @@ public struct PetSettings: Sendable, Equatable, Codable {
 	public var voiceVolume: Double = 0.72
 	public var petSize: Double = PetSizePolicy.defaultSize
 	public var watchedFolders: [String] = []
+	/// Whether the diagnostics log records anything. On by default: a bug report
+	/// without a log is most of the value gone, and the cost is ~26 µs a line.
+	public var loggingEnabled: Bool = true
 
 	public init() {}
 
