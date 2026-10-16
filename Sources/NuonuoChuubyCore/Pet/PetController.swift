@@ -138,7 +138,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var activeMeal: DeletedItem?
 	private var burstTracker = DeletionBurstTracker()
 	/// Simulated seconds until her next unprompted remark about how she feels.
-	private var selfReportRemaining = PetController.selfReportInterval
+	private var selfReportRemaining: Double
 	/// Whether the lick under way is aimed at a real Finder icon rather than the
 	/// guessed grid, which is what she can taste when it finishes.
 	private var iconLickUsedRealIcons = false
@@ -228,10 +228,15 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	/// How long she goes between unprompted remarks.
 	///
-	/// Deliberately not jittered, unlike everything else that varies: this one is
-	/// the only remark with no event behind it, and drawing it from ``random`` would
-	/// shift the sequence every other seeded decision in a run is pinned to.
-	private static let selfReportInterval: Double = 70
+	/// Jittered like everything else she does, which means it draws from ``random``
+	/// and so shifts the sequence every seeded value in a run is pinned to.
+	///
+	/// TODO: `GroundWalkTests.aLongWalkIsNotTeleported` fails for that shift — it
+	/// steps a fixed 15 s, inside which she now finishes the walk and takes a second
+	/// one. The test has to stop depending on unrelated draws.
+	private static func selfReportInterval(using random: inout PetRandom) -> Double {
+		Double.random(in: 45...95, using: &random)
+	}
 
 	/// How much a box must grow in one step before she remarks on it, so the
 	/// pixel of drift a drag-resize leaves behind is not a window "getting big".
@@ -319,6 +324,7 @@ public final class PetController: SpriteAnimatorDelegate {
 			displaySpace.displays.first?.visibleFrame ?? PixelRect(x: 0, y: 0, width: 1440, height: 900)
 		self.foot = PixelPoint(x: home.centerX, y: home.bottom)
 		self.idleRemaining = Double.random(in: 0.5...1.6, using: &random)
+		self.selfReportRemaining = Self.selfReportInterval(using: &random)
 
 		animator.delegate = self
 		animator.play("idle")
@@ -2079,7 +2085,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		ignoredLandingSeconds = max(0, ignoredLandingSeconds - delta)
 		selfReportRemaining -= delta
 		if selfReportRemaining <= 0 {
-			selfReportRemaining = Self.selfReportInterval
+			selfReportRemaining = Self.selfReportInterval(using: &random)
 			reportOwnMood()
 		}
 	}
