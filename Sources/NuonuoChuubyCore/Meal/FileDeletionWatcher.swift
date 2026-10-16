@@ -101,7 +101,17 @@ public final class FileDeletionWatcher {
 		let anchors = anchorProvider(names)
 		let now = Date()
 		for (path, name) in zip(outcome.deleted, names) {
-			guard let anchor = anchors[name] else { continue }
+			// The provider answers for every name it is given, so this cannot fire
+			// today. It is logged rather than skipped silently because a dropped
+			// anchor means a deleted file she never goes for, which looks exactly
+			// like a file she never saw.
+			guard let anchor = anchors[name] else {
+				DiagnosticsLog.shared.writeEvent(
+					"DeletionIgnored",
+					[("Reason", "anchor"), ("Count", "1")]
+				)
+				continue
+			}
 			detectors.noteRemoval(
 				DeletionMealDetector.Pending(
 					name: name,

@@ -205,11 +205,17 @@ struct FreeStandingWalkTests {
 		#expect(rig.controller.state == .idle, "the meal finishes")
 	}
 
-	/// Records the two ends of a meal, which is where the ghost icon lives.
+	/// Records the three moments of a meal's life: the queue entry, which is where
+	/// the ghost icon first goes up, and the two ends of the walk.
 	@MainActor
 	private final class MealSpy: PetMealDelegate {
+		var enqueued: [[Int]] = []
 		var begun: [Int] = []
 		var finished: [Int] = []
+
+		func petController(_ controller: PetController, didEnqueueMeals items: [DeletedItem]) {
+			enqueued.append(items.map(\.id))
+		}
 
 		func petController(_ controller: PetController, didBeginMeal item: DeletedItem) {
 			begun.append(item.id)
@@ -218,6 +224,44 @@ struct FreeStandingWalkTests {
 		func petController(_ controller: PetController, didFinishMeal item: DeletedItem) {
 			finished.append(item.id)
 		}
+	}
+
+	@Test("The icons go up when the files are deleted, not when she sets off")
+	func iconsAppearBeforeTheWalk() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+		rig.controller.debugPlaceOnSurface(rig.floor)
+		// Asleep, so she certainly cannot set off for either of them yet.
+		rig.controller.debugBeginSleep()
+
+		let spy = MealSpy()
+		rig.controller.mealDelegate = spy
+
+		let accepted = rig.controller.enqueueMeals([
+			DeletedItem(
+				id: 1,
+				originalPath: "/tmp/a.txt",
+				displayName: "a.txt",
+				detectedAt: Date(),
+				anchor: Self.spot,
+				exactAnchor: true
+			),
+			DeletedItem(
+				id: 2,
+				originalPath: "/tmp/b.txt",
+				displayName: "b.txt",
+				detectedAt: Date(),
+				anchor: PixelPoint(x: Self.spot.x + 120, y: Self.spot.y),
+				exactAnchor: true
+			),
+		])
+		#expect(accepted == 2)
+		#expect(spy.enqueued == [[1, 2]], "both icons are up while she is still asleep")
+		#expect(spy.begun.isEmpty, "and she has not set off for either")
+
+		// Waking for the meal she takes them in the order they arrived.
+		run(rig, upTo: 2400) { spy.begun.count == 2 }
+		#expect(spy.begun == [1, 2], "the same items, in the same order, when she does set off")
 	}
 
 	@Test("An interruption that is not a drag hands the meal back instead of losing it")

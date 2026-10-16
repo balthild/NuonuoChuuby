@@ -281,22 +281,24 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 
 	// MARK: - PetMealDelegate
 
+	/// The files are gone, so their icons go up now, at the positions and sizes
+	/// they had — she may walk to some of them much later, and one that only
+	/// appeared as she set off read as a deletion she noticed late.
+	public func petController(_ controller: PetController, didEnqueueMeals items: [DeletedItem]) {
+		for item in items {
+			placeGhost(for: item, petSize: controller.petSize)
+		}
+	}
+
 	public func petController(_ controller: PetController, didBeginMeal item: DeletedItem) {
-		// Logged with its anchor and whether that anchor is the icon's real position
-		// or a fallback, so "the ghost is in the wrong place" is answerable from the log.
-		DiagnosticsLog.shared.writeEvent(
-			"GhostShown",
-			[
-				("Name", item.displayName),
-				("Anchor", "\(Int(item.anchor.x)),\(Int(item.anchor.y))"),
-				("Size", item.iconSize.map { String(format: "%.0f", $0) } ?? "fallback"),
-				("Exact", "\(item.exactAnchor)"),
-			]
-		)
-		let ghost = petWindow?.makeGhostIcon()
-		guard let ghost else { return }
-		showGhostIcon(ghost, for: item, petSize: controller.petSize)
-		ghostIcons[item.id] = (item: item, icon: ghost)
+		// The ghost is already up from the deletion. Only an interrupted meal —
+		// pinched, dragged, put away — has taken its ghost down, and this is where
+		// that one comes back.
+		if let entry = ghostIcons[item.id] {
+			showGhostIcon(entry.icon, for: entry.item, petSize: controller.petSize)
+		} else {
+			placeGhost(for: item, petSize: controller.petSize)
+		}
 	}
 
 	public func petController(_ controller: PetController, didFinishMeal item: DeletedItem) {
@@ -312,6 +314,25 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		visual: MealConsumptionVisual
 	) {
 		ghostIcons[item.id]?.icon.update(visual)
+	}
+
+	/// Puts a ghost on screen for a file that is gone.
+	private func placeGhost(for item: DeletedItem, petSize: Double) {
+		// Logged with its anchor and whether that anchor is the icon's real position
+		// or a fallback, so "the ghost is in the wrong place" is answerable from the log.
+		DiagnosticsLog.shared.writeEvent(
+			"GhostShown",
+			[
+				("Name", item.displayName),
+				("Anchor", "\(Int(item.anchor.x)),\(Int(item.anchor.y))"),
+				("Size", item.iconSize.map { String(format: "%.0f", $0) } ?? "fallback"),
+				("Exact", "\(item.exactAnchor)"),
+			]
+		)
+		let ghost = petWindow?.makeGhostIcon()
+		guard let ghost else { return }
+		showGhostIcon(ghost, for: item, petSize: petSize)
+		ghostIcons[item.id] = (item: item, icon: ghost)
 	}
 
 	private func showGhostIcon(

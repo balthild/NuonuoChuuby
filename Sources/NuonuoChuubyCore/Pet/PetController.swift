@@ -22,6 +22,11 @@ extension PetControllerDelegate {
 
 @MainActor
 public protocol PetMealDelegate: AnyObject {
+	/// Items joined the meal queue. Their fake icons go up now, where the files
+	/// were, rather than when she sets off for them — she may not get to them for a
+	/// while, and an icon that stays missing until then reads as a deletion she
+	/// never noticed.
+	func petController(_ controller: PetController, didEnqueueMeals items: [DeletedItem])
 	func petController(_ controller: PetController, didBeginMeal item: DeletedItem)
 	func petController(_ controller: PetController, didFinishMeal item: DeletedItem)
 	/// Where the fake icon is and how it is drawn for this tick of the chomping
@@ -34,6 +39,8 @@ public protocol PetMealDelegate: AnyObject {
 }
 
 extension PetMealDelegate {
+	public func petController(_ controller: PetController, didEnqueueMeals items: [DeletedItem]) {}
+
 	public func petController(
 		_ controller: PetController,
 		didUpdateMeal item: DeletedItem,
@@ -1092,7 +1099,7 @@ public final class PetController: SpriteAnimatorDelegate {
 			return 0
 		}
 
-		var accepted = 0
+		var acceptedItems: [DeletedItem] = []
 		let hadMealsPending = activeMeal != nil || !mealQueue.isEmpty
 		for item in items {
 			guard
@@ -1105,9 +1112,9 @@ public final class PetController: SpriteAnimatorDelegate {
 				break
 			}
 			mealQueue.enqueue(item)
-			accepted += 1
+			acceptedItems.append(item)
 		}
-		guard accepted > 0 else { return 0 }
+		guard !acceptedItems.isEmpty else { return 0 }
 
 		if burstTracker.register(detectedAt: Date()) {
 			announce(.buffet, voice: .positive, priority: .important)
@@ -1117,16 +1124,19 @@ public final class PetController: SpriteAnimatorDelegate {
 			announce(.mealSpotted, voice: .question, priority: .normal)
 		}
 
+		// Their icons go up straight away, whether or not she can set off now.
+		mealDelegate?.petController(self, didEnqueueMeals: acceptedItems)
+
 		// Being inside a window is no reason to sit out a meal: she leaves through
 		// whichever wall faces the food and runs to it.
 		let escaping = WindowEnclosureBehaviorPolicy.shouldEscapeForMeal(
 			isEnclosed: enclosure != nil,
 			pendingMeals: mealQueue.count
 		)
-		guard activeMeal == nil else { return accepted }
+		guard activeMeal == nil else { return acceptedItems.count }
 		if escaping {
 			_ = beginNextMeal()
-			return accepted
+			return acceptedItems.count
 		}
 		// A meal is not something she sleeps through: she is woken for it. The
 		// other steps she can be interrupted at are the ones she is not already
@@ -1145,7 +1155,7 @@ public final class PetController: SpriteAnimatorDelegate {
 			// is waiting rather than going silent about the food she just saw.
 			announce(.hungryRequestQueued, voice: .question, priority: .normal)
 		}
-		return accepted
+		return acceptedItems.count
 	}
 
 	/// Starts walking to the next queued meal. Returns false when there is none.
