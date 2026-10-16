@@ -242,7 +242,7 @@ Sources/NuonuoChuubyCore/
 ```
 
 **保持不变**：`App/ Sprite/ Life/ Voice/ Dialogue/ Cheek/ Meal/ Asset/ Settings/ System/`、
-`Makefile`、`Tools/`、`App/Info.plist`。
+`Makefile`、`Tools/`、`App/Info.plist.template`。
 
 ### 4.1 类型草图（**草图，不是圣旨**；实施时可调整，但要保持语义）
 

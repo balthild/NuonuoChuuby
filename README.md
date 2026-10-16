@@ -24,7 +24,7 @@ brew upgrade --cask nuonuo-chubby
 
 ```sh
 git submodule update --init     # 取上游素材仓库
-make run                        # 构建、打包、签名并启动
+make rerun                      # 构建、打包、签名并启动
 ```
 
 `make help` 列出全部目标。
@@ -37,7 +37,7 @@ make run                        # 构建、打包、签名并启动
 | `Sources/NuonuoChuubyCore/` | 全部逻辑与界面 |
 | `Sources/NuonuoChuubyCore/Asset/AssetManifest.swift` | 生成的素材清单（不提交，每次构建重生成） |
 | `Tests/` | swift-testing 测试 |
-| `App/Info.plist` | 打包时补上版本号 |
+| `App/Info.plist.template` | 拼装时由 `envsubst` 补上 bundle id 与版本号 |
 | `Tools/` | 素材清单生成/链接、签名、证书脚本 |
 | `Makefile` | 格式化、构建、测试、打包、签名 |
 | `Vendor/JiuNuoDesktopPet/` | 上游素材仓库（submodule） |
@@ -112,14 +112,14 @@ xattr -dr com.apple.quarantine /Applications/NuonuoChuuby.app
 | `make build` / `test` | 构建 / 跑测试 |
 | `make app` | 拼装 `.app` |
 | `make sign` | 签名（见上） |
-| `make run` / `rerun` | 构建、签名并启动；`rerun` 可带参数 |
+| `make rerun` | 构建、签名并启动（可带参数）。产物是 `NuonuoChuuby-Dev.app`，bundle id 是 `com.balthild.NuonuoChuuby-Dev`，与正式安装的那份互不干扰 |
 | `make package` | 产出分发包 |
 | `make reset-data` | 清空设置与存档 |
 | `make clean` | 清理构建产物与生成的素材清单 |
 
 调试用的启动参数：`--demo-pinch` 会自动演示一次捏脸；`--demo-lick` 会在启动后半秒自动去舔一个桌面图标（用来验证走过去、舔完之后的坠落，不必等她自己饿）。
 
-用 `make run`（或 `open`）来启动：只有经 LaunchServices 启动，macOS 才会正常呈现授权请求。
+用 `make rerun`（或 `open`）来启动：只有经 LaunchServices 启动，macOS 才会正常呈现授权请求。
 
 ## 数据位置
 
