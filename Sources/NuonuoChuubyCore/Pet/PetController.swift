@@ -228,12 +228,8 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	/// How long she goes between unprompted remarks.
 	///
-	/// Jittered like everything else she does, which means it draws from ``random``
-	/// and so shifts the sequence every seeded value in a run is pinned to.
-	///
-	/// TODO: `GroundWalkTests.aLongWalkIsNotTeleported` fails for that shift — it
-	/// steps a fixed 15 s, inside which she now finishes the walk and takes a second
-	/// one. The test has to stop depending on unrelated draws.
+	/// Drawn from ``random`` like everything else she does, so adding or removing
+	/// any consumer shifts every seeded draw that follows it.
 	private static func selfReportInterval(using random: inout PetRandom) -> Double {
 		Double.random(in: 45...95, using: &random)
 	}
