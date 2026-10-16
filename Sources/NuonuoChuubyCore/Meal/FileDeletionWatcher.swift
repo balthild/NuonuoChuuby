@@ -98,6 +98,10 @@ public final class FileDeletionWatcher {
 		}
 
 		let names = outcome.deleted.map { ($0 as NSString).lastPathComponent }
+		// A rename-only batch has nothing to look up, and the lookup is a full read
+		// of Finder's tree — so it is not made for one.
+		guard !names.isEmpty else { return }
+
 		let anchors = anchorProvider(names)
 		let now = Date()
 		for (path, name) in zip(outcome.deleted, names) {

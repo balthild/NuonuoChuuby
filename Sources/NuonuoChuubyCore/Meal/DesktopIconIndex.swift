@@ -19,6 +19,32 @@ public struct DesktopIcon: Sendable, Equatable {
 	}
 }
 
+/// What one attempt at reading Finder's desktop icons produced.
+///
+/// The failure cases are named rather than collapsed into an empty reading: from
+/// the outside they all look like "she does not know where the icons are", and
+/// telling them apart is the whole question when a ghost lands in the wrong
+/// place.
+public enum IconReading: Sendable, Equatable {
+	case icons([DesktopIcon])
+	case unavailable(Failure)
+
+	public enum Failure: String, Sendable {
+		/// Accessibility is not granted for this process.
+		case accessibilityNotTrusted
+		/// Finder itself is not running.
+		case finderNotRunning
+		/// Finder is there but no element in its tree has icon children — the walk
+		/// gave up before its depth limit.
+		case noIconContainer
+	}
+
+	public var icons: [DesktopIcon]? {
+		if case .icons(let icons) = self { return icons }
+		return nil
+	}
+}
+
 /// Reads Finder's **real** desktop icon positions through Accessibility.
 ///
 /// The icon's accessibility element disappears shortly after it is deleted, so
@@ -30,17 +56,22 @@ public struct DesktopIcon: Sendable, Equatable {
 /// `icons` is empty and callers fall back to ``DesktopIconGrid``.
 @MainActor
 public final class DesktopIconIndex {
-	/// Supplies the icons; returns nil when it cannot read at all.
-	public typealias Reader = () -> [DesktopIcon]?
+	/// Supplies the icons; reports why when it cannot read at all.
+	public typealias Reader = () -> IconReading
 
 	private let reader: Reader
 	private var timer: Timer?
 
 	public private(set) var icons: [String: DesktopIcon] = [:]
-	/// The last count written to the diagnostics log, so only a change is logged.
-	private var lastLoggedCount = -1
+	/// The last outcome written to the diagnostics log, so only a change is logged.
+	/// The whole outcome, not just the count: "no accessibility" and "an empty
+	/// desktop" are both zero icons and must not read the same.
+	private var lastLoggedReading: OutcomeKey?
+	/// When the snapshot was last replaced by a reading that succeeded, so a
+	/// fallback can say how stale it is.
+	private var lastSnapshotAt: Date?
 
-	public init(reader: @escaping Reader = DesktopIconIndex.readFinderIcons) {
+	public init(reader: @escaping Reader = DesktopIconIndex.readDesktopIcons) {
 		self.reader = reader
 	}
 
@@ -74,28 +105,117 @@ public final class DesktopIconIndex {
 	/// exactly as in ``refresh``.
 	public func iconsForDeletion(of names: [String]) -> [String: DesktopIcon] {
 		let cached = icons
-		refresh()
+		let cachedAge = snapshotAgeSeconds()
+		let reading = readIcons()
+		apply(reading)
 
 		var found: [String: DesktopIcon] = [:]
+		var live = 0
 		for name in names {
-			found[name] = icons.removeValue(forKey: name) ?? cached[name]
+			if let icon = icons.removeValue(forKey: name) {
+				found[name] = icon
+				live += 1
+			} else if let icon = cached[name] {
+				found[name] = icon
+			}
 		}
+		logDeletionResolution(
+			reading: reading,
+			names: names,
+			live: live,
+			resolved: found.count,
+			cachedAge: cachedAge
+		)
 		return found
 	}
 
 	public func refresh() {
-		icons = readIcons() ?? [:]
-		// Logged only when the count changes; a count of 0 means Accessibility
-		// was not granted.
-		guard icons.count != lastLoggedCount else { return }
-		lastLoggedCount = icons.count
-		DiagnosticsLog.shared.writeEvent("DesktopIconIndex", [("Icons", "\(icons.count)")])
+		apply(readIcons())
 	}
 
-	/// The live reading keyed by name, or nil when the read itself failed.
-	private func readIcons() -> [String: DesktopIcon]? {
-		guard let read = reader() else { return nil }
-		return Dictionary(read.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
+	private func readIcons() -> IconReading {
+		reader()
+	}
+
+	/// Replaces the snapshot, and says why when it could not be read.
+	private func apply(_ reading: IconReading) {
+		icons = Dictionary(
+			(reading.icons ?? []).map { ($0.name, $0) },
+			uniquingKeysWith: { _, last in last }
+		)
+		if reading.icons != nil { lastSnapshotAt = Date() }
+
+		let key = Self.outcomeKey(reading)
+		guard key != lastLoggedReading else { return }
+		lastLoggedReading = key
+		DiagnosticsLog.shared.writeEvent(
+			"DesktopIconIndex",
+			[("Outcome", Self.describe(reading)), ("Icons", "\(icons.count)")]
+		)
+	}
+
+	/// How old the snapshot a fallback would be answered from is. The periodic
+	/// refresh is two seconds, so this is the window a position can be out of date
+	/// by — and the answer for a ghost that is in the right place to within a file
+	/// move rather than wildly wrong.
+	private func snapshotAgeSeconds() -> Double {
+		guard let lastSnapshotAt else { return -1 }
+		return Date().timeIntervalSince(lastSnapshotAt)
+	}
+
+	/// The outcome without the positions, so a file moving about does not log.
+	private struct OutcomeKey: Equatable {
+		var readable: Bool
+		var count: Int
+		var failure: IconReading.Failure?
+	}
+
+	private static func outcomeKey(_ reading: IconReading) -> OutcomeKey {
+		switch reading {
+		case .icons(let icons):
+			return OutcomeKey(readable: true, count: icons.count, failure: nil)
+		case .unavailable(let failure):
+			return OutcomeKey(readable: false, count: 0, failure: failure)
+		}
+	}
+
+	/// How a batch of deletions was resolved, which is the one place the answer to
+	/// "why is this ghost in the wrong place" lives: a name that was not in the
+	/// reading at all is answered from the cache, which can be two seconds stale.
+	///
+	/// `Prefix` counts the requested names that another icon's name starts with.
+	/// Finder can report an icon under a different name from the file's — the
+	/// extension is hidden on the desktop but usually present in the accessibility
+	/// description — and that mismatch is invisible in every other field here.
+	private func logDeletionResolution(
+		reading: IconReading,
+		names: [String],
+		live: Int,
+		resolved: Int,
+		cachedAge: Double
+	) {
+		let readNames = reading.icons?.map(\.name) ?? []
+		let prefix = names.filter { name in
+			!readNames.contains(name) && readNames.contains { $0.hasPrefix(name + ".") }
+		}.count
+		DiagnosticsLog.shared.writeEvent(
+			"DeletionIcons",
+			[
+				("Read", Self.describe(reading)),
+				("Asked", "\(names.count)"),
+				("Live", "\(live)"),
+				("Resolved", "\(resolved)"),
+				("Prefix", "\(prefix)"),
+				("SnapshotAge", String(format: "%.1f", cachedAge)),
+			]
+		)
+	}
+
+	private static func describe(_ reading: IconReading) -> String {
+		switch reading {
+		case .icons(let icons): return "ok(\(icons.count))"
+		case .unavailable(let failure): return "unavailable:\(failure.rawValue)"
+		}
 	}
 
 	public func start(interval: Double = 2) {
@@ -124,16 +244,18 @@ public final class DesktopIconIndex {
 
 	// MARK: - The real read
 
-	/// The live reading. Nil when Accessibility is not available.
-	public nonisolated static func readFinderIcons() -> [DesktopIcon]? {
-		guard AXIsProcessTrusted() else { return nil }
-		guard let pid = finderPID() else { return nil }
+	/// The live reading, with the reason when it cannot be made.
+	public nonisolated static func readDesktopIcons() -> IconReading {
+		guard AXIsProcessTrusted() else { return .unavailable(.accessibilityNotTrusted) }
+		guard let pid = finderPID() else { return .unavailable(.finderNotRunning) }
 
 		let application = AXUIElementCreateApplication(pid)
 		// Bounds the IPC: a Finder that stops responding must not freeze the pet,
 		// since this runs on the main thread.
 		AXUIElementSetMessagingTimeout(application, 1.0)
-		guard let container = iconContainer(under: application) else { return nil }
+		guard let container = iconContainer(under: application) else {
+			return .unavailable(.noIconContainer)
+		}
 
 		var icons: [DesktopIcon] = []
 		for child in children(of: container) {
@@ -153,7 +275,7 @@ public final class DesktopIconIndex {
 				)
 			)
 		}
-		return icons
+		return .icons(icons)
 	}
 
 	private nonisolated static func finderPID() -> pid_t? {

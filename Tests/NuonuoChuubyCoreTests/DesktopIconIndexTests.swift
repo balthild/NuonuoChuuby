@@ -11,10 +11,10 @@ struct DesktopIconIndexTests {
 	@Test("Icons are keyed by name and ordered stably")
 	func indexesByName() {
 		let index = DesktopIconIndex(reader: {
-			[
+			.icons([
 				DesktopIcon(name: "b", position: PixelPoint(x: 10, y: 20), size: 64),
 				DesktopIcon(name: "a", position: PixelPoint(x: 5, y: 5), size: 56),
-			]
+			])
 		})
 		index.refresh()
 
@@ -30,8 +30,7 @@ struct DesktopIconIndexTests {
 
 	@Test("An unreadable source yields nothing, so the caller falls back")
 	func unreadable() {
-		// Accessibility not granted, or Finder not running.
-		let index = DesktopIconIndex(reader: { nil })
+		let index = DesktopIconIndex(reader: { .unavailable(.finderNotRunning) })
 		index.refresh()
 
 		#expect(!index.isAvailable)
@@ -41,7 +40,7 @@ struct DesktopIconIndexTests {
 	@Test("A later reading replaces the previous one")
 	func refreshReplaces() {
 		var icons = [DesktopIcon(name: "a", position: PixelPoint(x: 1, y: 1), size: 56)]
-		let index = DesktopIconIndex(reader: { icons })
+		let index = DesktopIconIndex(reader: { .icons(icons) })
 		index.refresh()
 		#expect(index.icon(of: "a") != nil)
 
@@ -55,7 +54,7 @@ struct DesktopIconIndexTests {
 	@Test("A deletion is read from the live tree, not only from the index")
 	func deletionReadsTheLiveTree() {
 		var read = [DesktopIcon(name: "kept", position: PixelPoint(x: 1, y: 1), size: 56)]
-		let index = DesktopIconIndex(reader: { read })
+		let index = DesktopIconIndex(reader: { .icons(read) })
 		index.refresh()
 
 		// A folder created, and deleted, since the last refresh: the index never
@@ -79,7 +78,7 @@ struct DesktopIconIndexTests {
 		var reads = 0
 		let index = DesktopIconIndex(reader: {
 			reads += 1
-			return [DesktopIcon(name: "a", position: PixelPoint(x: 1, y: 1), size: 56)]
+			return .icons([DesktopIcon(name: "a", position: PixelPoint(x: 1, y: 1), size: 56)])
 		})
 		index.refresh()
 
@@ -90,19 +89,19 @@ struct DesktopIconIndexTests {
 
 	@Test("A failed read falls back to the snapshot for this call and empties the cache")
 	func deletionFallsBackToTheIndex() {
-		var read: [DesktopIcon]? = [
+		var read: IconReading = .icons([
 			DesktopIcon(name: "a", position: PixelPoint(x: 2, y: 3), size: 64),
 			// A second icon, so "the cache was emptied" and "the eaten name was
 			// dropped" cannot produce the same dictionary.
 			DesktopIcon(name: "kept", position: PixelPoint(x: 9, y: 9), size: 56),
-		]
+		])
 		let index = DesktopIconIndex(reader: { read })
 		index.refresh()
 
 		// Accessibility lost, or Finder gone: the live read answers nothing. The
 		// icon's last known position still answers this deletion, so she walks to
 		// it rather than to the cursor...
-		read = nil
+		read = .unavailable(.accessibilityNotTrusted)
 		#expect(index.icon(of: "a") != nil)
 		#expect(index.iconsForDeletion(of: ["a"])["a"]?.position == PixelPoint(x: 2, y: 3))
 
@@ -111,13 +110,27 @@ struct DesktopIconIndexTests {
 		#expect(index.icons.isEmpty)
 		#expect(index.icon(of: "kept") == nil)
 
-		let empty = DesktopIconIndex(reader: { nil })
+		let empty = DesktopIconIndex(reader: { .unavailable(.noIconContainer) })
 		empty.refresh()
 		#expect(empty.iconsForDeletion(of: ["a"])["a"] == nil)
 	}
 
 	@Test("The real reader is safe to call whatever the permission state")
 	func realReaderDoesNotTrap() {
-		_ = DesktopIconIndex.readFinderIcons()
+		_ = DesktopIconIndex.readDesktopIcons()
+	}
+
+	@Test("A reading whose names carry hidden extensions is reported as a miss")
+	func hiddenExtensionIsAMiss() {
+		// Finder reports the file's name; the desktop hides the extension. If the
+		// two ever disagree, the lookup misses and the ghost falls back — the count
+		// of prefix matches is what makes that visible.
+		let index = DesktopIconIndex(reader: {
+			.icons([DesktopIcon(name: "report.txt", position: PixelPoint(x: 4, y: 5), size: 56)])
+		})
+		index.refresh()
+
+		#expect(index.iconsForDeletion(of: ["report"])["report"] == nil)
+		#expect(index.iconsForDeletion(of: ["report.txt"])["report.txt"] != nil)
 	}
 }
