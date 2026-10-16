@@ -32,3 +32,16 @@ public enum MovementPurpose: String, Sendable, CaseIterable {
 	case edgeSlideApproach
 	case edgeJumpApproach
 }
+
+extension MovementPurpose {
+	/// Whether this walk is a journey to a chosen spot rather than an aimless
+	/// wander, and so takes the quicker pace.
+	var usesExplorePace: Bool {
+		switch self {
+		case .explore, .climbApproach, .edgeSlideApproach, .edgeJumpApproach:
+			return true
+		default:
+			return false
+		}
+	}
+}

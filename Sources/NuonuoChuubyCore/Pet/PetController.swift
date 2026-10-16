@@ -58,7 +58,6 @@ public final class PetController: SpriteAnimatorDelegate {
 		static let boundaryMargin: Double = 8
 		static let hopVelocity: Double = 420
 		static let arrivalTolerance: Double = 5
-		static let movementTimeout: Double = 8
 		/// How fast a ledge must be rising to catch her back up rather than pass her.
 		static let airborneCatchUpSpeed: Double = 360
 		/// How far she may sit from where the ride last put her before the edge she is
@@ -1380,14 +1379,16 @@ public final class PetController: SpriteAnimatorDelegate {
 		// so nothing further is needed here for vertical movement.
 		targetX = min(max(targetX, run.start + 20), run.end - 20)
 		let deltaX = targetX - foot.x
-		if abs(deltaX) <= Motion.arrivalTolerance || stateElapsed > Motion.movementTimeout {
+		// No give-up timeout: a walk that reaches for a window's edge can be long, and
+		// bounding it would teleport her the rest of the way instead of finishing it.
+		if abs(deltaX) <= Motion.arrivalTolerance {
 			foot.x += deltaX
 			finishGroundMove()
 			return
 		}
 
 		let speed =
-			(movementPurpose == .explore ? Motion.exploreSpeed : Motion.walkSpeed)
+			(movementPurpose.usesExplorePace ? Motion.exploreSpeed : Motion.walkSpeed)
 			* displayScale * profile.movementSpeedMultiplier
 		let desiredVelocity = (deltaX < 0 ? -1.0 : 1.0) * speed
 		velocity.x += (desiredVelocity - velocity.x) * min(1, delta * Motion.groundResponse)
@@ -2581,6 +2582,16 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// Triggers a hop, which is normally chosen by the autonomy planner.
 	func debugBeginHop() {
 		beginHop()
+	}
+
+	/// Starts a ground walk towards a chosen x, which the autonomy planner would
+	/// otherwise only pick by weight.
+	func debugBeginWalk(toX x: Double) {
+		targetX = x
+		movementPurpose = .wander
+		state = .running
+		stateElapsed = 0
+		animator.play("walk")
 	}
 
 	/// Naps, which the autonomy planner would otherwise only choose by weight.
