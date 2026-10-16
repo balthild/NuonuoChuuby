@@ -264,6 +264,58 @@ struct FreeStandingWalkTests {
 		#expect(spy.begun == [1, 2], "the same items, in the same order, when she does set off")
 	}
 
+	@Test("Quiet mode puts the queued icons away and refuses the next deletion")
+	func quietModeDropsTheQueue() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+		rig.controller.debugPlaceOnSurface(rig.floor)
+
+		let spy = MealSpy()
+		rig.controller.mealDelegate = spy
+
+		#expect(
+			rig.controller.enqueueMeals([
+				DeletedItem(
+					id: 1,
+					originalPath: "/tmp/a.txt",
+					displayName: "a.txt",
+					detectedAt: Date(),
+					anchor: Self.spot,
+					exactAnchor: true
+				),
+				DeletedItem(
+					id: 2,
+					originalPath: "/tmp/b.txt",
+					displayName: "b.txt",
+					detectedAt: Date(),
+					anchor: PixelPoint(x: Self.spot.x + 120, y: Self.spot.y),
+					exactAnchor: true
+				),
+			]) == 2
+		)
+
+		// Quiet mode means "only rest and sleep", so the food she was heading for and
+		// the food still waiting both go, and their icons come down with them.
+		rig.controller.quietMode = true
+		#expect(spy.finished == [1, 2], "both icons come down")
+		#expect(rig.controller.debugQueuedMealCount == 0, "and the queue is empty")
+
+		// A deletion that arrives while quiet mode is on is refused at the door, which
+		// is what the original does: it never queues the item and never makes a ghost.
+		let refused = rig.controller.enqueueMeals([
+			DeletedItem(
+				id: 3,
+				originalPath: "/tmp/c.txt",
+				displayName: "c.txt",
+				detectedAt: Date(),
+				anchor: Self.spot,
+				exactAnchor: true
+			)
+		])
+		#expect(refused == 0)
+		#expect(spy.enqueued == [[1, 2]], "nothing new goes up")
+	}
+
 	@Test("An interruption that is not a drag hands the meal back instead of losing it")
 	func pinchDuringAMealRequeuesIt() throws {
 		let rig = try makeRig()

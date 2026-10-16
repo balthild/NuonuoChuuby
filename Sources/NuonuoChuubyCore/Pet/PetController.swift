@@ -107,10 +107,14 @@ public final class PetController: SpriteAnimatorDelegate {
 	public var fastingMode = false
 	public var quietMode = false {
 		didSet {
-			// Turning quiet mode on stops her mid-walk; an interrupted meal goes back
-			// on the queue rather than being lost.
+			// Quiet mode means "only rest and sleep", so it does not just stop her
+			// mid-walk: every meal is dropped, in progress or queued, and their icons
+			// come down. That matches the original, which clears its food queue and
+			// closes every ghost window when the mode is switched on — a queue that
+			// kept its icons on screen would advertise food she has been told to
+			// ignore.
 			if quietMode {
-				requeueActiveMeal(reason: "QuietMode")
+				discardAllMeals(reason: "QuietMode")
 				if state == .running || state == .chomping || state == .licking {
 					returnToIdle()
 				}
@@ -1347,6 +1351,29 @@ public final class PetController: SpriteAnimatorDelegate {
 		DiagnosticsLog.shared.writeEvent(
 			"MealRequeued",
 			[("Name", item.displayName), ("Reason", reason)]
+		)
+	}
+
+	/// Drops every meal, in progress and queued, and takes their icons down.
+	///
+	/// `reason` is for the log; unlike an interrupted meal these are not coming
+	/// back, so they are worth telling apart from one that was merely postponed.
+	private func discardAllMeals(reason: String) {
+		var dropped: [DeletedItem] = []
+		if let item = activeMeal {
+			dropped.append(item)
+			activeMeal = nil
+		}
+		while let item = mealQueue.dequeue() {
+			dropped.append(item)
+		}
+		guard !dropped.isEmpty else { return }
+		for item in dropped {
+			mealDelegate?.petController(self, didFinishMeal: item)
+		}
+		DiagnosticsLog.shared.writeEvent(
+			"MealsDiscarded",
+			[("Reason", reason), ("Count", "\(dropped.count)")]
 		)
 	}
 
@@ -2624,6 +2651,9 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	/// Stands in for the per-frame live window query the enclosure makes.
 	var debugLiveWindowBoundsOverride: ((UInt32) -> PixelRect?)?
+
+	/// Meals still waiting their turn, not counting the one she is eating.
+	var debugQueuedMealCount: Int { mealQueue.count }
 
 	/// Her hittable body rectangle, as the collision and enclosure code sees it.
 	func debugBodyRect() -> PixelRect { bodyRect() }
