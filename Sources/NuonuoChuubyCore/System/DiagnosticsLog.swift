@@ -14,7 +14,7 @@ public final class DiagnosticsLog: @unchecked Sendable {
 	private var maximumLogBytes = DiagnosticsLog.defaultMaximumLogBytes
 
 	/// Built once. A write can arrive once per frame, and constructing a
-	/// `DateFormatter` on every line is expensive (refactor-plan §3.2).
+	/// `DateFormatter` on every line is expensive.
 	private static let timestampFormatter: DateFormatter = {
 		let formatter = DateFormatter()
 		formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"

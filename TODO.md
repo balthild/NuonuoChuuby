@@ -2,6 +2,9 @@
 
 本文件记录**已知但尚未解决**的问题，以及有意推迟的工作。已完成的能力见 `README.md`。
 
+> 原 `docs/refactor-plan.md`（世界模型重构）已实施完毕并删除，其中仍有用的参考项目信息、
+> 范围边界与工程约定已并入本文第 7 节。
+
 ---
 
 ## 1. 窗口骑乘：弹起后停在高处（**已由重构根除**，2026-10-12）
@@ -10,8 +13,8 @@
 
 **根因**：旧模型用「世界坐标 + 速度匹配 + 一个可按 id 追踪的窗口」表达支撑，这套机制允许出现「处于落地/待机状态、但没有任何支撑」这一状态 —— 那就是真正的悬空。
 
-**为什么现在不可能再发生**：重构 Phase C 把支撑换成参数化棲位 `(SurfaceKey, t)`（见
-`docs/refactor-plan.md`）。`maintainGroundSupport` 每 tick 对 `idle / running / sleeping /
+**为什么现在不可能再发生**：重构把支撑换成参数化棲位 `(SurfaceKey, t)`。
+`maintainGroundSupport` 每 tick 对 `idle / running / sleeping /
 landing / curious` 五种落地状态运行，且只有两条路：
 
 - 已有棲位 → 解析出当前 surface；解析不到则走 0.35 s 宽限，宽限过期即 `releasePerch()` + `beginFall()`；
@@ -31,15 +34,16 @@ landing / curious` 五种落地状态运行，且只有两条路：
 
 ## 2. 从 Ledgeling 参考到的改进（**有意推迟**）
 
-参考项目：<https://github.com/Lucerna-Systems/Ledgeling>（Rust/Tauri，macOS 桌宠）。值得借鉴、但尚未实施：
+参考项目：<https://github.com/Lucerna-Systems/Ledgeling>（Rust/Tauri，macOS 桌宠）。
+**许可证与 pin 见第 7 节**（只借鉴思路，不复制代码）。值得借鉴、但尚未实施：
 
-> **处置状态（2026-10-12）**：全面定案见 `docs/refactor-plan.md`。
-> 第 1、2、4、5 条**由重构实施**；第 3、6 条的「免权限/免弹窗」理由**已撤回**；
-> 第 7 条保留但改成**显式释放规则**；第 8 条**不采纳**；第 9 条为新增的延后项。
+> **处置状态（2026-10-12）**：重构已完成并删除了计划文档。
+> 第 1、2、4、5 条**已由重构实施**；第 3、6 条的「免权限/免弹窗」理由**已撤回**；
+> 第 7 条保留但改成了**显式释放规则**；第 8 条**不采纳**；第 9 条为新增的延后项。
 
 1. **参数化锚定（重构）**：把宠物位置存成 `(SurfaceKey{owner,kind}, t)` 而非世界坐标，每帧由当前 surface 反算屏幕位置。窗口移动/缩放由此**免费且精确**跟随，不需要速度判定，也不会有抖动。`t` 定义在**整条边**（含被遮挡部分）上，所以边被别的窗口切断后锚点依然有效。这是根治「抖 / 误触发 / 脱离」的方案，但改动较大。
 2. ~~**遮挡减法**：按 z 序（窗口列表顺序，front-to-back）做一维区间减法，只保留**可见**的边。输入只需窗口矩形 + 顺序。当前实现不做减法，所以桌宠可能站在被别的窗口盖住的**隐形窗沿**上。~~
-   **已实施（2026-10-12，重构 Phase B）**：`World/SurfaceBuilder.swift` 按窗口列表顺序做一维区间减法，`Surface.span`（整条边）与 `Surface.visible`（未遮挡片段，可能多段）分离。`SurfaceProvider` 只把可见片段派生成可站的 `SupportSurface`。见 `docs/refactor-plan.md` Phase B。
+   **已实施（2026-10-12，重构 Phase B）**：`World/SurfaceBuilder.swift` 按窗口列表顺序做一维区间减法，`Surface.span`（整条边）与 `Surface.visible`（未遮挡片段，可能多段）分离。`SurfaceProvider` 只把可见片段派生成可站的 `SupportSurface`。
 3. **开机自启改用 `~/Library/LaunchAgents` plist**：绕开 `SMAppService` 的 Team-ID 签名要求。（原先还写了「去掉了现在 `osascript` 方案的系统事件授权弹窗」这个理由，**已撤回**：授权弹窗是一次性的，不构成设计理由。）
 4. ~~**锁屏 / 零显示器当作挂起**：macOS 在锁屏或显示器休眠时会报告「零个显示器」，绝不能当成空桌面。当前 `DisplaySpace` 会退化成默认矩形，属于同类 bug。~~
    **已实施（2026-10-12，重构 Phase E）**：`PetController.step` 在 `displaySpace.displays.isEmpty`
@@ -149,7 +153,7 @@ landing / curious` 五种落地状态运行，且只有两条路：
 >    越过她、把她吞进去，她只能掉到底（实测 `foot.y` 落到 1117）。规则是——被抛出的那个
 >    窗口若顶边已到/高于她脚底且仍以 ≥360 pt/s 上升，就**把她放回顶边**，并至少给它自己的
 >    速度（她若已有更快的上抛速度则保留）。这是**恢复**原版的 `resolveAirborneContact`：
->    它当初随速度匹配一起被删（`docs/refactor-plan.md` Phase C），但缺失留下了这个洞。
+>    它当初随速度匹配一起被删（重构 Phase C），但缺失留下了这个洞。
 > 3. 只跟踪**因窗口移开而被抛出**的情形（`PlatformLaunch` / `PlatformDownwardRelease`）；
 >    用户自己甩出去的不跟，否则会被钉回原来那个窗口。
 >
@@ -410,7 +414,7 @@ d=3 role=AXImage desc=sing-box       pos=(1513,32)  size=(56,56)
 **设计约束**：图标被删除后 AX 元素立即消失 → **不能等删除发生再去读，必须提前缓存**。
 所以它是**周期性索引**，删除事件到达时查表。`DesktopIconGrid` **保留**作为未授权时的降级路径。
 
-**代价**：应用会请求**辅助功能**权限（软依赖，有降级）。详见 `docs/refactor-plan.md` §6。
+**代价**：应用会请求**辅助功能**权限（软依赖，有降级）。
 
 **已实施（2026-10-12，独立提交）**：`Meal/DesktopIconIndex.swift` 周期性（2 秒）读取
 Finder 桌面图标，建「文件名 → 坐标」索引；`PetController.tryBeginIconLick` 优先用它，
@@ -428,3 +432,69 @@ Finder 桌面图标，建「文件名 → 坐标」索引；`PetController.tryBe
 Ledgeling 的 macOS 层同样只用 `CGWindowListCopyWindowInfo`，全文未用 AXUIElement。
 
 **但**桌面图标坐标是它的正确用途 —— 见第 5 节。
+
+---
+
+## 7. 参考项目与范围边界
+
+> 从已实施完毕的 `docs/refactor-plan.md` 中提取的、**仍然有用**的部分。
+
+### 7.1 Ledgeling：只借鉴思路，不复制代码
+
+参考项目：<https://github.com/Lucerna-Systems/Ledgeling>（Rust/Tauri，macOS 桌宠）。
+
+**许可证与 pin（重要）**：上游于 `402f60be` 从 MIT 改为 **PolyForm Strict**（禁止分发与修改）；
+用户的 fork（`balthild/Ledgeling`）停在仍是 MIT 的 `0b0014b9`。
+**因此：只借鉴技术思路，不复制代码，也不依赖上游后续提交。**
+
+回头做上面延后项时值得一读的位置：
+
+| 主题 | 位置 |
+|---|---|
+| macOS 平台层（`CGWindowListCopyWindowInfo(1\|16, 0)`） | `src-tauri/src/platform/macos.rs:114`、`:170` |
+| z 序 = 列表顺序（`z_index: windows.len()`） | 同上，约 `:135` |
+| 全屏检测（layer-0 逐边贴合 ±2px） | `platform/macos.rs` 与 `world/` |
+| surface 图 / 遮挡减法 / 边界用例测试 | `src-tauri/src/world/` |
+| `STARTLING_SPEED = 900`（对应第 2 节第 7 条的「受惊」） | `src-tauri/src/pet/` |
+| 隐私源码扫描测试（**仅作参考，本项目不采用**） | `src-tauri/tests/privacy.rs` |
+
+### 7.2 明确不做（范围边界）
+
+- **渲染协议层**（Ledgeling 的 `PetSurface`/`Scene`）：我们有逐像素捏脸、幽灵图标、
+  气泡三套共存窗口，单 overlay 表达不了；这个抽象**永远不会有第二个实现**。
+- **自适应扫描节奏**（2 Hz ↔ 变化后 2 秒 10 Hz）：常态已经是 2 Hz，且跟手度**不走那张图**
+  （走每帧单窗口实时查询），它只能把「新窗沿被发现」的延迟从 0.5 s 缩短，收益极低。
+- **Ledgeling 的 pack 格式 / 声明式 pack 驱动 FSM / awareness-nudge 阶梯 / packs → 多宠**：
+  属于它自己的产品形态。
+- **webview overlay 渲染器**：渲染路径已定为 CALayer overlay（见第 4 节）。
+- **跨显示器行走语义的重设计**：只**钉住现状**（每个显示器边界反弹的语义未变），
+  不趁机重设计。
+- **沿竖边行走**：不是「不做」而是**推迟** —— 见第 2 节第 9 条。
+- **签名 / 发布 / App Store**：见第 4 节。
+
+### 7.3 引用「本项目约定」之前先 grep 本仓库
+
+**成因**：`Ledgeling` 曾是本工作区的文件夹之一，它的 `AGENTS.md` / `CLAUDE.md` 会作为
+**工作区指令**进入上下文，读起来像「这个工作区的规则」，但那是**另一个项目**的规则。
+（2026-10-12 已把它与 `JiuNuoDesktopPet` 移出工作区文件夹，但**两个仓库本身未被修改** ——
+将来若重新加回工作区，污染会立刻回来。）
+
+据此曾产生过三次错误论据，并被当成用户的要求去论证：
+
+| 错误引用的「约定」 | 真实来源 | 本仓库的实际情况 |
+|---|---|---|
+| 「窗口标题永不读取」 | Ledgeling `AGENTS.md`/`CLAUDE.md` 约束 #1 | grep 全仓库无此说法 |
+| 「零权限 / 不引入辅助功能」 | Ledgeling 的产品约束 | 用户明确没有隐私要求，一次性弹窗可接受 |
+| 「never commit to `main`，要开分支 / 开 PR」 | 同上 | 只有 `main` 一个分支，全部直接提交，零 merge commit |
+
+**规则：凡是要说「本项目的约定是 X」，先在本仓库 grep；查不到就直说「这是我推断的 /
+来自别处」，不要包装成用户的规则。** 权限成本**不能**作为设计理由 —— 从 CalendarShouter
+继承的那条偏好特指「**重新构建后不要对同一权限重复弹窗**」，那是靠**稳定的签名身份**解决的
+（见第 4 节），不是靠避免权限。
+
+**已核实属于本仓库、可以引用的约定**：
+
+- `make rerun`（或 `open`）启动才有正常的 TCC 授权弹窗（`README.md`）。
+- 测试需要 `make test`（素材从 submodule 硬链到 `.build/test-assets`）；缺素材时
+  `TestSkip.missingAssets` 让测试**失败**而非跳过。
+- 关闭 hardened runtime；签名证书自维护，换证书会清空已授权限（`README.md`、`Makefile`）。
