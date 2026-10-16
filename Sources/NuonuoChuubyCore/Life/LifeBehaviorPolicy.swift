@@ -9,6 +9,11 @@ public enum LifeBehaviorPolicy {
 	public static let lickInterruptionThreshold: Double = 62
 	public static let rollInterruptionThreshold: Double = 65
 	public static let foodAppealInterruptionThreshold: Double = 70
+	/// Where she counts as peckish and as ravenous. Both sit below the weights the
+	/// planner gives her food actions, so by the time she remarks on it she is
+	/// already acting on it.
+	public static let aBitHungryHungerThreshold: Double = 48
+	public static let veryHungryHungerThreshold: Double = 72
 	/// Fullness at which she counts as full — roughly four meals' worth. Unlike
 	/// hunger, fullness only rises by eating, so this is reachable only after a
 	/// run of meals.

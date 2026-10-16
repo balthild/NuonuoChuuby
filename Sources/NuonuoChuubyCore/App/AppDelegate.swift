@@ -370,14 +370,30 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 					self?.update { $0.quietMode = on }
 				},
 				setDeleteReaction: { [weak self] on in
-					self?.update { $0.reactToDeletes = on }
+					guard let self else { return }
+					self.update { $0.reactToDeletes = on }
+					// Only she eats deletions, so the toggle is only hers to answer for.
+					guard self.settings.character.supportsFood else { return }
+					self.speech?.react(
+						on ? .deleteReactionEnabled : .deleteReactionDisabled,
+						voice: on ? .positive : .calm,
+						priority: .normal
+					)
 				},
 				setBubbles: { [weak self] on in
 					self?.update { $0.showSpeechBubbles = on }
 				},
 				setMuted: { [weak self] soundEnabled in
+					guard let self else { return }
 					// The item reports the current sound setting, so toggling inverts it.
-					self?.update { $0.soundEnabled = !soundEnabled }
+					self.update { $0.soundEnabled = !soundEnabled }
+					// Speaking about losing her voice is the one line that cannot be
+					// recorded: the clip is already off, so only the bubble appears.
+					self.speech?.react(
+						self.settings.soundEnabled ? .voiceEnabled : .voiceDisabled,
+						voice: self.settings.soundEnabled ? .positive : .calm,
+						priority: .normal
+					)
 				},
 				setLaunchAtLogin: { [weak self] enabled in
 					guard let self else { return }

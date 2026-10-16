@@ -192,6 +192,45 @@ struct PetDialogueTests {
 	}
 }
 
+@Suite("Mood speech")
+struct PetMoodSpeechTests {
+	@Test("The hunger bands report themselves, and a fed pet reports fullness")
+	func bands() {
+		var life = PetLifeState()
+		life.hunger = 20
+		life.fullness = 10
+		#expect(PetMoodSpeech.line(life: life, fastingMode: false) == nil)
+
+		life.hunger = LifeBehaviorPolicy.aBitHungryHungerThreshold
+		#expect(PetMoodSpeech.line(life: life, fastingMode: false)?.cue == .aBitHungry)
+
+		life.hunger = LifeBehaviorPolicy.veryHungryHungerThreshold
+		#expect(PetMoodSpeech.line(life: life, fastingMode: false)?.cue == .veryHungry)
+
+		life.fullness = LifeBehaviorPolicy.comfortablyFullThreshold
+		#expect(PetMoodSpeech.line(life: life, fastingMode: false)?.cue == .comfortablyFull)
+	}
+
+	@Test("Fasting silences hunger but not fullness")
+	func fasting() {
+		var life = PetLifeState()
+		life.hunger = 100
+		life.fullness = 10
+		#expect(PetMoodSpeech.line(life: life, fastingMode: true) == nil)
+
+		life.fullness = LifeBehaviorPolicy.comfortablyFullThreshold
+		#expect(PetMoodSpeech.line(life: life, fastingMode: true)?.cue == .comfortablyFull)
+	}
+
+	@Test("The ravenous band needs more hunger than the peckish one")
+	func thresholdsAreOrdered() {
+		#expect(
+			LifeBehaviorPolicy.aBitHungryHungerThreshold
+				< LifeBehaviorPolicy.veryHungryHungerThreshold
+		)
+	}
+}
+
 @Suite("Diagnostic privacy")
 struct DiagnosticPrivacyTests {
 	@Test("Paths and e-mails are replaced by references")

@@ -137,6 +137,11 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var mealQueue = MealQueue()
 	private var activeMeal: DeletedItem?
 	private var burstTracker = DeletionBurstTracker()
+	/// Simulated seconds until her next unprompted remark about how she feels.
+	private var selfReportRemaining = PetController.selfReportInterval
+	/// Whether the lick under way is aimed at a real Finder icon rather than the
+	/// guessed grid, which is what she can taste when it finishes.
+	private var iconLickUsedRealIcons = false
 	private var movementPurpose: MovementPurpose = .none
 	private var fallStartFootY: Double = 0
 	private var fallReason = "support-lost"
@@ -153,6 +158,8 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// So the grace is logged once, not per frame.
 	private var isInPerchGrace = false
 	private var perchLogGate = ChangeGate<PlatformMotionResponse>()
+	/// A drag-resize grows a box continuously; this keeps the remark to one.
+	private var boxGrowthGate = ChangeGate<Bool>()
 	/// The window she is in the air because of, if any, and where its edge was last
 	/// frame, so one rising faster than she flies cannot pass through her.
 	private var airborneSupportWindowID: UInt32?
@@ -218,6 +225,17 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// She cannot be composited between two ordinary windows, so a covered box
 	/// would leave her looking like she is standing on nothing.
 	private static let enclosureCoverageGraceSeconds: Double = 0.6
+
+	/// How long she goes between unprompted remarks.
+	///
+	/// Deliberately not jittered, unlike everything else that varies: this one is
+	/// the only remark with no event behind it, and drawing it from ``random`` would
+	/// shift the sequence every other seeded decision in a run is pinned to.
+	private static let selfReportInterval: Double = 70
+
+	/// How much a box must grow in one step before she remarks on it, so the
+	/// pixel of drift a drag-resize leaves behind is not a window "getting big".
+	private static let boxGrowthTolerance: Double = 24
 
 	/// How often the box's rectangle is re-read while she rests on its floor.
 	///
@@ -519,6 +537,7 @@ public final class PetController: SpriteAnimatorDelegate {
 			movementPurpose = .explore
 			stateElapsed = 0
 			beginGroundMove(purpose: .explore)
+			announce(.exploration, voice: .question, priority: .normal)
 		case .hop:
 			beginHop()
 		case .askForFood:
@@ -538,6 +557,14 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	private func resetIdleTimer(factor: Double = 1) {
 		idleRemaining = Double.random(in: 1.2...profile.maximumIdleSeconds, using: &random) * factor
+	}
+
+	/// Says how she feels, unprompted: the one line here that is not tied to
+	/// something happening.
+	private func reportOwnMood() {
+		guard state == .idle, !quietMode else { return }
+		guard let line = PetMoodSpeech.line(life: life, fastingMode: fastingMode) else { return }
+		announce(line.cue, voice: line.voice, priority: .ambient)
 	}
 
 	// MARK: - Meals and icon licks
@@ -704,6 +731,17 @@ public final class PetController: SpriteAnimatorDelegate {
 			box = fresh
 		}
 		let moved = box != current.previousBox
+		// A box that has grown around her is a window being made bigger. Position
+		// changes do not move either edge of the rectangle, so only a real resize
+		// counts; the gate turns a drag-resize, which grows it a little every
+		// frame, into one remark. It has to be shown every frame to notice the
+		// growth ending, so it is asked before the answer is used.
+		let growing =
+			box.width > current.previousBox.width + Self.boxGrowthTolerance
+			|| box.height > current.previousBox.height + Self.boxGrowthTolerance
+		if boxGrowthGate.emits(growing), growing {
+			announce(.windowMaximized, voice: .scream, priority: .normal)
+		}
 
 		let scale = displayScale
 		let step = WindowEnclosurePhysics.resolve(
@@ -914,6 +952,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		guard let current = enclosure else { return }
 		enclosure = nil
 		movementPurpose = .none
+		boxGrowthGate.reset()
 		DiagnosticsLog.shared.writeEvent(
 			"WindowEnclosureReleased",
 			[("Window", "\(current.windowID)"), ("Reason", reason)]
@@ -1052,6 +1091,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		}
 
 		var accepted = 0
+		let hadMealsPending = activeMeal != nil || !mealQueue.isEmpty
 		for item in items {
 			guard
 				MealQueuePolicy.canAcceptDeletion(
@@ -1069,6 +1109,8 @@ public final class PetController: SpriteAnimatorDelegate {
 
 		if burstTracker.register(detectedAt: Date()) {
 			announce(.buffet, voice: .positive, priority: .important)
+		} else if hadMealsPending {
+			announce(.mealQueueContinues, voice: .positive, priority: .normal)
 		} else {
 			announce(.mealSpotted, voice: .question, priority: .normal)
 		}
@@ -1097,7 +1139,9 @@ public final class PetController: SpriteAnimatorDelegate {
 		case .running where movementPurpose != .meal:
 			_ = beginNextMeal()
 		default:
-			break
+			// She cannot leave yet — airborne, mid-clip, on a wall — so she says she
+			// is waiting rather than going silent about the food she just saw.
+			announce(.hungryRequestQueued, voice: .question, priority: .normal)
 		}
 		return accepted
 	}
@@ -1152,6 +1196,10 @@ public final class PetController: SpriteAnimatorDelegate {
 		// The real Finder positions when Accessibility allows them; otherwise the
 		// Finder-default layout approximation, which is not where the icons are.
 		let realIcons = desktopIcons?.positions ?? []
+		// Whether these are the real Finder positions decides what she has to say
+		// when the lick finishes; the guessed grid is somewhere to lick, not
+		// something to taste.
+		iconLickUsedRealIcons = !realIcons.isEmpty
 		let candidates =
 			realIcons.isEmpty ? DesktopIconGrid.positions(count: 12, in: workArea) : realIcons
 		guard
@@ -1224,6 +1272,9 @@ public final class PetController: SpriteAnimatorDelegate {
 		animator.play("chomp")
 		if let item = activeMeal, !item.exactAnchor {
 			announce(.suction, voice: .positive, priority: .normal)
+		} else if !mealQueue.isEmpty {
+			// Biting into a meal with more still waiting behind it.
+			announce(.anotherBite, voice: .positive, priority: .normal)
 		}
 	}
 
@@ -1325,7 +1376,10 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	/// What to do once a meal finishes: carry on down the queue, or settle.
 	private func advanceAfterMeal() {
-		if !mealQueue.isEmpty, beginNextMeal() { return }
+		if !mealQueue.isEmpty, beginNextMeal() {
+			announce(.feastContinues, voice: .positive, priority: .normal)
+			return
+		}
 		returnToIdle()
 	}
 
@@ -2023,6 +2077,11 @@ public final class PetController: SpriteAnimatorDelegate {
 	private func tickCooldowns(_ delta: Double) {
 		sideImpactCooldown = max(0, sideImpactCooldown - delta)
 		ignoredLandingSeconds = max(0, ignoredLandingSeconds - delta)
+		selfReportRemaining -= delta
+		if selfReportRemaining <= 0 {
+			selfReportRemaining = Self.selfReportInterval
+			reportOwnMood()
+		}
 	}
 
 	/// A window rising faster than she can fly must not pass through her.
@@ -2832,6 +2891,12 @@ public final class PetController: SpriteAnimatorDelegate {
 			// Eating the item is what completes the meal.
 			completeActiveMeal()
 		case "lick":
+			// The verdict on what she tasted.
+			announce(
+				iconLickUsedRealIcons ? .iconTaste : .iconsHidden,
+				voice: iconLickUsedRealIcons ? .aggrieved : .question,
+				priority: .normal
+			)
 			// She drops from the icon's height rather than snapping back to the edge
 			// she set off from; `purpose` is cleared so the ride resumes on landing.
 			beginFall(reason: "IconLickFinished", purpose: MovementPurpose.none)
