@@ -2571,6 +2571,11 @@ public final class PetController: SpriteAnimatorDelegate {
 	public func beginPinch(side: CheekSide, at viewPoint: CGPoint) {
 		guard !cheek.isActive, CheekPinchInteractionPolicy.canStart(from: state) else { return }
 		cheek.begin(side: side)
+		// The rig's anchors are authored against the idle pose, so the cel under the
+		// overlay has to be that pose. An interrupted clip — a landing bounce, a fall —
+		// draws her face elsewhere, and both the pulled cheek and the mouth the overlay
+		// covers for her would land somewhere she is not.
+		animator.play("idle")
 		pinchOrigin = authoredPoint(viewPoint)
 		state = .pinching
 		movementPurpose = .none
@@ -2710,6 +2715,9 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// The pinch's current offset in canvas units, positive towards her right in
 	/// the authored art.
 	var debugCheekOffset: (x: Double, y: Double) { (cheek.x, cheek.y) }
+
+	/// Which clip is playing, so a test can pin what an interrupted state leaves behind.
+	var debugCurrentClip: String { animator.currentClip }
 
 	/// Stands in for the per-frame live window read.
 	///

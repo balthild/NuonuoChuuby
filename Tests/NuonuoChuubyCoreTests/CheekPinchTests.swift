@@ -79,6 +79,51 @@ struct CheekPinchInteractionTests {
 	}
 }
 
+/// The rig's anchors describe one pose only, so whatever clip the pinch interrupts
+/// has to be replaced by that pose — otherwise the pulled cheek and the mouth the
+/// overlay erases land on a face that is not where the rig thinks it is. A landing
+/// bounce is the clip that made this visible: it squashes her and opens her mouth.
+@MainActor
+@Suite("Cheek pinch pose", .serialized)
+struct CheekPinchPoseTests {
+	enum TestSkip: Error { case missingAssets }
+
+	private func makeController() throws -> (PetController, SurfaceProvider, URL) {
+		guard let root = TestAssets.root else { throw TestSkip.missingAssets }
+		let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+			.appendingPathComponent("nuonuo-cheek-pose-\(UUID().uuidString)")
+		let platform = MockPlatform.singleMonitor(width: 1728, height: 1117)
+		let space = DisplaySpace(monitors: platform.monitors(), primaryHeight: 1117)
+		let provider = SurfaceProvider(platform: platform)
+		provider.refresh(displaySpace: space)
+		let controller = PetController(
+			catalog: AssetCatalog(locator: AssetLocator(root: root)),
+			surfaceProvider: provider,
+			lifeStore: PetLifeStateStore(stateDirectory: directory),
+			displaySpace: space,
+			randomSeed: TestAssets.randomSeed
+		)
+		return (controller, provider, directory)
+	}
+
+	@Test("A pinch replaces an interrupted clip with the pose the rig is authored for")
+	func interruptedClipIsReplaced() throws {
+		let (controller, provider, directory) = try makeController()
+		defer { try? FileManager.default.removeItem(at: directory) }
+
+		let floor = try #require(provider.surfaces.first { $0.key.kind == .floor })
+		controller.debugLand(on: floor)
+		#expect(controller.debugState.state == .landing)
+		#expect(controller.debugCurrentClip == "land")
+
+		let geometry = controller.cheekGeometryInView
+		controller.beginPinch(side: .right, at: CGPoint(x: geometry.rightX, y: geometry.cheekY))
+
+		#expect(controller.debugState.state == .pinching)
+		#expect(controller.debugCurrentClip == "idle")
+	}
+}
+
 @Suite("Cheek pinch dynamics")
 struct CheekPinchDynamicsTests {
 	@Test("A pinch starts at rest and follows the drag")
