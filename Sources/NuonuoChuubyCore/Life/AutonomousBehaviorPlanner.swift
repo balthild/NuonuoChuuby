@@ -32,7 +32,10 @@ public enum AutonomousBehaviorPlanner {
 			choices.append((action, weight))
 		}
 
-		add(.rest, 2.2 + (supportsFood ? max(0, life.fullness - 68) / 24 : 0))
+		let fullnessRest =
+			supportsFood
+			? max(0, life.fullness - LifeBehaviorPolicy.comfortablyFullThreshold) / 24 : 0
+		add(.rest, 2.2 + fullnessRest)
 
 		if hasGroundSupport {
 			add(

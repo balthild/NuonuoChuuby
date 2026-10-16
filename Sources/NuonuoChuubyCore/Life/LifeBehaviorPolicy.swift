@@ -9,6 +9,16 @@ public enum LifeBehaviorPolicy {
 	public static let lickInterruptionThreshold: Double = 62
 	public static let rollInterruptionThreshold: Double = 65
 	public static let foodAppealInterruptionThreshold: Double = 70
+	/// Fullness at which she counts as full — roughly four meals' worth. Unlike
+	/// hunger, fullness only rises by eating, so this is reachable only after a
+	/// run of meals.
+	public static let comfortablyFullThreshold: Double = 60
+
+	/// Being full is a matter of fullness alone: hunger is the drive to seek
+	/// food, so a ravenous pet may still be full.
+	public static func isComfortablyFull(_ life: PetLifeState) -> Bool {
+		life.fullness >= comfortablyFullThreshold
+	}
 
 	public static func isHungerReaction(_ action: AutonomousAction) -> Bool {
 		switch action {

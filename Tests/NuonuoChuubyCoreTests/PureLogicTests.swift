@@ -313,6 +313,36 @@ struct AutonomousBehaviorPlannerTests {
 		}
 	}
 
+	@Test("High fullness, not hunger, makes resting more likely")
+	func fullnessRaisesRest() {
+		let restOrWander: Set<AutonomousAction> = [.rest, .wander]
+		var hungryButEmpty = PetLifeState()
+		hungryButEmpty.fullness = 10
+		hungryButEmpty.curiosity = 0
+		hungryButEmpty.hunger = 100
+		var fullButRavenous = PetLifeState()
+		fullButRavenous.fullness = 100
+		fullButRavenous.curiosity = 0
+		fullButRavenous.hunger = 100
+
+		#expect(
+			AutonomousBehaviorPlanner.choose(
+				life: hungryButEmpty,
+				hasGroundSupport: true,
+				availableActions: restOrWander,
+				randomUnit: 0.75
+			) == .wander
+		)
+		#expect(
+			AutonomousBehaviorPlanner.choose(
+				life: fullButRavenous,
+				hasGroundSupport: true,
+				availableActions: restOrWander,
+				randomUnit: 0.75
+			) == .rest
+		)
+	}
+
 	@Test("High sleepiness makes a nap likely")
 	func sleepinessRaisesNap() {
 		var life = PetLifeState()
@@ -348,6 +378,21 @@ struct AutonomousBehaviorPlannerTests {
 			#expect(action != .explore)
 			#expect(action != .hop)
 		}
+	}
+}
+
+@Suite("Life behaviour policy")
+struct LifeBehaviorPolicyTests {
+	@Test("Being full follows fullness, not hunger")
+	func comfortablyFull() {
+		var state = PetLifeState()
+		state.fullness = LifeBehaviorPolicy.comfortablyFullThreshold - 1
+		state.hunger = 100
+		#expect(!LifeBehaviorPolicy.isComfortablyFull(state))
+
+		state.fullness = LifeBehaviorPolicy.comfortablyFullThreshold
+		state.hunger = 0
+		#expect(LifeBehaviorPolicy.isComfortablyFull(state))
 	}
 }
 

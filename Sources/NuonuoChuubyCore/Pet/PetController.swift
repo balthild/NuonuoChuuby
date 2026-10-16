@@ -1298,7 +1298,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		persistLifeStateQuietly()
 		mealDelegate?.petController(self, didFinishMeal: item)
 
-		let stuffed = life.hunger <= 2
+		let stuffed = LifeBehaviorPolicy.isComfortablyFull(life)
 		announce(
 			stuffed ? .stuffed : .tastedItem,
 			voice: .affirmative,
@@ -1317,6 +1317,7 @@ public final class PetController: SpriteAnimatorDelegate {
 			[
 				("Name", item.displayName),
 				("Hunger", String(format: "%.1f", life.hunger)),
+				("Fullness", String(format: "%.1f", life.fullness)),
 				("Queued", "\(mealQueue.count)"),
 			]
 		)
