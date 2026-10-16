@@ -42,8 +42,9 @@ SIGN_OPTIONS ?=
 
 UPSTREAM_SUBMODULE := Vendor/JiuNuoDesktopPet
 
-GIT_VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
-VERSION ?= $(if $(GIT_VERSION),$(GIT_VERSION),0.0.0)
+SVU_PKG := 'nixpkgs\#svu'
+SVU_OUT := $(shell nix run $(SVU_PKG) -- --tag.prefix="" current)
+SEMVER ?= $(if $(SVU_OUT),$(SVU_OUT),0.0.0)
 BUILD_NUMBER ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 
 BUILD_DIR := .build
@@ -66,8 +67,19 @@ DEV_ASSETS ?=
 MANIFEST_SWIFT := Sources/$(CORE_TARGET)/Asset/AssetManifest.swift
 TEST_ASSETS_DIR := $(BUILD_DIR)/test-assets
 INFO_PLIST := App/Info.plist
+
+# The icon is a single 1024×1024 PNG that `icon` rescales into the iconset
+# `iconutil` requires. ICON_VARIANTS is the exact (pixels, filename) mapping it
+# insists on; the largest one is the source left untouched.
+ICON_SOURCE := Resources/$(APP_NAME).png
 ICONSET_DIR := $(BUILD_DIR)/$(APP_NAME).iconset
 ICNS := $(BUILD_DIR)/$(APP_NAME).icns
+ICON_VARIANTS := \
+	16:icon_16x16 32:icon_16x16@2x \
+	32:icon_32x32 64:icon_32x32@2x \
+	128:icon_128x128 256:icon_128x128@2x \
+	256:icon_256x256 512:icon_256x256@2x \
+	512:icon_512x512 1024:icon_512x512@2x
 
 SWIFT := swift
 PLIST_BUDDY := /usr/libexec/PlistBuddy
@@ -77,7 +89,7 @@ PLIST_BUDDY := /usr/libexec/PlistBuddy
 .PHONY: help format lint manifest icon build test app sign signing-cert package run rerun dev reset-data clean release
 
 help: ## Show this help.
-	@printf '%s\n' "$(DISPLAY_NAME) $(VERSION) — available targets:"
+	@printf '%s\n' "$(DISPLAY_NAME) $(SEMVER) — available targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%s\t\033[0m %s\n", $$1, $$2}' | column -t -s $$'\t'
 
 format: ## Format the sources in place (Swift via swift-format, JSON via dprint).
@@ -89,9 +101,14 @@ lint: ## Report formatting violations, changing nothing.
 manifest: ## Regenerate the compiled-in asset manifest from the submodule.
 	Tools/generate-asset-manifest.sh "$(UPSTREAM_SUBMODULE)" "$(MANIFEST_SWIFT)"
 
-icon: ## Generate AppIcon.icns, drawing the artwork from source.
-	@mkdir -p "$(BUILD_DIR)"
-	$(SWIFT) Tools/GenerateAppIcon.swift "$(ICONSET_DIR)"
+icon: ## Generate AppIcon.icns from the PNG in Resources.
+	@test -f "$(ICON_SOURCE)" || { printf '%s\n' "no icon source: $(ICON_SOURCE)"; exit 1; }
+	@rm -rf "$(ICONSET_DIR)"
+	@mkdir -p "$(ICONSET_DIR)"
+	@for spec in $(ICON_VARIANTS); do \
+		pixels=$${spec%%:*}; name=$${spec#*:}; \
+		sips -z $$pixels $$pixels --out "$(ICONSET_DIR)/$$name.png" "$(ICON_SOURCE)" >/dev/null; \
+	done
 	iconutil --convert icns --output "$(ICNS)" "$(ICONSET_DIR)"
 
 build: manifest ## Build the executable.
@@ -112,7 +129,7 @@ app: build icon ## Assemble the .app bundle.
 	@if [ -f "$(ICNS)" ]; then cp "$(ICNS)" "$(APP_BUNDLE)/Contents/Resources/AppIcon.icns"; fi
 	@cp LICENSE NOTICE "$(APP_BUNDLE)/Contents/Resources/"
 	@cp "$(INFO_PLIST)" "$(APP_BUNDLE)/Contents/Info.plist"
-	@$(PLIST_BUDDY) -c "Set :CFBundleShortVersionString $(VERSION)" "$(APP_BUNDLE)/Contents/Info.plist"
+	@$(PLIST_BUDDY) -c "Set :CFBundleShortVersionString $(SEMVER)" "$(APP_BUNDLE)/Contents/Info.plist"
 	@$(PLIST_BUDDY) -c "Set :CFBundleVersion $(BUILD_NUMBER)" "$(APP_BUNDLE)/Contents/Info.plist"
 	@plutil -lint "$(APP_BUNDLE)/Contents/Info.plist"
 	@printf '%s\n' "Assembled $(APP_BUNDLE)"
@@ -128,8 +145,8 @@ signing-cert: ## Create the self-signed certificate the app is signed with.
 
 package: sign ## Produce a distributable zip in .build/dist.
 	@mkdir -p "$(DIST_DIR)"
-	ditto -c -k --keepParent "$(APP_BUNDLE)" "$(DIST_DIR)/$(APP_NAME)-$(VERSION).zip"
-	@printf '%s\n' "Created $(DIST_DIR)/$(APP_NAME)-$(VERSION).zip"
+	ditto -c -k --keepParent "$(APP_BUNDLE)" "$(DIST_DIR)/$(APP_NAME)-v$(SEMVER).zip"
+	@printf '%s\n' "Created $(DIST_DIR)/$(APP_NAME)-v$(SEMVER).zip"
 
 run: DEV_ASSETS := 1
 run: CONFIG = release
@@ -158,7 +175,6 @@ clean: ## Remove all build products.
 	rm -rf "$(BUILD_DIR)"
 	@rm -f "$(MANIFEST_SWIFT)"
 
-release: ## Clean release build: tested, then packaged WITHOUT the artwork.
-	$(MAKE) clean
-	$(MAKE) CONFIG=release test
-	$(MAKE) CONFIG=release package
+release: KIND ?= please-specify
+release: ## Clean release build: tested, packaged WITHOUT the artwork, and upload to GitHub.
+	Tools/release.sh "$(KIND)"
