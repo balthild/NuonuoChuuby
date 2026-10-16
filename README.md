@@ -4,7 +4,23 @@
 
 **当前阶段：只实现「糯糯」。「菲比啾比」的窗口捣蛋、双宠共存、配对互动留待后续版本。**
 
-## 快速开始
+## 安装
+
+首次安装：
+
+```sh
+brew tap balthild/nuonuo-chubby https://github.com/balthild/NuonuoChuuby
+brew trust balthild/nuonuo-chubby
+brew install --cask nuonuo-chubby
+```
+
+更新：
+
+```sh
+brew upgrade --cask nuonuo-chubby
+```
+
+## 开发
 
 ```sh
 git submodule update --init     # 取上游素材仓库
