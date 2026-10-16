@@ -10,13 +10,51 @@ struct FolderEventBatchTests {
 		_ path: String,
 		renamed: Bool = false,
 		removed: Bool = false,
+		created: Bool = false,
 		onDisk: Bool
 	) -> FolderEventBatch.Entry {
-		FolderEventBatch.Entry(path: path, renamed: renamed, removed: removed, isOnDisk: onDisk)
+		FolderEventBatch.Entry(
+			path: path,
+			renamed: renamed,
+			removed: removed,
+			created: created,
+			isOnDisk: onDisk
+		)
 	}
 
 	private func deleted(_ entries: [FolderEventBatch.Entry]) -> [String] {
 		FolderEventBatch.outcome(of: entries).deleted
+	}
+
+	@Test("A file that has appeared is reported as such")
+	func createdFileAppears() {
+		// Finder writes a new file: created, and on disk when the event arrives.
+		let outcome = FolderEventBatch.outcome(of: [
+			entry("/d/a.txt", created: true, onDisk: true)
+		])
+		#expect(outcome.appeared == ["/d/a.txt"])
+		#expect(outcome.deleted.isEmpty)
+	}
+
+	@Test("A move to the Trash is not an appearance")
+	func trashMoveIsNotAnAppearance() {
+		// The trap: a move to the Trash arrives as renaming *and* creating, with the
+		// path already gone. Only disk presence tells the two apart, which is the
+		// same fact the deletion rules turn on.
+		let outcome = FolderEventBatch.outcome(of: [
+			entry("/d/a.txt", renamed: true, created: true, onDisk: false)
+		])
+		#expect(outcome.appeared.isEmpty)
+		#expect(outcome.deleted == ["/d/a.txt"])
+	}
+
+	@Test("An unlink is not an appearance, even though it is a creation of nothing")
+	func unlinkIsNotAnAppearance() {
+		let outcome = FolderEventBatch.outcome(of: [
+			entry("/d/a.txt", removed: true, created: false, onDisk: false)
+		])
+		#expect(outcome.appeared.isEmpty)
+		#expect(outcome.deleted == ["/d/a.txt"])
 	}
 
 	@Test("Renaming a file within the folder deletes nothing")

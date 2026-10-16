@@ -6,11 +6,17 @@ import AppKit
 public final class FileDeletionWatcher {
 	/// Called with the items that are ready to be eaten.
 	public var onMealsReady: (([DeletedItem]) -> Void)?
+	/// Called with the names of files that have appeared, so their icons can be
+	/// read while they are still on the desktop.
+	public var onFilesAppeared: (([String]) -> Void)?
 
 	private var detectors = DeletionMealDetector()
 	private var watchers: [FolderWatcher] = []
 	private var pump: Timer?
 	private var nextIdentifier = 1
+	/// The desktop's path, so an appearance can be told apart from one in any other
+	/// watched folder: only the desktop's files have icons to look for.
+	private var desktopPath: String?
 
 	/// Where a deleted icon was, and how big it was, resolved by file name. The
 	/// icon's accessibility element still exists for a fraction of a second after
@@ -45,6 +51,7 @@ public final class FileDeletionWatcher {
 		var directories: [URL] = []
 		if let desktop = manager.urls(for: .desktopDirectory, in: .userDomainMask).first {
 			directories.append(desktop)
+			desktopPath = desktop.path
 		}
 		if let downloads = manager.urls(for: .downloadsDirectory, in: .userDomainMask).first {
 			directories.append(downloads)
@@ -98,6 +105,20 @@ public final class FileDeletionWatcher {
 		}
 
 		let names = outcome.deleted.map { ($0 as NSString).lastPathComponent }
+
+		// Told before the deletions are looked up: a file can appear and disappear in
+		// one batch, and the appearance is what lets its icon be found at all.
+		//
+		// Only the desktop's own files: the index reads Finder's desktop icons, so a
+		// file in any other watched folder has nothing to look for and a wait on it
+		// would be three seconds of reads that cannot succeed.
+		if !outcome.appeared.isEmpty, let desktopPath {
+			let appeared = outcome.appeared
+				.filter { ($0 as NSString).deletingLastPathComponent == desktopPath }
+				.map { ($0 as NSString).lastPathComponent }
+			if !appeared.isEmpty { onFilesAppeared?(appeared) }
+		}
+
 		// A rename-only batch has nothing to look up, and the lookup is a full read
 		// of Finder's tree — so it is not made for one.
 		guard !names.isEmpty else { return }

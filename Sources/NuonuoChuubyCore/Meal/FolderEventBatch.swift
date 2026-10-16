@@ -14,14 +14,18 @@ enum FolderEventBatch {
 		/// The item was unlinked. Finder's delete does not set this, because
 		/// Finder's delete is a move to the Trash.
 		var removed: Bool
+		/// The item was created. Set alongside `renamed` on a move to the Trash, so
+		/// it means nothing on its own.
+		var created: Bool
 		/// Whether the path is on disk now. The event is delivered after the call
 		/// that caused it has returned, so this is the post-move state.
 		var isOnDisk: Bool
 
-		init(path: String, renamed: Bool, removed: Bool, isOnDisk: Bool) {
+		init(path: String, renamed: Bool, removed: Bool, created: Bool, isOnDisk: Bool) {
 			self.path = path
 			self.renamed = renamed
 			self.removed = removed
+			self.created = created
 			self.isOnDisk = isOnDisk
 		}
 	}
@@ -34,6 +38,13 @@ enum FolderEventBatch {
 		/// because "she did not eat the file I renamed" and "she saw nothing at all"
 		/// look identical from outside.
 		var renamed: [String] = []
+		/// Paths that are in the folder now and were not before.
+		///
+		/// Not meals, and not used as meals: Finder needs a moment to draw an icon
+		/// for a new file, so this is the notice that lets the icon be read while it
+		/// exists — before it is deleted, and before the deletion needs to know
+		/// where it was.
+		var appeared: [String] = []
 	}
 
 	/// What the batch means for the meal pipeline.
@@ -60,6 +71,13 @@ enum FolderEventBatch {
 		let hasRenameDestination = entries.contains { $0.renamed && !$0.removed && $0.isOnDisk }
 		var outcome = Outcome()
 		for entry in entries {
+			// Still on disk and flagged created: a file that is there now. A move to
+			// the Trash carries the flag too but is gone, so the disk is what settles
+			// it — the same fact the two deletion rules turn on.
+			if entry.created, !entry.removed, entry.isOnDisk {
+				outcome.appeared.append(entry.path)
+				continue
+			}
 			if entry.removed {
 				outcome.deleted.append(entry.path)
 			} else if entry.renamed, !entry.isOnDisk {

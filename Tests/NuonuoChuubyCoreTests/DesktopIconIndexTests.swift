@@ -133,4 +133,46 @@ struct DesktopIconIndexTests {
 		#expect(index.iconsForDeletion(of: ["report"])["report"] == nil)
 		#expect(index.iconsForDeletion(of: ["report.txt"])["report.txt"] != nil)
 	}
+
+	@Test("A new file's icon is caught by waiting, not by the two-second poll")
+	func appearanceWaitCatchesANewIcon() {
+		// Finder does not draw a new file's icon at once — measured 0.20–1.19 s. This
+		// reader reports nothing for the first few reads, like a folder that exists
+		// before its icon does. `start()` is one of them.
+		var reads = 0
+		let index = DesktopIconIndex(reader: {
+			reads += 1
+			guard reads >= 4 else { return .icons([]) }
+			return .icons([DesktopIcon(name: "fresh", position: PixelPoint(x: 700, y: 400), size: 56)])
+		})
+		index.start()
+		defer { index.stop() }
+
+		index.awaitAppearance(of: ["fresh"])
+		#expect(index.icon(of: "fresh") == nil, "not there the moment the file is created")
+
+		// The polls the app's timer would make.
+		index.pollForAppearance()
+		index.pollForAppearance()
+		#expect(index.icon(of: "fresh") == nil)
+		index.pollForAppearance()
+		#expect(index.icon(of: "fresh")?.position == PixelPoint(x: 700, y: 400))
+		#expect(index.icon(of: "fresh")?.size == 56, "and with the size the ghost needs")
+	}
+
+	@Test("The appearance wait gives up, and does not read for ever")
+	func appearanceWaitGivesUp() {
+		var polls = 0
+		let index = DesktopIconIndex(reader: {
+			polls += 1
+			return .icons([])
+		})
+		index.start()
+		defer { index.stop() }
+
+		index.awaitAppearance(of: ["never"])
+		let afterFirst = polls
+		index.pollForAppearance()
+		#expect(polls == afterFirst + 1)
+	}
 }

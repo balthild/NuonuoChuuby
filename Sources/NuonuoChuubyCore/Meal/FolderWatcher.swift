@@ -92,20 +92,23 @@ final class FolderWatcher {
 
 			let renamed = rawFlags & FSEventStreamEventFlags(kFSEventStreamEventFlagItemRenamed) != 0
 			let removed = rawFlags & FSEventStreamEventFlags(kFSEventStreamEventFlagItemRemoved) != 0
-			guard renamed || removed else { continue }
+			let created = rawFlags & FSEventStreamEventFlags(kFSEventStreamEventFlagItemCreated) != 0
+			guard renamed || removed || created else { continue }
 
 			entries.append(
 				FolderEventBatch.Entry(
 					path: path,
 					renamed: renamed,
 					removed: removed,
+					created: created,
 					isOnDisk: FileManager.default.fileExists(atPath: path)
 				)
 			)
 		}
 
 		let outcome = FolderEventBatch.outcome(of: entries)
-		guard !outcome.deleted.isEmpty || !outcome.renamed.isEmpty else { return }
+		guard !outcome.deleted.isEmpty || !outcome.renamed.isEmpty || !outcome.appeared.isEmpty
+		else { return }
 		let onEvents = self.onEvents
 		DispatchQueue.main.async { onEvents?(outcome) }
 	}

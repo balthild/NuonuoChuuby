@@ -195,6 +195,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		deletionWatcher.onMealsReady = { [weak self] items in
 			self?.controller?.enqueueMeals(items)
 		}
+		// A file's icon is only readable for as long as Finder has it drawn, so the
+		// index is told the moment one appears and reads until it shows up.
+		deletionWatcher.onFilesAppeared = { [weak desktopIcons] names in
+			desktopIcons?.awaitAppearance(of: names)
+		}
 		self.deletionWatcher = deletionWatcher
 		controller.mealDelegate = self
 

@@ -231,6 +231,59 @@ public final class DesktopIconIndex {
 	public func stop() {
 		timer?.invalidate()
 		timer = nil
+		appearanceTimer?.invalidate()
+		appearanceTimer = nil
+	}
+
+	// MARK: - Waiting for a new icon
+
+	/// How often the tree is read while waiting for a new icon, and how long the
+	/// wait lasts.
+	///
+	/// Finder does not draw a new file's icon at once: measured on this machine, the
+	/// element appears **0.20–1.19 s** after the file does. A two-second poll can
+	/// therefore miss an icon for its whole life, and an icon no reading ever saw is
+	/// one whose deletion has no position to draw at — it falls back to the cursor
+	/// and to a made-up size.
+	static let appearancePollInterval: Double = 0.25
+	static let appearanceWait: Double = 3
+
+	private var appearanceTimer: Timer?
+	/// Names waiting to be seen, with the time each wait gives up.
+	private var awaiting: [String: Date] = [:]
+
+	/// Waits for these names to show up in a reading.
+	///
+	/// Called when files appear in a watched folder. Reading once at that moment
+	/// usually catches nothing, because Finder has not drawn them yet; reading until
+	/// they appear is what puts their positions — and their sizes — in the snapshot
+	/// before they are deleted.
+	public func awaitAppearance(of names: [String]) {
+		guard isStarted else { return }
+		let deadline = Date().addingTimeInterval(Self.appearanceWait)
+		for name in names where icons[name] == nil {
+			awaiting[name] = deadline
+		}
+		guard !awaiting.isEmpty else { return }
+		guard appearanceTimer == nil else { return }
+		let timer = Timer(timeInterval: Self.appearancePollInterval, repeats: true) { [weak self] _ in
+			MainActor.assumeIsolated { self?.pollForAppearance() }
+		}
+		RunLoop.main.add(timer, forMode: .common)
+		appearanceTimer = timer
+	}
+
+	private var isStarted: Bool { timer != nil }
+
+	/// One poll of the appearance wait. Also the test seam: the timer is what drives
+	/// this in the app, and a test cannot run a run loop.
+	func pollForAppearance() {
+		refresh()
+		let now = Date()
+		awaiting = awaiting.filter { name, deadline in now < deadline && icons[name] == nil }
+		guard awaiting.isEmpty else { return }
+		appearanceTimer?.invalidate()
+		appearanceTimer = nil
 	}
 
 	/// Whether the process may use Accessibility, asking once if not.
