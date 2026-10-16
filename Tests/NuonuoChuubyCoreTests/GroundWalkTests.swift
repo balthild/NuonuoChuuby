@@ -60,6 +60,10 @@ struct GroundWalkTests {
 		let rig = try makeRig()
 		defer { try? FileManager.default.removeItem(at: rig.directory) }
 		rig.controller.debugPlaceOnSurface(rig.floor)
+		// The commanded walk below is unaffected, but nothing else may start once it
+		// ends: the assertions are about this walk, and self-directed behaviour after
+		// it would be a different walk they would have to tell apart.
+		rig.controller.quietMode = true
 
 		// The floor runs the width of the display and she starts at its centre, so
 		// the far end is more than the 8 s a give-up timeout allowed at the 92 pt/s
