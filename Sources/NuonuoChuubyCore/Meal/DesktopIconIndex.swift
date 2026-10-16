@@ -248,9 +248,15 @@ public final class DesktopIconIndex {
 	static let appearancePollInterval: Double = 0.25
 	static let appearanceWait: Double = 3
 
+	/// Both as instance values, so a test can drive the wait by hand. Left at their
+	/// defaults they are the two constants above; a test sets the interval out of
+	/// reach so the timer it can never see does not race its own calls.
+	var appearancePollInterval = DesktopIconIndex.appearancePollInterval
+	var appearanceWait = DesktopIconIndex.appearanceWait
+
 	private var appearanceTimer: Timer?
-	/// Names waiting to be seen, with the time each wait gives up.
-	private var awaiting: [String: Date] = [:]
+	/// Names waiting to be seen, and when each wait began and gives up.
+	private var awaiting: [String: (startedAt: Date, deadline: Date)] = [:]
 
 	/// Waits for these names to show up in a reading.
 	///
@@ -260,13 +266,14 @@ public final class DesktopIconIndex {
 	/// before they are deleted.
 	public func awaitAppearance(of names: [String]) {
 		guard isStarted else { return }
-		let deadline = Date().addingTimeInterval(Self.appearanceWait)
-		for name in names where icons[name] == nil {
-			awaiting[name] = deadline
+		let now = Date()
+		let deadline = now.addingTimeInterval(appearanceWait)
+		for name in names where icons[name] == nil && awaiting[name] == nil {
+			awaiting[name] = (startedAt: now, deadline: deadline)
 		}
 		guard !awaiting.isEmpty else { return }
 		guard appearanceTimer == nil else { return }
-		let timer = Timer(timeInterval: Self.appearancePollInterval, repeats: true) { [weak self] _ in
+		let timer = Timer(timeInterval: appearancePollInterval, repeats: true) { [weak self] _ in
 			MainActor.assumeIsolated { self?.pollForAppearance() }
 		}
 		RunLoop.main.add(timer, forMode: .common)
@@ -275,15 +282,51 @@ public final class DesktopIconIndex {
 
 	private var isStarted: Bool { timer != nil }
 
+	/// The names the appearance wait is still looking for. Internal so a test can
+	/// assert that it gave up rather than timing three real seconds.
+	var debugAwaitingAppearances: [String] { awaiting.keys.sorted() }
+
 	/// One poll of the appearance wait. Also the test seam: the timer is what drives
 	/// this in the app, and a test cannot run a run loop.
 	func pollForAppearance() {
 		refresh()
 		let now = Date()
-		awaiting = awaiting.filter { name, deadline in now < deadline && icons[name] == nil }
+		var stillWaiting: [String: (startedAt: Date, deadline: Date)] = [:]
+		for (name, wait) in awaiting {
+			// How long the wait took is the interesting number: it is the gap between
+			// the file appearing and its icon existing, and a read before that gap ends
+			// cannot see the icon at all.
+			if icons[name] != nil {
+				logAppearance(name: name, wait: wait, found: true, at: now)
+			} else if now < wait.deadline {
+				stillWaiting[name] = wait
+			} else {
+				logAppearance(name: name, wait: wait, found: false, at: now)
+			}
+		}
+		awaiting = stillWaiting
 		guard awaiting.isEmpty else { return }
 		appearanceTimer?.invalidate()
 		appearanceTimer = nil
+	}
+
+	/// Whether the wait found the icon, and how long it took.
+	///
+	/// Zero means it was already in the snapshot when the file appeared, which is the
+	/// common case: a file copied in from another folder was readable at once.
+	private func logAppearance(
+		name: String,
+		wait: (startedAt: Date, deadline: Date),
+		found: Bool,
+		at now: Date
+	) {
+		DiagnosticsLog.shared.writeEvent(
+			found ? "IconAppeared" : "IconNeverAppeared",
+			[
+				("Name", name),
+				("Waited", String(format: "%.2f", now.timeIntervalSince(wait.startedAt))),
+			]
+		)
 	}
 
 	/// Whether the process may use Accessibility, asking once if not.

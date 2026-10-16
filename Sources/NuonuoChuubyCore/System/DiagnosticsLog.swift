@@ -22,7 +22,6 @@ public final class DiagnosticsLog: @unchecked Sendable {
 	}()
 
 	private let lock = NSLock()
-	private let sessionID: String
 	private let hmacKey = SymmetricKey(size: .bits256)
 	private var fileURL: URL?
 	/// Kept open between writes, so a hot path does not pay an
@@ -31,10 +30,7 @@ public final class DiagnosticsLog: @unchecked Sendable {
 	/// The log directory only needs creating once per configured file.
 	private var hasCreatedDirectory = false
 
-	public init() {
-		let stamp = ISO8601DateFormatter()
-		sessionID = stamp.string(from: Date())
-	}
+	public init() {}
 
 	deinit {
 		try? handle?.close()
@@ -63,6 +59,12 @@ public final class DiagnosticsLog: @unchecked Sendable {
 		)
 	}
 
+	/// A structured event, stamped like every other line.
+	///
+	/// The stamp is what makes a sequence of events answer questions about time —
+	/// how long a file lived, how soon a read followed a deletion. The original
+	/// carries a per-run id instead, which orders lines within one run and cannot
+	/// date any of them.
 	public func writeEvent(_ name: String, _ fields: [(String, String)] = []) {
 		let rendered =
 			fields
@@ -70,7 +72,7 @@ public final class DiagnosticsLog: @unchecked Sendable {
 				"\($0.0)=\"\(DiagnosticsPrivacy.field(key: $0.0, value: $0.1, reference: reference))\" "
 			}
 			.joined()
-		append("TRACE session=\(sessionID) event=\(name) \(rendered)")
+		append("[\(timestamp())] TRACE event=\(name) \(rendered)")
 	}
 
 	/// A stable-within-this-session, irreversible stand-in for user content.

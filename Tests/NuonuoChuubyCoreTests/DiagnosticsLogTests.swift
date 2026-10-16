@@ -29,6 +29,27 @@ struct DiagnosticsLogTests {
 		#expect(text.contains("[private:"))
 	}
 
+	/// Every line carries the time it happened, events included. That is what makes
+	/// a run readable as a timeline: how long a file lived between its creation and
+	/// its deletion, how soon a read followed a deletion. A per-run id, which is what
+	/// the original had, only orders lines within one run.
+	@Test("An event line is stamped like any other")
+	func eventLinesCarryATimestamp() throws {
+		let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+			.appendingPathComponent("nuonuo-stamp-\(UUID().uuidString)")
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let url = directory.appendingPathComponent("activity.log")
+
+		let log = DiagnosticsLog()
+		log.configure(fileURL: url)
+		log.writeEvent("First", [("Count", "1")])
+
+		let text = try String(contentsOf: url, encoding: .utf8)
+		let line = try #require(text.split(separator: "\n").first.map(String.init))
+		let pattern = #"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\] TRACE event=First "#
+		#expect(line.range(of: pattern, options: .regularExpression) != nil, "\(line)")
+	}
+
 	/// Rotation decides when to move the file aside from the offset `seekToEnd` reports,
 	/// which is also how it appends — so this is the check that the size it reads is the
 	/// size the file really has, and that the handle is reopened on the new one.

@@ -147,6 +147,10 @@ struct DesktopIconIndexTests {
 		})
 		index.start()
 		defer { index.stop() }
+		// The wait intervals are driven by hand here, so the timer it schedules must
+		// never fire: a run loop that fires it mid-test would read behind the test's
+		// back and make the counts below depend on wall time.
+		index.appearancePollInterval = 3600
 
 		index.awaitAppearance(of: ["fresh"])
 		#expect(index.icon(of: "fresh") == nil, "not there the moment the file is created")
@@ -160,19 +164,21 @@ struct DesktopIconIndexTests {
 		#expect(index.icon(of: "fresh")?.size == 56, "and with the size the ghost needs")
 	}
 
-	@Test("The appearance wait gives up, and does not read for ever")
+	@Test("The appearance wait gives up rather than waiting for ever")
 	func appearanceWaitGivesUp() {
-		var polls = 0
-		let index = DesktopIconIndex(reader: {
-			polls += 1
-			return .icons([])
-		})
+		let index = DesktopIconIndex(reader: { .icons([]) })
 		index.start()
 		defer { index.stop() }
+		index.appearancePollInterval = 3600
+		// The wait's length is fixed when it is created, so this is set first.
+		index.appearanceWait = 0
 
 		index.awaitAppearance(of: ["never"])
-		let afterFirst = polls
+		#expect(index.debugAwaitingAppearances == ["never"])
+
+		// It gives up, which is what keeps an icon that never appeared from leaving a
+		// poll running for the rest of the session.
 		index.pollForAppearance()
-		#expect(polls == afterFirst + 1)
+		#expect(index.debugAwaitingAppearances.isEmpty)
 	}
 }
