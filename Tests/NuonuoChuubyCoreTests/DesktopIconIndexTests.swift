@@ -62,14 +62,30 @@ struct DesktopIconIndexTests {
 		// held it, so a deletion of it must not fall back to the cursor.
 		read = [DesktopIcon(name: "fresh", position: PixelPoint(x: 700, y: 400), size: 56)]
 		#expect(index.icon(of: "fresh") == nil)
-		#expect(index.iconForDeletion(of: "fresh")?.position == PixelPoint(x: 700, y: 400))
-		#expect(index.iconForDeletion(of: "fresh")?.size == 56)
+
+		let deleted = index.iconsForDeletion(of: ["fresh"])
+		#expect(deleted["fresh"]?.position == PixelPoint(x: 700, y: 400))
+		#expect(deleted["fresh"]?.size == 56)
 
 		// The eaten icon is dropped from the cache, so it is not offered as a
 		// spot to walk over to and lick while the element is still in Finder's
 		// tree.
 		#expect(!index.positions.contains(PixelPoint(x: 700, y: 400)))
 		#expect(index.icon(of: "fresh") == nil)
+	}
+
+	@Test("A batch of deletions costs one read")
+	func batchIsOneRead() {
+		var reads = 0
+		let index = DesktopIconIndex(reader: {
+			reads += 1
+			return [DesktopIcon(name: "a", position: PixelPoint(x: 1, y: 1), size: 56)]
+		})
+		index.refresh()
+
+		reads = 0
+		_ = index.iconsForDeletion(of: ["a", "b", "c", "d", "e"])
+		#expect(reads == 1)
 	}
 
 	@Test("A failed read falls back to the snapshot for this call and empties the cache")
@@ -88,7 +104,7 @@ struct DesktopIconIndexTests {
 		// it rather than to the cursor...
 		read = nil
 		#expect(index.icon(of: "a") != nil)
-		#expect(index.iconForDeletion(of: "a")?.position == PixelPoint(x: 2, y: 3))
+		#expect(index.iconsForDeletion(of: ["a"])["a"]?.position == PixelPoint(x: 2, y: 3))
 
 		// ...but the snapshot is not kept alive to do so: the cache always says
 		// what the last read said, and a failed read says nothing.
@@ -97,7 +113,7 @@ struct DesktopIconIndexTests {
 
 		let empty = DesktopIconIndex(reader: { nil })
 		empty.refresh()
-		#expect(empty.iconForDeletion(of: "a") == nil)
+		#expect(empty.iconsForDeletion(of: ["a"])["a"] == nil)
 	}
 
 	@Test("The real reader is safe to call whatever the permission state")

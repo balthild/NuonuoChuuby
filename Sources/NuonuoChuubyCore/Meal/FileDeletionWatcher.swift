@@ -29,9 +29,11 @@ public final class FileDeletionWatcher {
 		}
 	}
 
-	private let anchorProvider: (String) -> Anchor
+	/// Resolves every name in one call and returns one anchor per name, so a batch
+	/// of deletions costs a single read of the desktop rather than one per file.
+	private let anchorProvider: ([String]) -> [String: Anchor]
 
-	public init(anchorProvider: @escaping (String) -> Anchor) {
+	public init(anchorProvider: @escaping ([String]) -> [String: Anchor]) {
 		self.anchorProvider = anchorProvider
 	}
 
@@ -95,10 +97,11 @@ public final class FileDeletionWatcher {
 			)
 		}
 
+		let names = outcome.deleted.map { ($0 as NSString).lastPathComponent }
+		let anchors = anchorProvider(names)
 		let now = Date()
-		for path in outcome.deleted {
-			let name = (path as NSString).lastPathComponent
-			let anchor = anchorProvider(name)
+		for (path, name) in zip(outcome.deleted, names) {
+			guard let anchor = anchors[name] else { continue }
 			detectors.noteRemoval(
 				DeletionMealDetector.Pending(
 					name: name,

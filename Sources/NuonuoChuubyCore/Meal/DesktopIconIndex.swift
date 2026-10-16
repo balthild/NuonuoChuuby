@@ -55,26 +55,32 @@ public final class DesktopIconIndex {
 
 	public func icon(of name: String) -> DesktopIcon? { icons[name] }
 
-	/// The icon behind a name at the moment a deletion is detected.
+	/// The icons behind these names, at the moment deletions are detected.
 	///
-	/// Reads the tree rather than trusting the periodic snapshot, because an icon
+	/// Every name is resolved from one read, because one enumeration is real work
+	/// (~11 ms measured) and a batch of deletions must not pay it per file. The
+	/// read is of the tree rather than the periodic snapshot, because an icon
 	/// created and deleted between two refreshes was never in the snapshot at all
-	/// — and the deleted icon's own element is still in Finder's tree at this
-	/// instant (measured: it survives the unlink by about 0.7 s), so this is the
-	/// last chance to ask where it really was. The reading becomes the new
-	/// snapshot, and the name is dropped from it: an icon known to be gone must not
-	/// be offered as one to walk over to and lick. Dropping it after the read also
-	/// covers the element still being there, which is the common case.
+	/// — and the deleted icons' own elements are still in Finder's tree at this
+	/// instant (measured: they survive the unlink by about 0.7 s), so this is the
+	/// last chance to ask where they really were. The reading becomes the new
+	/// snapshot, and the names are dropped from it: icons known to be gone must not
+	/// stay spots to walk over to and lick.
 	///
 	/// The pre-read snapshot is kept only as this call's fallback, so a failed read
-	/// (or an element that has already gone) still answers with where the icon was
+	/// (or an element that has already gone) still answers with where an icon was
 	/// instead of sending her to the cursor. The snapshot itself is not kept — the
 	/// cache always says what the last read said, and a failed read says nothing,
 	/// exactly as in ``refresh``.
-	public func iconForDeletion(of name: String) -> DesktopIcon? {
-		let cached = icons[name]
+	public func iconsForDeletion(of names: [String]) -> [String: DesktopIcon] {
+		let cached = icons
 		refresh()
-		return icons.removeValue(forKey: name) ?? cached
+
+		var found: [String: DesktopIcon] = [:]
+		for name in names {
+			found[name] = icons.removeValue(forKey: name) ?? cached[name]
+		}
+		return found
 	}
 
 	public func refresh() {

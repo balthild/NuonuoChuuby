@@ -179,20 +179,18 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		mouseMonitor.start()
 		self.mouseMonitor = mouseMonitor
 
-		// The anchor is resolved here, at detection, not when she sets off: the
-		// deleted icon's accessibility element is gone within about half a second,
-		// while the confirmed meal may start several seconds later.
+		// The anchors are resolved here, at detection, not when she sets off: the
+		// deleted icons' accessibility elements are gone within about half a second,
+		// while the confirmed meals may start several seconds later. One call covers
+		// the whole batch, so deleting ten files is one read of the desktop rather
+		// than ten.
 		let deletionWatcher = FileDeletionWatcher(anchorProvider: {
-			[weak desktopIcons, weak mouseMonitor] name in
-			if let icon = desktopIcons?.iconForDeletion(of: name) {
-				return FileDeletionWatcher.Anchor(
-					point: icon.position,
-					exact: true,
-					iconSize: icon.size
-				)
-			}
+			[weak desktopIcons, weak mouseMonitor] names in
+			let icons = desktopIcons?.iconsForDeletion(of: names) ?? [:]
 			let fallback = mouseMonitor?.anchor() ?? (point: PixelPoint(x: 0, y: 0), isExact: false)
-			return FileDeletionWatcher.Anchor(point: fallback.point, exact: fallback.isExact)
+			return names.reduce(into: [:]) { anchors, name in
+				anchors[name] = Self.deletionAnchor(for: name, among: icons, fallback: fallback)
+			}
 		})
 		deletionWatcher.onMealsReady = { [weak self] items in
 			self?.controller?.enqueueMeals(items)
@@ -329,6 +327,22 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 			at: item.anchor,
 			size: item.iconSize ?? petSize * 0.34
 		)
+	}
+
+	/// Where to draw a deleted file's ghost, and how big.
+	///
+	/// The icon's own position and size when the index has them — it is the only way
+	/// the ghost matches the real icon — and the mouse otherwise, which is where the
+	/// user's attention last was.
+	private static func deletionAnchor(
+		for name: String,
+		among icons: [String: DesktopIcon],
+		fallback: (point: PixelPoint, isExact: Bool)
+	) -> FileDeletionWatcher.Anchor {
+		guard let icon = icons[name] else {
+			return FileDeletionWatcher.Anchor(point: fallback.point, exact: fallback.isExact)
+		}
+		return FileDeletionWatcher.Anchor(point: icon.position, exact: true, iconSize: icon.size)
 	}
 
 	/// Puts the fake icons away with her, and brings them back when she returns.
