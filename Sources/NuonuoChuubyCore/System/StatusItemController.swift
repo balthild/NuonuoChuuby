@@ -277,6 +277,14 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 	/// while the menu is closed and there is no event to refresh on.
 	public var hungerSource: (() -> Double?)?
 
+	/// The login-item state, read once and reused afterwards.
+	///
+	/// Reading it spawns `osascript` and blocks the main thread for ~100 ms — far
+	/// too much to pay on every menu display. It is read the first time the menu is
+	/// built and again after each toggle, so a change made in System Settings is
+	/// not picked up until then.
+	private var launchAtLoginEnabled: Bool?
+
 	public init(characterName: String, callbacks: Callbacks) {
 		self.callbacks = callbacks
 		// A variable-length item is sized to its glyph; a square item is as wide
@@ -310,7 +318,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 	}
 
 	public func popUpMenu(atScreenPoint point: NSPoint) {
-		refreshMenuState()
+		// No explicit refresh: `menuNeedsUpdate` runs when the menu displays.
 		statusItem.menu?.popUp(positioning: nil, at: point, in: nil)
 	}
 
@@ -397,7 +405,8 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 		loggingItem.state = settings.loggingEnabled ? .on : .off
 		// The item reads as "mute", so it is checked when sound is off.
 		mutedItem.state = settings.soundEnabled ? .off : .on
-		launchItem.state = callbacks.isLaunchAtLogin() ? .on : .off
+		if launchAtLoginEnabled == nil { launchAtLoginEnabled = callbacks.isLaunchAtLogin() }
+		launchItem.state = launchAtLoginEnabled == true ? .on : .off
 
 		if let sliderView = sizeItem.view as? SliderMenuItemView {
 			sliderView.slider.doubleValue = settings.petSize
@@ -442,7 +451,9 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 	@objc private func toggleLogging() { callbacks.setLogging(!settings.loggingEnabled) }
 	@objc private func toggleMuted() { callbacks.setMuted(settings.soundEnabled) }
 	@objc private func toggleLaunchAtLogin() {
-		callbacks.setLaunchAtLogin(!callbacks.isLaunchAtLogin())
+		callbacks.setLaunchAtLogin(!(launchAtLoginEnabled ?? false))
+		// Re-read rather than trust the requested value: registering can fail.
+		launchAtLoginEnabled = callbacks.isLaunchAtLogin()
 	}
 	@objc private func quit() { callbacks.quit() }
 }
