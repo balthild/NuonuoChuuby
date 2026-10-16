@@ -9,15 +9,15 @@
 首次安装：
 
 ```sh
-brew tap balthild/nuonuo-chubby https://github.com/balthild/NuonuoChuuby
-brew trust balthild/nuonuo-chubby
-brew install --cask nuonuo-chubby
+brew tap balthild/tap
+brew trust balthild/tap
+brew install --cask nuonuo-chuuby
 ```
 
 更新：
 
 ```sh
-brew upgrade --cask nuonuo-chubby
+brew upgrade --cask nuonuo-chuuby
 ```
 
 ## 开发

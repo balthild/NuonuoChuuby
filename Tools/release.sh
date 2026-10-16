@@ -33,20 +33,16 @@ make package CONFIG=release SEMVER="$semver"
 asset=".build/dist/NuonuoChuuby-$version.zip"
 test -f "$asset" || { echo "missing artifact: $asset" >&2; exit 1; }
 
-# The checksum can only be taken from the assembled zip, so the cask is stamped
-# after packaging and the stamp travels in the release commit.
+# Only this side has the assembled zip to hash; the tap stamps the value into
+# the cask from the workflow dispatched below.
 sha256="$(shasum -a 256 "$asset" | awk '{print $1}')"
 
-cask=Casks/nuonuo-chubby.rb
-sed -i '' -E "s/^([[:space:]]*)version .*/\1version \"$semver\"/" "$cask"
-sed -i '' -E "s/^([[:space:]]*)sha256 .*/\1sha256 \"$sha256\"/" "$cask"
-grep -q "version \"$semver\"" "$cask" || { echo "failed to stamp version in $cask" >&2; exit 1; }
-grep -q "sha256 \"$sha256\"" "$cask" || { echo "failed to stamp sha256 in $cask" >&2; exit 1; }
-
-git add "$cask"
-git commit -m "Release $version"
-
 git tag "$version"
-git push origin HEAD
 git push origin "$version"
 gh release create "$version" "$asset" --notes "Release $version"
+
+gh workflow run update-cask.yml \
+	--repo balthild/homebrew-tap \
+	-f name="nuonuo-chuuby" \
+	-f semver="$semver" \
+	-f sha256="$sha256"
