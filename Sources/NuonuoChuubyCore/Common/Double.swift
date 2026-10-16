@@ -10,4 +10,13 @@ extension Double {
 		let t = clamp(lower: 0, upper: 1)
 		return t * t * (3 - 2 * t)
 	}
+
+	/// This value rounded to the nearest whole number, for display.
+	///
+	/// Not simply `Int(rounded())`, which traps on a value that is not finite: the
+	/// bounds a value was clamped to do not make it finite, so a NaN survives
+	/// clamping and reaches here.
+	func roundedToInt() -> Int {
+		isFinite ? Int(rounded()) : 0
+	}
 }

@@ -60,6 +60,16 @@ struct DoubleHelperTests {
 		#expect((-2.0).smoothstep() == 0)
 		#expect(3.0.smoothstep() == 1)
 	}
+
+	@Test("Rounding to a whole number survives a non-finite value")
+	func roundedToInt() {
+		#expect(36.4.roundedToInt() == 36)
+		#expect(36.5.roundedToInt() == 37)
+		// Clamping does not make a NaN finite, so the guard has to be here: a bare
+		// `Int(rounded())` traps on it.
+		#expect(Double.nan.roundedToInt() == 0)
+		#expect(Double.infinity.roundedToInt() == 0)
+	}
 }
 
 @Suite("Random selection")

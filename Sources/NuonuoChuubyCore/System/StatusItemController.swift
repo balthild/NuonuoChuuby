@@ -1,16 +1,19 @@
 import AppKit
 
+/// The menu's minimum width.
+///
+/// A row carries no width of its own: it stretches to whatever width the menu
+/// settles on, so its frame width is only a starting point and this sets the
+/// floor.
+private let menuMinimumWidth: Double = 240
+
 /// A menu that can carry a slider inline (used for the size control).
 ///
 /// A custom menu-item view replaces the standard rendering, so it is built to
 /// match one: the menu's font and colour, the same leading inset as the item
-/// titles, and the standard row height. `rowWidth` is also the knob for the menu's
-/// own width, since a custom view is what sizes the menu.
+/// titles, and the standard row height.
 final class SliderMenuItemView: NSView {
-	static let rowWidth: Double = 280
 	static let rowHeight: Double = 22
-	static let titleInsetLeft: Double = 24
-	static let titleInsetRight: Double = 12
 	static let gap: Double = 12
 	/// The menu draws its titles in a vibrant context a plain custom view does not
 	/// share, so `.labelColor` came out lighter than the titles around it.
@@ -40,7 +43,10 @@ final class SliderMenuItemView: NSView {
 		label.font = NSFont.menuFont(ofSize: 0)
 		label.textColor = Self.titleColor
 
-		super.init(frame: NSRect(x: 0, y: 0, width: Self.rowWidth, height: Self.rowHeight))
+		super.init(frame: NSRect(x: 0, y: 0, width: menuMinimumWidth, height: Self.rowHeight))
+		// AppKit stretches an item's view to the menu's content width, so the row
+		// fills the menu however wide it ends up.
+		autoresizingMask = [.width]
 
 		label.translatesAutoresizingMaskIntoConstraints = false
 		slider.translatesAutoresizingMaskIntoConstraints = false
@@ -52,12 +58,18 @@ final class SliderMenuItemView: NSView {
 		addSubview(label)
 		addSubview(slider)
 		NSLayoutConstraint.activate([
-			label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.titleInsetLeft),
 			label.centerYAnchor.constraint(equalTo: centerYAnchor),
+			label.leadingAnchor.constraint(
+				equalTo: leadingAnchor,
+				constant: StatusItemController.customItemInsetLeft,
+			),
 
-			slider.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: Self.gap),
-			slider.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.titleInsetRight),
 			slider.centerYAnchor.constraint(equalTo: centerYAnchor),
+			slider.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: Self.gap),
+			slider.trailingAnchor.constraint(
+				equalTo: trailingAnchor,
+				constant: -StatusItemController.customItemInsetRight
+			),
 		])
 	}
 
@@ -65,9 +77,140 @@ final class SliderMenuItemView: NSView {
 	required init?(coder: NSCoder) { fatalError("init(coder:) is unused") }
 }
 
+/// A slim rounded progress bar, drawn rather than built on `NSProgressIndicator`
+/// so its height and colour can be set exactly.
+final class HungerBarView: NSView {
+	static let height: Double = 3
+
+	static let trackColor: NSColor = .secondarySystemFill
+
+	override var allowsVibrancy: Bool { true }
+
+	var fraction: Double = 0 {
+		didSet { needsDisplay = true }
+	}
+
+	var fillColor: NSColor = .systemGreen {
+		didSet { needsDisplay = true }
+	}
+
+	override func draw(_ dirtyRect: NSRect) {
+		let radius = bounds.height / 2
+
+		Self.trackColor.setFill()
+		NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius).fill()
+
+		let width = bounds.width * CGFloat(fraction.clamp(lower: 0, upper: 1))
+		guard width > 0 else { return }
+		fillColor.setFill()
+		NSBezierPath(
+			roundedRect: NSRect(x: 0, y: 0, width: width, height: bounds.height),
+			xRadius: radius,
+			yRadius: radius
+		).fill()
+	}
+}
+
+/// The hunger readout: a name and its percentage on one row, a bar beneath them.
+final class HungerMenuItemView: NSView {
+	static let height: Double = 34
+	/// Lighter than the titles around it: this labels a readout rather than naming
+	/// a command.
+	static let titleColor: NSColor = .secondaryLabelColor
+
+	private static let topInset: Double = 4
+	private static let barGap: Double = 8
+
+	private let titleLabel: NSTextField
+	private let percentageLabel: NSTextField
+	private let bar = HungerBarView()
+
+	convenience init() {
+		self.init(frame: NSRect(x: 0, y: 0, width: menuMinimumWidth, height: Self.height))
+	}
+
+	override init(frame frameRect: NSRect) {
+		titleLabel = NSTextField(labelWithString: "饥饿度")
+		titleLabel.font = NSFont.menuFont(ofSize: 0)
+		titleLabel.textColor = Self.titleColor
+
+		percentageLabel = NSTextField(labelWithString: "0%")
+		percentageLabel.font = NSFont.menuFont(ofSize: 0)
+		percentageLabel.textColor = Self.titleColor
+		percentageLabel.alignment = .right
+
+		super.init(frame: frameRect)
+		// AppKit stretches an item's view to the menu's content width, so the row
+		// fills the menu however wide it ends up.
+		autoresizingMask = [.width]
+
+		for subview in [titleLabel, percentageLabel, bar] as [NSView] {
+			subview.translatesAutoresizingMaskIntoConstraints = false
+			addSubview(subview)
+		}
+		// The name holds its width; the percentage is what gives when the row is
+		// narrow.
+		titleLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+		titleLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+		percentageLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+		percentageLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+		NSLayoutConstraint.activate([
+			titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: Self.topInset),
+			titleLabel.leadingAnchor.constraint(
+				equalTo: leadingAnchor,
+				constant: StatusItemController.customItemInsetLeft
+			),
+
+			percentageLabel.firstBaselineAnchor.constraint(equalTo: titleLabel.firstBaselineAnchor),
+			percentageLabel.leadingAnchor.constraint(
+				greaterThanOrEqualTo: titleLabel.trailingAnchor,
+				constant: 8
+			),
+			percentageLabel.trailingAnchor.constraint(
+				equalTo: trailingAnchor,
+				constant: -StatusItemController.customItemInsetRight
+			),
+
+			bar.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: Self.barGap),
+			bar.heightAnchor.constraint(equalToConstant: HungerBarView.height),
+			bar.leadingAnchor.constraint(
+				equalTo: leadingAnchor,
+				constant: StatusItemController.customItemInsetLeft + 0.5
+			),
+			bar.trailingAnchor.constraint(
+				equalTo: trailingAnchor,
+				constant: -StatusItemController.customItemInsetRight
+			),
+		])
+	}
+
+	@available(*, unavailable)
+	required init?(coder: NSCoder) { fatalError("init(coder:) is unused") }
+
+	func update(hunger: Double) {
+		let value = HungerDisplayPolicy.clamp(hunger)
+		percentageLabel.stringValue = "\(HungerDisplayPolicy.percentage(forHunger: value))%"
+		bar.fraction = value / 100
+		bar.fillColor = Self.color(for: HungerDisplayPolicy.band(forHunger: value))
+	}
+
+	/// The original's palette, so a hunger reads here the way it did there.
+	static func color(for band: HungerBand) -> NSColor {
+		switch band {
+		case .comfortable: return .systemGreen
+		case .hungry: return .systemYellow
+		case .veryHungry: return .systemOrange
+		}
+	}
+}
+
 /// Owns the menu-bar item and reflects state back into the menu.
 @MainActor
 public final class StatusItemController: NSObject, NSMenuDelegate {
+	static let customItemInsetLeft: Double = 24
+	static let customItemInsetRight: Double = 13.5
+
 	public struct Callbacks {
 		public var bringHome: () -> Void
 		public var setSize: (Double) -> Void
@@ -108,6 +251,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 	private let statusItem: NSStatusItem
 	private let callbacks: Callbacks
 
+	private let hungerItem = NSMenuItem()
 	private let homeItem = NSMenuItem()
 	private let sizeItem = NSMenuItem()
 	private let fastingItem = NSMenuItem()
@@ -122,6 +266,12 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 	public var settings: PetSettings = PetSettings() {
 		didSet { refreshMenuState() }
 	}
+
+	/// How hungry she is right now, `nil` when there is nothing to show.
+	///
+	/// A closing over the live state rather than a field, because hunger drifts
+	/// while the menu is closed and there is no event to refresh on.
+	public var hungerSource: (() -> Double?)?
 
 	public init(characterName: String, callbacks: Callbacks) {
 		self.callbacks = callbacks
@@ -143,9 +293,15 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 
 		let menu = NSMenu()
 		menu.delegate = self
+		// The rows stretch to this, so it is what sets the menu's width.
+		menu.minimumWidth = menuMinimumWidth
 		statusItem.menu = menu
 
 		configure(menu)
+		refreshMenuState()
+	}
+
+	public func menuNeedsUpdate(_ menu: NSMenu) {
 		refreshMenuState()
 	}
 
@@ -155,6 +311,13 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 	}
 
 	private func configure(_ menu: NSMenu) {
+		// A readout rather than a command, so it takes no highlight and takes no
+		// click.
+		hungerItem.view = HungerMenuItemView()
+		hungerItem.isEnabled = false
+		menu.addItem(hungerItem)
+		menu.addItem(.separator())
+
 		homeItem.title = "让她回家"
 		homeItem.target = self
 		homeItem.action = #selector(bringHome)
@@ -195,7 +358,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 		bubblesItem.action = #selector(toggleBubbles)
 		menu.addItem(bubblesItem)
 
-		mutedItem.title = "禁音"
+		mutedItem.title = "静音"
 		mutedItem.target = self
 		mutedItem.action = #selector(toggleMuted)
 		menu.addItem(mutedItem)
@@ -227,6 +390,23 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 		if let sliderView = sizeItem.view as? SliderMenuItemView {
 			sliderView.slider.doubleValue = settings.petSize
 			sliderView.label.stringValue = "桌宠尺寸 \(PetSizePolicy.toPercent(settings.petSize))%"
+		}
+
+		// Hidden rather than removed while she is fasting, matching where the
+		// hunger bar is visible at all: the value in that mode is meaningless
+		// rather than merely zero.
+		let hunger =
+			PetModePolicy.shouldShowProgressDisplay(
+				character: settings.character,
+				fastingMode: settings.fastingMode,
+				infiniteMode: settings.infiniteMode,
+				coexistenceMode: settings.coexistenceMode
+			) ? hungerSource?() : nil
+		if let hunger, let view = hungerItem.view as? HungerMenuItemView {
+			view.update(hunger: hunger)
+			hungerItem.isHidden = false
+		} else {
+			hungerItem.isHidden = true
 		}
 	}
 

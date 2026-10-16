@@ -169,6 +169,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		controller.desktopIcons = desktopIcons
 
 		statusItem = makeStatusItem(character: character)
+		// Read when the menu opens, so it reports where hunger has drifted to
+		// rather than where it stood the last time something changed.
+		statusItem?.hungerSource = { [weak controller] in controller?.life.hunger }
 
 		// The monitor is only a fallback now: it supplies the last click or the
 		// cursor, for a folder the desktop icon index does not cover.
