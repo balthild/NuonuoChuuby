@@ -63,7 +63,14 @@ public final class PetController: SpriteAnimatorDelegate {
 		static let groundResponse: Double = 5.8
 		static let landingInset: Double = 10
 		static let boundaryMargin: Double = 8
-		static let hopVelocity: Double = 420
+		/// Sideways as well as up: the sideways part is what carries her across a gap
+		/// onto a nearby window (upstream `BeginTerrainHop`: 315 / 560).
+		static let hopVelocityX: Double = 315
+		static let hopVelocityY: Double = 560
+		/// The same leap, shortened, aimed at the next terrain down (upstream
+		/// `BeginTerrainJumpDown`: 255 / 175).
+		static let jumpDownVelocityX: Double = 255
+		static let jumpDownVelocityY: Double = 175
 		static let arrivalTolerance: Double = 5
 		/// How fast a ledge must be rising to catch her back up rather than pass her.
 		static let airborneCatchUpSpeed: Double = 360
@@ -133,6 +140,20 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var remainderY: Double = 0
 	private var stateElapsed: Double = 0
 	private var idleRemaining: Double
+	/// Which way she is currently patrolling, or 0 until she picks one.
+	private var patrolDirection: Double = 0
+	/// The purpose a stroll to a point is walked under, remembered for the strolls
+	/// that follow an edge leg. ``explore`` takes the quicker pace.
+	private var strollPurpose: MovementPurpose = .wander
+	private var terrainActionCooldown: Double = 0
+	/// Seconds since the controller started, which is what the cooldowns below are
+	/// measured against. ``stateElapsed`` cannot serve: it restarts with every state.
+	private var elapsedSeconds: Double = 0
+	/// When she may next stop a patrol for a given need. See
+	/// ``tryInterruptPatrolForNeed()``.
+	private var actionReadyAt: [AutonomousAction: Double] = [:]
+	private var nextHungerReactionAt: Double = 0
+	private var patrolNeedCheckRemaining: Double = 0
 	/// Every random draw she makes. Seeded in tests so a run is reproducible.
 	private var random: PetRandom
 	private var dragTracker = DragMotionTracker()
@@ -244,6 +265,20 @@ public final class PetController: SpriteAnimatorDelegate {
 	private static func selfReportInterval(using random: inout PetRandom) -> Double {
 		Double.random(in: 45...95, using: &random)
 	}
+
+	/// How long she must wait before another edge action (a hop, a slide or a jump
+	/// off the side). Without it a narrow window, which she can cross in a couple of
+	/// seconds, would send her off the edge every time she got there.
+	private static let terrainActionInterval: Double = 14
+
+	/// How often a leg of an autonomous walk is one out to an edge rather than a
+	/// stroll to a point she settles at.
+	///
+	/// The original always walks to an edge, and an edge is only ever the start of
+	/// something else — a hop, a slide, a jump off, or another lap — so she walks
+	/// without pause for as long as she is awake. Strolling to a point is what gives a
+	/// walk an ending.
+	private static let edgeLegChance: Double = 0.6
 
 	/// How much a box must grow in one step before she remarks on it, so the
 	/// pixel of drift a drag-resize leaves behind is not a window "getting big".
@@ -374,6 +409,7 @@ public final class PetController: SpriteAnimatorDelegate {
 
 		life.advance(elapsedSeconds: simulation, sleeping: state == .sleeping)
 		stateElapsed += simulation
+		elapsedSeconds += simulation
 
 		// Kept refreshing while suspended too: this is where the fullscreen check
 		// below gets its data, so stopping it would mean never resuming.
@@ -542,15 +578,11 @@ public final class PetController: SpriteAnimatorDelegate {
 		case .sleep:
 			beginSleep()
 		case .wander:
-			// Standing on a window top, she may instead decide to climb higher.
-			if tryBeginClimb() { return }
-			beginGroundMove(purpose: .wander)
+			beginAutonomousWalk(preferClimb: false, strollPurpose: .wander)
 		case .explore:
-			state = .running
-			movementPurpose = .explore
-			stateElapsed = 0
-			beginGroundMove(purpose: .explore)
-			announce(.exploration, voice: .question, priority: .normal)
+			if beginAutonomousWalk(preferClimb: true, strollPurpose: .explore) {
+				announce(.exploration, voice: .question, priority: .normal)
+			}
 		case .hop:
 			beginHop()
 		case .askForFood:
@@ -1439,20 +1471,246 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	// MARK: - Ground movement
 
-	private func beginGroundMove(purpose: MovementPurpose) {
-		guard let surface = surfaceProvider.support(at: foot) else {
+	/// Starts an autonomous walk.
+	///
+	/// A walk is a chain of legs, and each leg is decided when the previous one ends
+	/// rather than up front: out to an edge ([`edgeLegChance`]), which is where the
+	/// edge decisions — hop, slide, jump off — live, or a stroll to a point she
+	/// settles at, which is what gives the walk an ending at all.
+	///
+	/// The port used to draw a uniform random point from the middle of the run, which
+	/// on a window a thousand points wide lands within reach of an end a few percent
+	/// of the time, so she only ever paced up and down the middle and the edge
+	/// decisions never ran. The original instead targets the ends
+	/// (`ChooseNextPatrolTarget`), which is what makes its edge behaviour visible.
+	@discardableResult
+	private func beginAutonomousWalk(preferClimb: Bool, strollPurpose: MovementPurpose) -> Bool {
+		self.strollPurpose = strollPurpose
+		guard surfaceProvider.support(at: foot) != nil else {
 			beginFall()
-			return
+			return false
 		}
-		let run = perch.flatMap { surface.visibleRun(containingT: $0.t) } ?? surface.span
-		let inset = 20 * displayScale
-		let minimum = run.start + inset
-		let maximum = max(minimum, run.end - inset)
-		targetX = Double.random(in: minimum...maximum, using: &random)
+		if beginNextLeg(preferClimb: preferClimb) { return true }
+		returnToIdle()
+		return false
+	}
+
+	/// Decides the next leg of an autonomous walk.
+	///
+	/// Returns false when she cannot walk from here at all, which is a run too short
+	/// to cross rather than anything wrong with her.
+	@discardableResult
+	private func beginNextLeg(preferClimb: Bool = false) -> Bool {
+		let looksForClimb = preferClimb || Double.random(in: 0..<1, using: &random) < 0.34
+		if looksForClimb, tryBeginClimb() { return true }
+		if rollIsEdgeLeg(), beginPatrolLeg() { return true }
+		return beginStroll(purpose: strollPurpose)
+	}
+
+	private func rollIsEdgeLeg() -> Bool {
+		debugForcedEdgeLeg
+			?? (Double.random(in: 0..<1, using: &random) < Self.edgeLegChance)
+	}
+
+	/// Walks her to the far end of her run, where the edge decisions happen.
+	private func beginPatrolLeg() -> Bool {
+		guard let next = nextPatrolTargetX() else { return false }
+		targetX = next
+		movementPurpose = .patrol
+		state = .running
+		stateElapsed = 0
+		velocity = .zero
+		remainderX = 0
+		patrolNeedCheckRemaining = LifeBehaviorPolicy.patrolNeedCheckSeconds
+		facing = patrolDirection
+		animator.play("walk")
+		DiagnosticsLog.shared.writeEvent(
+			"PatrolStarted",
+			[
+				("TargetX", "\(Int(targetX))"),
+				("Support", perchSurface?.key.kind.rawValue ?? "none"),
+			]
+		)
+		return true
+	}
+
+	/// Walks her to a point she then settles at rather than walking on from.
+	///
+	/// This is the original's menu walk (`StartGroundMove`), the only one it has that
+	/// ends somewhere other than an edge.
+	private func beginStroll(purpose: MovementPurpose) -> Bool {
+		guard let next = nextStrollTargetX() else { return false }
+		targetX = next
 		movementPurpose = purpose
 		state = .running
 		stateElapsed = 0
+		velocity = .zero
+		remainderX = 0
+		facing = next < foot.x ? -1 : 1
 		animator.play("walk")
+		DiagnosticsLog.shared.writeEvent(
+			"StrollStarted",
+			[
+				("Purpose", purpose.rawValue),
+				("TargetX", "\(Int(targetX))"),
+			]
+		)
+		return true
+	}
+
+	/// The far end she should walk to now, or nil when her run is too short to cross.
+	private func nextPatrolTargetX() -> Double? {
+		guard let run = currentRun() else { return nil }
+		let margin = patrolStopMargin
+		let minimumX = run.start + margin
+		let maximumX = run.end - margin
+		guard maximumX - minimumX >= 42 else { return nil }
+
+		if patrolDirection == 0 {
+			patrolDirection = Double.random(in: 0..<1, using: &random) < 0.5 ? -1 : 1
+		}
+		var next = patrolDirection < 0 ? minimumX : maximumX
+		// Setting out for the end she is already at would be a walk of zero length.
+		if abs(next - foot.x) < 20 {
+			patrolDirection *= -1
+			next = patrolDirection < 0 ? minimumX : maximumX
+		}
+		return next
+	}
+
+	/// A stroll's destination: a drawn distance in a drawn direction, away from where
+	/// she already is.
+	///
+	/// Drawn rather than picked uniformly along the run, because a uniform point lands
+	/// near her about as often as not, and a stroll that goes nowhere is not a walk
+	/// she can be seen to make.
+	private func nextStrollTargetX() -> Double? {
+		guard let run = currentRun() else { return nil }
+		let margin = patrolStopMargin
+		let minimumX = run.start + margin
+		let maximumX = run.end - margin
+		guard maximumX - minimumX >= 42 else { return nil }
+
+		let travel = Double.random(in: 80...241, using: &random)
+		let direction: Double = Double.random(in: 0..<1, using: &random) < 0.5 ? -1 : 1
+		var next = min(max(foot.x + direction * travel, minimumX), maximumX)
+		// Too close to be a walk: head for the far end instead, as the original does
+		// when its own drawn distance lands on top of her.
+		if abs(next - foot.x) < 36 {
+			let toLeft = abs(minimumX - foot.x)
+			let toRight = abs(maximumX - foot.x)
+			next = toLeft > toRight ? minimumX : maximumX
+		}
+		guard abs(next - foot.x) >= 24 else { return nil }
+		return next
+	}
+
+	/// The stretch of the edge she is standing on, inset to exclude anywhere another
+	/// window hides. Nil when she has no support at all.
+	private func currentRun() -> Span? {
+		guard let surface = surfaceProvider.support(at: foot) else { return nil }
+		return perch.flatMap { surface.visibleRun(containingT: $0.t) } ?? surface.span
+	}
+
+	/// How far short of an end of her run she stops.
+	///
+	/// Scaled off her own width like the original, which measures the pet window
+	/// instead. The arrival is not tested against this: reaching the end is whatever
+	/// this walk decides, so the two cannot disagree about where the end is.
+	private var patrolStopMargin: Double {
+		min(max(petSize * 0.20, 24), 72)
+	}
+
+	/// A pressing need stops the walk she is in the middle of.
+	///
+	/// A patrol runs for minutes — she only turns around at an end — so without this
+	/// she would walk straight through being exhausted or starving: nothing else
+	/// looks at her needs while she is walking. Only the urgent end of each need
+	/// counts, which is why falling asleep mid-walk is rare rather than constant.
+	///
+	/// Returns true when she has been handed off to something else.
+	private func tryInterruptPatrolForNeed() -> Bool {
+		guard !quietMode else { return false }
+
+		// A meal outranks every need above, and was already the one thing allowed to
+		// take her off a walk when it arrived.
+		if beginNextMeal() { return true }
+
+		var available: Set<AutonomousAction> = []
+		func add(_ action: AutonomousAction, _ condition: Bool) {
+			guard condition,
+				PetModePolicy.allowsAutonomousAction(
+					action,
+					fastingMode: fastingMode,
+					quietMode: quietMode
+				),
+				actionReadyAt[action, default: 0] <= elapsedSeconds,
+				LifeBehaviorPolicy.isHungerReactionReady(
+					action,
+					now: elapsedSeconds,
+					nextHungerReactionAt: nextHungerReactionAt
+				)
+			else { return }
+			available.insert(action)
+		}
+		add(.sleep, life.sleepiness >= LifeBehaviorPolicy.sleepInterruptionThreshold)
+		add(.askForFood, life.hunger >= LifeBehaviorPolicy.foodAppealInterruptionThreshold)
+		add(.lickIcon, life.hunger >= LifeBehaviorPolicy.lickInterruptionThreshold)
+		add(.roll, life.hunger >= LifeBehaviorPolicy.rollInterruptionThreshold)
+		guard !available.isEmpty else { return false }
+
+		let action = AutonomousBehaviorPlanner.choose(
+			life: life,
+			hasGroundSupport: true,
+			availableActions: available,
+			randomUnit: Double.random(in: 0..<1, using: &random),
+			profile: profile
+		)
+		// Logged because a walk that stops and a walk that simply has not turned
+		// around yet look identical from outside, and "she was hungry" is the whole
+		// content of the difference.
+		DiagnosticsLog.shared.writeEvent(
+			"PatrolInterrupted",
+			[
+				("Action", action.rawValue),
+				("Hunger", String(format: "%.0f", life.hunger)),
+				("Sleepiness", String(format: "%.0f", life.sleepiness)),
+			]
+		)
+
+		switch action {
+		case .sleep:
+			actionReadyAt[.sleep] = elapsedSeconds + 90
+			beginSleep()
+			return true
+		case .askForFood:
+			actionReadyAt[.askForFood] = elapsedSeconds + 55
+			markHungerReaction()
+			beginHungryPlea()
+			return true
+		case .lickIcon:
+			actionReadyAt[.lickIcon] = elapsedSeconds + 55
+			markHungerReaction()
+			if tryBeginIconLick(manual: false) { return true }
+			// No icon she can reach: she rolls on the spot instead, as the original
+			// does rather than resuming the walk.
+			beginRoll()
+			return true
+		case .roll:
+			actionReadyAt[.roll] = elapsedSeconds + 42
+			markHungerReaction()
+			beginRoll()
+			return true
+		default:
+			return false
+		}
+	}
+
+	/// The hunger-driven actions share one cooldown, so she does not run through
+	/// pleading, licking and rolling back to back.
+	private func markHungerReaction() {
+		nextHungerReactionAt =
+			elapsedSeconds + LifeBehaviorPolicy.hungerReactionCooldownSeconds
 	}
 
 	private func updateRunning(_ delta: Double) {
@@ -1460,6 +1718,17 @@ public final class PetController: SpriteAnimatorDelegate {
 		if movementPurpose == .meal || movementPurpose == .iconLick {
 			updateMealRun(delta)
 			return
+		}
+
+		// A patrol lasts as long as it takes to cross the surface, which is minutes
+		// on a wide window. Without this she would walk through being exhausted or
+		// starving, because nothing else asks during a walk.
+		if movementPurpose == .patrol {
+			patrolNeedCheckRemaining -= delta
+			if patrolNeedCheckRemaining <= 0 {
+				patrolNeedCheckRemaining = LifeBehaviorPolicy.patrolNeedCheckSeconds
+				if tryInterruptPatrolForNeed() { return }
+			}
 		}
 
 		guard let surface = perchSurface, let perched = perch,
@@ -1834,28 +2103,38 @@ public final class PetController: SpriteAnimatorDelegate {
 			beginSlideDown(from: surface)
 			return
 		}
-		if movementPurpose == .edgeJumpApproach, let surface {
-			beginJumpDown(from: surface)
+		if movementPurpose == .edgeJumpApproach {
+			beginJumpDown()
 			return
 		}
 
-		if let surface, surface.key.kind != .floor,
-			let action = terrainEdgeActionIfAtEdge(surface)
-		{
-			switch action {
-			case .hop:
-				beginHop()
-				return
-			case .slideDown:
-				beginSlideDown(from: surface)
-				return
-			case .jumpDown:
-				beginJumpDown(from: surface)
-				return
-			case .turnAround:
-				beginGroundMove(purpose: .wander)
-				return
+		// She arrives at an end of the run, which is the only place an edge action
+		// is decided. With no action to take — the draw said to turn around, or the
+		// wait before another one has not elapsed — the rest of the walk is decided
+		// afresh rather than turning back out of habit.
+		if movementPurpose == .patrol {
+			if let surface, let action = terrainEdgeAction(at: surface) {
+				switch action {
+				case .hop:
+					// Backwards off the desktop floor, forwards off a window — the
+					// original's rule, and the reason the floor hop looks like a start.
+					let direction = surface.key.kind == .floor ? -patrolDirection : patrolDirection
+					beginHop(direction: direction < 0 ? -1 : 1)
+					return
+				case .slideDown:
+					beginSlideDown(from: surface)
+					return
+				case .jumpDown:
+					beginJumpDown()
+					return
+				case .turnAround:
+					break
+				}
 			}
+			patrolDirection *= -1
+			if beginNextLeg() { return }
+			returnToIdle()
+			return
 		}
 
 		state = .curious
@@ -1867,15 +2146,29 @@ public final class PetController: SpriteAnimatorDelegate {
 		animator.play("curious")
 	}
 
-	/// True when the pet has reached an end of its current platform.
-	private func terrainEdgeActionIfAtEdge(_ surface: Surface) -> TerrainEdgeAction? {
-		guard let perch, let run = surface.visibleRun(containingT: perch.t) else { return nil }
-		let atEdge = foot.x <= run.start + 24 || foot.x >= run.end - 24
-		guard atEdge else { return nil }
-		return TerrainBehaviorPlanner.chooseAtEdge(
-			isDesktopFloor: false,
-			randomUnit: Double.random(in: 0..<1, using: &random)
+	/// The edge action she takes on reaching the end of her run, or nil when the draw
+	/// says to turn around or the cooldown is still running.
+	private func terrainEdgeAction(at surface: Surface) -> TerrainEdgeAction? {
+		guard terrainActionCooldown <= 0 else { return nil }
+		let action =
+			debugForcedTerrainEdgeAction
+			?? TerrainBehaviorPlanner.chooseAtEdge(
+				isDesktopFloor: surface.key.kind == .floor,
+				randomUnit: Double.random(in: 0..<1, using: &random)
+			)
+		guard action != .turnAround else { return nil }
+		terrainActionCooldown = Self.terrainActionInterval
+		// Logged because a hop and a turn-around look the same until she leaves the
+		// ground, and what she chose is not otherwise recoverable.
+		DiagnosticsLog.shared.writeEvent(
+			"TerrainEdgeActionChosen",
+			[
+				("Action", "\(action)"),
+				("Support", surface.key.kind.rawValue),
+				("Direction", "\(Int(patrolDirection))"),
+			]
 		)
+		return action
 	}
 
 	// MARK: - Falling
@@ -1992,10 +2285,17 @@ public final class PetController: SpriteAnimatorDelegate {
 		}
 	}
 
-	private func beginHop() {
+	/// A leap that goes sideways as well as up, so she can cross a gap onto a
+	/// neighbouring surface. `nil` picks a direction at random, which is what the
+	/// original does for a hop she chose herself; a hop at an edge goes the way she
+	/// was already walking.
+	private func beginHop(direction: Int? = nil) {
+		let direction =
+			direction ?? (Double.random(in: 0..<1, using: &random) < 0.5 ? -1 : 1)
 		beginFall(
 			reason: "TerrainHop",
-			initialVelocityY: -Motion.hopVelocity * displayScale,
+			initialVelocityY: -Motion.hopVelocityY * displayScale,
+			initialVelocityX: Double(direction) * Motion.hopVelocityX * displayScale,
 			clip: "jump",
 			purpose: .wander
 		)
@@ -2115,6 +2415,7 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	private func tickCooldowns(_ delta: Double) {
 		sideImpactCooldown = max(0, sideImpactCooldown - delta)
+		terrainActionCooldown = max(0, terrainActionCooldown - delta)
 		ignoredLandingSeconds = max(0, ignoredLandingSeconds - delta)
 		selfReportRemaining -= delta
 		if selfReportRemaining <= 0 {
@@ -2447,15 +2748,17 @@ public final class PetController: SpriteAnimatorDelegate {
 	}
 
 	/// A hop off the edge, arcing outwards so she clears the window she was on.
-	private func beginJumpDown(from surface: Surface) {
-		let outward = foot.x <= surface.span.start + surface.span.length / 2 ? -1.0 : 1.0
+	/// Like ``beginHop`` it carries her sideways, which is what lets her reach a
+	/// lower window rather than dropping straight down the side she left.
+	private func beginJumpDown() {
+		let direction = facing < 0 ? -1.0 : 1.0
 		beginFall(
 			reason: "EdgeJump",
-			initialVelocityY: -120 * displayScale,
-			initialVelocityX: outward * 90 * displayScale,
+			initialVelocityY: -Motion.jumpDownVelocityY * displayScale,
+			initialVelocityX: direction * Motion.jumpDownVelocityX * displayScale,
 			clip: "jump"
 		)
-		facing = outward
+		facing = direction
 		announce(.terrainJumpDown, voice: .scream, priority: .ambient)
 	}
 
@@ -2686,9 +2989,10 @@ public final class PetController: SpriteAnimatorDelegate {
 		step(delta)
 	}
 
-	/// Triggers a hop, which is normally chosen by the autonomy planner.
-	func debugBeginHop() {
-		beginHop()
+	/// Triggers a hop, which is normally chosen by the autonomy planner. The
+	/// planner's own direction is random, so tests may pin one.
+	func debugBeginHop(direction: Int? = nil) {
+		beginHop(direction: direction)
 	}
 
 	/// Starts a ground walk towards a chosen x, which the autonomy planner would
@@ -2700,6 +3004,51 @@ public final class PetController: SpriteAnimatorDelegate {
 		stateElapsed = 0
 		animator.play("walk")
 	}
+
+	/// Starts a patrol leg, which the autonomy planner would otherwise only pick by
+	/// weight. `direction` pins which end she sets out for, which is otherwise drawn.
+	///
+	/// The leg kind and the climb look are both coin flips inside a walk, so they are
+	/// skipped here: a test that asks for a patrol wants a patrol.
+	func debugBeginPatrol(direction: Double? = nil) {
+		if let direction { patrolDirection = direction }
+		if beginPatrolLeg() { return }
+		returnToIdle()
+	}
+
+	/// Starts an autonomous walk, whose leg kind is drawn unless
+	/// ``debugForcedEdgeLeg`` pins it.
+	@discardableResult
+	func debugBeginAutonomousWalk(
+		preferClimb: Bool = false,
+		strollPurpose: MovementPurpose = .wander
+	) -> Bool {
+		beginAutonomousWalk(preferClimb: preferClimb, strollPurpose: strollPurpose)
+	}
+
+	/// Pins which kind of leg the next one is, so a test need not depend on the draw.
+	/// True is a leg out to an edge, false a stroll to a point.
+	var debugForcedEdgeLeg: Bool?
+
+	/// Draws one leg-kind decision, as a walk would, so the ratio can be measured.
+	func debugRollIsEdgeLeg() -> Bool { rollIsEdgeLeg() }
+
+	/// Raises a need, so a test need not simulate the minutes of drift that would
+	/// normally get her there.
+	func debugSetLife(hunger: Double? = nil, sleepiness: Double? = nil) {
+		if let hunger { life.hunger = hunger }
+		if let sleepiness { life.sleepiness = sleepiness }
+	}
+
+	/// The end of her run she is currently walking to.
+	var debugPatrolTargetX: Double { targetX }
+
+	/// How far short of an end of her run a patrol stops when it arrives.
+	var debugPatrolStopMargin: Double { patrolStopMargin }
+
+	/// Forces the edge decision, so a test can pin a hop, a slide or a jump instead of
+	/// depending on which way the draw happens to fall.
+	var debugForcedTerrainEdgeAction: TerrainEdgeAction?
 
 	/// Naps, which the autonomy planner would otherwise only choose by weight.
 	func debugBeginSleep() {
