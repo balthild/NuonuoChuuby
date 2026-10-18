@@ -21,10 +21,11 @@ public final class AssetSetupWindowController {
 		panel.title = "糯糯啾比"
 		panel.isReleasedWhenClosed = false
 		panel.level = .floating
+		panel.collectionBehavior = [.managed, .participatesInCycle]
 
 		let container = NSView(frame: panel.contentRect(forFrameRect: panel.frame))
 
-		statusLabel = NSTextField(labelWithString: "正在下载桌宠素材…")
+		statusLabel = NSTextField(labelWithString: "")
 		statusLabel.frame = NSRect(x: 24, y: 84, width: 312, height: 20)
 		statusLabel.font = NSFont.systemFont(ofSize: 13)
 
@@ -59,14 +60,15 @@ public final class AssetSetupWindowController {
 	}
 
 	public func show() {
+		NSApp.setActivationPolicy(.regular)
 		panel.center()
-		// The pet has no Dock icon, so the window has to bring itself forward.
 		panel.makeKeyAndOrderFront(nil)
 		NSApp.activate(ignoringOtherApps: true)
 	}
 
 	public func close() {
 		panel.orderOut(nil)
+		NSApp.setActivationPolicy(.accessory)
 	}
 
 	public func showProgress(completed: Int, total: Int) {

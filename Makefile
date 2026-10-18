@@ -122,7 +122,7 @@ app: build icon ## Assemble the .app bundle.
 	@rm -rf "$(BUNDLE)"
 	@mkdir -p "$(BUNDLE)/Contents/MacOS" "$(BUNDLE)/Contents/Resources"
 
-	@cp "$(BIN_DIR)/$(APP_NAME)" "$(BUNDLE)/Contents/MacOS/$(APP_NAME)"
+	cp "$(BIN_DIR)/$(APP_NAME)" "$(BUNDLE)/Contents/MacOS/$(APP_NAME)"
 
 	@if [ "$(DEV_ASSETS)" = "1" ]; then \
 		echo "Linking development assets..." \
@@ -172,20 +172,20 @@ rerun: CONFIG = release
 rerun: FLAGS = -Xswiftc -g
 rerun: APP_SUFFIX = -Dev
 rerun: sign ## Build, bundle and relaunch the app with arguments.
-	@pkill -f "Contents/MacOS/$(APP_NAME)" || true
+	pkill -f "Contents/MacOS/$(APP_NAME)" || true
 	open -n "$(BUNDLE)" --args $(APP_ARGS)
 
 dev: ## Run without a bundle. Automation-based features do not work.
 	swift run -c $(CONFIG)
 
 reset-data: ## Forget the app's settings and pet state.
-	@pkill -f "Contents/MacOS/$(APP_NAME)" 2>/dev/null || true
-	@rm -rf "$$HOME/Library/Application Support/$(APP_NAME)"
+	pkill -f "Contents/MacOS/$(APP_NAME)" 2>/dev/null || true
+	rm -rf "$$HOME/Library/Application Support/$(APP_NAME)"
 	@printf '%s\n' "Settings and state cleared."
 
 clean: ## Remove all build products.
 	rm -rf "$(BUILD_DIR)"
-	@rm -f "$(MANIFEST_SWIFT)"
+	rm -f "$(MANIFEST_SWIFT)"
 
 release: KIND ?= please-specify
 release: ## Clean release build: tested, packaged WITHOUT the artwork, and upload to GitHub.
