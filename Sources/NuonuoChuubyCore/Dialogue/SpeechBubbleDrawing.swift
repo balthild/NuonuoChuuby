@@ -56,7 +56,7 @@ public enum SpeechBubbleDrawing {
 	public static func preferredSize(for text: String, tail: SpeechBubbleTail) -> NSSize {
 		let body = bodySize(for: text)
 		switch tail {
-		case .down:
+		case .down, .up:
 			return NSSize(width: body.width, height: body.height + tailHeight)
 		case .left, .right:
 			return NSSize(width: body.width + tailHeight, height: body.height)
@@ -68,6 +68,13 @@ public enum SpeechBubbleDrawing {
 		switch tail {
 		case .down:
 			NSRect(x: 0, y: 0, width: bounds.width, height: max(0, bounds.height - tailHeight))
+		case .up:
+			NSRect(
+				x: 0,
+				y: tailHeight,
+				width: bounds.width,
+				height: max(0, bounds.height - tailHeight)
+			)
 		case .left:
 			NSRect(
 				x: tailHeight,
@@ -95,6 +102,12 @@ public enum SpeechBubbleDrawing {
 				NSPoint(x: body.midX - halfTailWidth, y: body.maxY - overlap),
 				NSPoint(x: body.midX + halfTailWidth, y: body.maxY - overlap),
 				NSPoint(x: body.midX, y: bounds.height),
+			]
+		case .up:
+			points = [
+				NSPoint(x: body.midX - halfTailWidth, y: body.minY + overlap),
+				NSPoint(x: body.midX + halfTailWidth, y: body.minY + overlap),
+				NSPoint(x: body.midX, y: 0),
 			]
 		case .left:
 			points = [

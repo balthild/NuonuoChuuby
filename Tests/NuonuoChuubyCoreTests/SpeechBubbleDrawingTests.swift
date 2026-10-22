@@ -25,11 +25,14 @@ struct SpeechBubbleDrawingTests {
 		let text = "走两步"
 		let body = SpeechBubbleDrawing.bodySize(for: text)
 		let down = SpeechBubbleDrawing.preferredSize(for: text, tail: .down)
+		let up = SpeechBubbleDrawing.preferredSize(for: text, tail: .up)
 		let left = SpeechBubbleDrawing.preferredSize(for: text, tail: .left)
 		let right = SpeechBubbleDrawing.preferredSize(for: text, tail: .right)
 
 		#expect(down.width == body.width)
 		#expect(down.height == body.height + SpeechBubbleDrawing.tailHeight)
+		#expect(up.width == body.width)
+		#expect(up.height == body.height + SpeechBubbleDrawing.tailHeight)
 		#expect(left.width == body.width + SpeechBubbleDrawing.tailHeight)
 		#expect(left.height == body.height)
 		#expect(right == left)
@@ -42,6 +45,9 @@ struct SpeechBubbleDrawingTests {
 
 		let down = SpeechBubbleDrawing.bodyRect(in: bounds, tail: .down)
 		#expect(down == NSRect(x: 0, y: 0, width: 100, height: 50 - tail))
+
+		let up = SpeechBubbleDrawing.bodyRect(in: bounds, tail: .up)
+		#expect(up == NSRect(x: 0, y: tail, width: 100, height: 50 - tail))
 
 		let left = SpeechBubbleDrawing.bodyRect(in: bounds, tail: .left)
 		#expect(left == NSRect(x: tail, y: 0, width: 100 - tail, height: 50))
@@ -60,6 +66,18 @@ struct SpeechBubbleDrawingTests {
 		#expect(box.midX == bounds.midX)
 		#expect(box.maxY == bounds.height)
 		#expect(box.minY < body.maxY)
+	}
+
+	@Test("An upward tail hangs off the body's top edge, centred on it")
+	func upwardTailPointsAboveTheBody() {
+		let bounds = NSRect(x: 0, y: 0, width: 100, height: 50)
+		let body = SpeechBubbleDrawing.bodyRect(in: bounds, tail: .up)
+		let box = SpeechBubbleDrawing.tailTriangle(in: body, bounds: bounds, tail: .up)
+			.boundingBox
+
+		#expect(box.midX == bounds.midX)
+		#expect(box.minY == 0)
+		#expect(box.maxY > body.minY)
 	}
 
 	@Test("A left tail points off the body's left edge, centred on it")

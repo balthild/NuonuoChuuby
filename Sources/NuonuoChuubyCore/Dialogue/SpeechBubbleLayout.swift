@@ -3,6 +3,7 @@ import Foundation
 /// The edge of the bubble that carries the tail, which points back at the pet.
 public enum SpeechBubbleTail: Sendable, Equatable {
 	case down
+	case up
 	case left
 	case right
 }
@@ -19,9 +20,18 @@ public struct SpeechBubblePlacement: Sendable, Equatable {
 }
 
 /// Places the head bubble relative to the pet, preferring above the head and
-/// falling back beside it when there is no room. The tail follows the
-/// placement, so it always points at the pet.
+/// falling back beside it when there is no room, or underneath it when her head
+/// is off the screen. The tail follows the placement, so it always points at the
+/// pet.
 public enum SpeechBubbleLayout {
+	/// How much of her panel may hang above the top of the area, as a fraction of
+	/// her height, before the bubble goes underneath her rather than beside her.
+	///
+	/// Beside her, the bubble has to be pushed down to the top of the area, which
+	/// is level with her feet — or below them — once her head is off the screen, so
+	/// the tail would point at nothing.
+	public static let belowPlacementOverflow: Double = 0.5
+
 	/// Where a bubble may sit on a display: its full width, so a Dock on the left
 	/// or right cannot hold the bubble away from her — she is drawn over the Dock
 	/// and can be dragged into it — but not the menu bar strip, which a bubble must
@@ -49,6 +59,22 @@ public enum SpeechBubbleLayout {
 		area: PixelRect,
 		sideGap: Double = 6
 	) -> SpeechBubblePlacement {
+		// Everything above her head is off the screen, so a bubble there would sit
+		// on the menu bar and one beside her would point at her feet. It goes under
+		// her instead, its tail pointing up at them.
+		if area.top - petFrame.top >= petFrame.height * belowPlacementOverflow {
+			return SpeechBubblePlacement(
+				topLeft: PixelPoint(
+					x: centredX(petFrame: petFrame, width: contentWidth, area: area),
+					y: petFrame.bottom.clamp(
+						lower: area.top,
+						upper: max(area.top, area.bottom - contentHeight - tailHeight)
+					)
+				),
+				tail: .up
+			)
+		}
+
 		// The body's bottom edge sits just inside the pet panel's top, with the
 		// tail hanging between the two.
 		let anchorTop = petFrame.top + (petFrame.height * 0.16).rounded()
