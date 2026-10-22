@@ -70,9 +70,9 @@ public final class PetSpeechCoordinator {
 
 	private func bubblePlacement(for text: String) -> SpeechBubblePlacement? {
 		guard
-			let workArea = displaySpace.display(
+			let display = displaySpace.display(
 				containing: PixelPoint(x: petFrame.centerX, y: petFrame.centerY)
-			)?.visibleFrame
+			)
 		else { return nil }
 		let body = bubble.bodySize(for: text)
 		return SpeechBubbleLayout.place(
@@ -80,7 +80,7 @@ public final class PetSpeechCoordinator {
 			contentWidth: body.width,
 			contentHeight: body.height,
 			tailHeight: bubble.tailHeight,
-			workArea: workArea
+			area: SpeechBubbleLayout.area(for: display)
 		)
 	}
 

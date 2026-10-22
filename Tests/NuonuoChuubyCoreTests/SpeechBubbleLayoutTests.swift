@@ -6,7 +6,13 @@ import Testing
 @Suite("Speech bubble layout")
 struct SpeechBubbleLayoutTests {
 	// A 1440x900 display whose menu bar takes the top 25 points.
-	private let workArea = PixelRect(x: 0, y: 25, width: 1440, height: 875)
+	private let display = Monitor(
+		id: 1,
+		frame: PixelRect(x: 0, y: 0, width: 1440, height: 900),
+		visibleFrame: PixelRect(x: 0, y: 25, width: 1440, height: 875),
+		scale: 1
+	)
+	private var workArea: PixelRect { SpeechBubbleLayout.area(for: display) }
 	private let tailHeight = 7.0
 
 	private func place(
@@ -21,7 +27,7 @@ struct SpeechBubbleLayoutTests {
 			contentWidth: bodyWidth,
 			contentHeight: bodyHeight,
 			tailHeight: tailHeight,
-			workArea: workArea
+			area: workArea
 		)
 	}
 
@@ -46,6 +52,33 @@ struct SpeechBubbleLayoutTests {
 		#expect(placement.topLeft.x >= workArea.left)
 	}
 
+	@Test("A Dock on the left does not hold the bubble away from her")
+	func dockStripIsUsable() {
+		// She is drawn over the Dock and can be dragged into it, so the bubble must
+		// be able to sit there too. The work area starts 85 points in.
+		let docked = Monitor(
+			id: 2,
+			frame: PixelRect(x: 0, y: 0, width: 1440, height: 900),
+			visibleFrame: PixelRect(x: 85, y: 25, width: 1355, height: 875),
+			scale: 1
+		)
+		let area = SpeechBubbleLayout.area(for: docked)
+		#expect(area.left == docked.frame.left)
+		#expect(area.right == docked.frame.right)
+		#expect(area.top == docked.visibleFrame.top)
+
+		// Centred on her, not pushed to the work area's edge.
+		let placement = SpeechBubbleLayout.place(
+			petFrame: PixelRect(x: 0, y: 500, width: 220, height: 220),
+			contentWidth: 200,
+			contentHeight: 34,
+			tailHeight: tailHeight,
+			area: area
+		)
+		#expect(abs(placement.topLeft.x - (110 - 100)) < 0.001)
+		#expect(placement.topLeft.x < docked.visibleFrame.left)
+	}
+
 	@Test("A pet at the right edge does not push the bubble off screen")
 	func rightEdgeClamp() {
 		let placement = place(petX: 1380, petY: 500)
@@ -57,7 +90,8 @@ struct SpeechBubbleLayoutTests {
 		// The pet is high enough that its own top is above the work area, so the
 		// bubble cannot sit above it.
 		let placement = place(petX: 600, petY: -100)
-		#expect(placement.topLeft.y == workArea.top)
+		// Pushed down only as far as the menu bar, which it must not cover.
+		#expect(placement.topLeft.y == display.visibleFrame.top)
 		#expect(placement.topLeft.x == 600 + 220 + 6)
 		// The tail is on the bubble's left edge, so it points back at the pet.
 		#expect(placement.tail == .left)
@@ -81,7 +115,7 @@ struct SpeechBubbleLayoutTests {
 			contentWidth: 70,
 			contentHeight: 34,
 			tailHeight: tailHeight,
-			workArea: workArea
+			area: workArea
 		)
 		#expect(placement.tail == .down)
 		#expect(placement.topLeft.x >= workArea.left)
@@ -96,7 +130,7 @@ struct SpeechBubbleLayoutTests {
 			contentWidth: 70,
 			contentHeight: 2000,
 			tailHeight: tailHeight,
-			workArea: workArea
+			area: workArea
 		)
 		#expect(placement.topLeft.y == workArea.top)
 	}
