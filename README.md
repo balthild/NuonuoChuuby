@@ -105,6 +105,9 @@ xattr -dr com.apple.quarantine /Applications/NuonuoChuuby.app
 
 自签名证书**无法通过 Gatekeeper**（`spctl` 会拒绝，和 ad-hoc 一样），免费方案就是这一步。
 
+为什么不用 ad-hoc、也不用 Developer ID，以及证书身份为什么不能随便换：
+见 [Docs/Internal/signing.md](Docs/Internal/signing.md)。
+
 ## 命令
 
 | 目标 | 说明 |

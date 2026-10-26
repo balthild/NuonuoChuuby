@@ -1,0 +1,91 @@
+# macOS / AppKit 行为怪癖
+
+本项目**依赖**的这些行为。不是风格偏好，改动前先确认。
+
+## 窗口
+
+- **`NSWindow.constrainFrameRect` 会把窗口夹进屏幕的 visible frame。**
+  桌宠面板必须挂出屏幕顶边（她的脚锚点距面板顶约 129/132），所以面板要覆盖它、
+  原样返回 frame。没有这个覆盖她会画在仿真位置下方约 130 pt —— 「浮着但没有窗口在她脚下」。
+  overlay 同理（否则它不覆盖菜单栏那一条）。
+
+- **`CGWindowListCreateDescriptionFromArray` 在这个 macOS 上返回空数组**
+  （已验证：任何窗口、在屏不在屏都是 0 条）。
+  单窗口查询要用 `CGWindowListCopyWindowInfo([.optionIncludingWindow], id)`（返回 1 条）。
+  用错版本会让逐帧跟随静默退化成 0.5 s 的图。
+
+- **`CGWindowListCopyWindowInfo` 的列表顺序就是 z 序**，且读 `kCGWindowName` 在实践中
+  不花权限。我们曾把它读进 `TerrainWindow.title`，而没有任何消费者 —— 纯死代码。
+
+- **窗口层级是粗粒度整数**：Dock 是 20、菜单栏是 24、`.floating` 是 3。
+  所以「把她的窗口夹在 A、B 两个普通窗口之间」不可能（它们都是 0）。
+  画在菜单栏上面需要 25+，但那样会盖住 Dock。
+
+- **`.floating` 层级的窗口默认不进 Mission Control**，要加 `collectionBehavior .managed`。
+
+- **无边框非激活面板**：`[.borderless, .nonactivatingPanel]` +
+  `collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]`，
+  用 `orderFrontRegardless()` 显示，从不抢焦点。
+
+- **全屏检测**：`FullscreenDetector` 只匹配**填满显示器的 layer-0 窗口**，
+  且**不排除自己的 PID** —— 所以 overlay 的层级不能是 0，否则它会把自己判成全屏、
+  隐藏、恢复、闪烁。
+
+## 绘图
+
+- **`NSView.isFlipped = true` 只改坐标原点，不镜像内容。**
+  `CGContext.draw(_:in:)` 假定左下原点、**不会**补偿，所以底图必须在翻转**之前**画；
+  `NSImage.draw(in:)` 会补偿。
+- **`CALayer` 的 `isGeometryFlipped` 与 `CAShapeLayer.path`**：
+  root 翻转后，`path` 直接用左上原点、Y 向下即可。**不要再给子容器加
+  `isGeometryFlipped`，会二次翻转**（形状跑到脚上）。
+- **手工创建的 `CALayer` 不会自动关闭隐式动画**（`wantsLayer` 的视图会被代劳）。
+  必须显式给 `actions` 字典填 `NSNull()`，否则每次位置变化都被缓动约 0.25 s。
+- **放在 `actions` 里的 `CABasicAnimation` 模板根本不会插值**，
+  只有**事务的 duration** 有效。很容易写成静默空操作。
+
+## 事件与鼠标
+
+- **`ignoresMouseEvents` 只影响点击/拖动等路由，不影响鼠标移动流的投递与解码。**
+  实测：设了它移动开销仍在，投递计数仍约 1190/12 s。它能让点击穿透（这是它文档里的行为），
+  也顺带省掉投递**之后**路由的约 13%，代价是拖不动她。
+
+- **窗口/连接级的私有事件掩码都挡不住移动流**：成本发生在
+  `PullEventsFromWindowServerOnConnection` 里，是连接级的、在按窗口判定之上。
+  详见 `rejected-approaches.md`。
+
+- **`CGSGetWindowTags` 对所有 tag 都读回 0**，不能用它确认写入；
+  `CGSSetWindowTags` / `CGSGetWindowTags` 的 size 参数**必须是 32**（否则 `kCGErrorFailure`）。
+  `CGSTagTransparent` 确实生效，但**只对点击**。
+- **私有 API 返回 `kCGErrorSuccess` 不等于生效**：`CGSSetMouseEventEnableFlags` 返回 0，
+  但连它文档承诺的「事件传给下一个窗口」都做不到。**必须验证副作用。**
+
+- **`NSEvent.addLocalMonitorForEvents` 是可靠的「本进程实际收到多少事件」计数器**，
+  是判断投递是否被改变的唯一直接手段。
+
+- **`CGEventTap` 是会话全局的**：回调返回 nil 会把事件从全系统流里删掉，所有 app 都受影响。
+
+- **FSEvents 的语义**：
+  - `rename(2)` 在 FSEvents 里**两个名字都带 `Renamed`**（旧名与新名各一条）；
+  - 移到废纸篓/移出目录是**单独一条**（带 `Renamed`，但目标不在磁盘上）；
+  - 多条拖废纸篓会合并成一个 batch，但都**没有落点**；
+  - 事件送达时新名字已经在磁盘上、旧名字已消失（回调发生在 `rename(2)` 返回之后）。
+  - **目录监听必须用 FSEvents**，不要用 `open()` + DispatchSource（在 File Provider 目录上会挂起）。
+- **Finder 不为桌面图标发 `AXCreated`**；`AXUIElementDestroyed` 触发时元素已失效
+  （所有属性 `kAXErrorInvalidUIElement`）。用 AX 通知做「出现/删除」信号不可行。
+- **Finder 发布一个新图标的 AX 元素需要 0.2–1.2 s**（实测 6 次采样）。
+  删除后元素还会在树里留约 0.7 s（位置/尺寸仍正确）。
+
+## 时间与内存
+
+- **`NSApplication` 的主线程 `Timer` 放 `.common` 模式**才能在菜单打开或拖动循环期间继续跑。
+- **仿真里的「移动」都是两次采样之差**：挂起/全屏/睡眠造成的空隙必须在恢复时重新取基准，
+  否则整段间隔会被除以一帧（见 `physics.md`）。
+- **`stateElapsed` 每个状态都重置，不能当全局钟**；需要全局时间就用单独累计的 `elapsedSeconds`。
+
+## 测量
+
+- `top -l 1` 的进程百分比是 0；前两个采样不准，第三个起才精确。`ps -o %cpu` / `htop` 正确。
+- **紧循环微基准对窗口服务器/AppKit 调用不可信**（CA 会合并提交）。
+- xctrace 导出**只有 Running 行**，栈归因系统性低估阻塞型开销。
+- 沙盒/文件描述符层面的信号：`make rerun`（LaunchServices）与直接 exec 的 CPU 差 2–3 倍。
