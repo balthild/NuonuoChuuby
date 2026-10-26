@@ -10,13 +10,6 @@ import Testing
 @MainActor
 @Suite("Cheek pinch facing", .serialized)
 struct CheekPinchFacingTests {
-	private final class DelegateSpy: PetControllerDelegate {
-		func petController(_ controller: PetController, didProduceFrame image: CGImage) {}
-		func petControllerDidChangePlacement(_ controller: PetController) {}
-		func petControllerDidRequestMenu(_ controller: PetController) {}
-		func petController(_ controller: PetController, didChangeSuspension suspended: Bool) {}
-	}
-
 	enum TestSkip: Error { case missingAssets }
 
 	private func makeController() throws -> (PetController, URL) {
@@ -35,7 +28,6 @@ struct CheekPinchFacingTests {
 			petSize: PetSizePolicy.defaultSize,
 			randomSeed: TestAssets.randomSeed
 		)
-		controller.delegate = DelegateSpy()
 		return (controller, directory)
 	}
 
