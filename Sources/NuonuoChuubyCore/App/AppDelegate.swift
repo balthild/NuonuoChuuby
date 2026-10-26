@@ -114,6 +114,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 			"PetFallRefresh",
 			[("Rate", controller.fallRefreshDescription)]
 		)
+		// The same for the live window read: `Kind=cg` with `Available=false` is a run
+		// that asked for the private read and fell back, not one that showed no gain.
+		DiagnosticsLog.shared.writeEvent(
+			"WindowBoundsSource",
+			[
+				("Kind", WindowServerBounds.mode.rawValue),
+				("Available", "\(WindowServerBounds.isAvailable)"),
+			]
+		)
 
 		// The voice is wired up before the pet starts so the first frame can already
 		// speak.

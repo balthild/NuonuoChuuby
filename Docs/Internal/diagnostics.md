@@ -83,10 +83,15 @@
 ## 用得上的事件（排查入口）
 
 `StatusHeartbeat`（状态/位置/支撑，周期快照）、`StateTransition`、`FallStarted`
-（`fallReason` 的唯一出口）、`SuspensionChanged`、`PetPresenter`（`Kind=panel|overlay`，
-用来确认哪个渲染器在跑）、`MealRequeued`、`MealsDiscarded`、`DeletionDetected`、
+（`fallReason` 的唯一出口）、`SuspensionChanged`、`PetPresenter`（启动一次，显示器数量）、
+`MealRequeued`、`MealsDiscarded`、`DeletionDetected`、
 `DeletionIgnored`、`GhostShown`、`PatrolInterrupted`、`PerchCovered`、`DragProfile`、
 `LoggingEnabled`/`LoggingDisabled`。
+
+**活读窗口矩形的那三个**（`Platform/WindowServerBounds.swift`）：`WindowBoundsSource`
+（启动一次，`Kind=cg|cgs|cgs-verify` + `Available`）、`WindowBoundsReads`（每 600 次读取一批，
+带 `Fallbacks`）、`WindowBoundsCompare`（仅 `--cgs-bounds-verify`，报告两读的最大偏差与分数字段数）。
+`Kind=cg` 而命令行给了私有读的开关，就是**符号解析失败后的回落**，不是「没收益」。
 
 **「她浮在半空」的排查起点**：`StatusHeartbeat` 里 `Support="none"` 加上一个「着地」状态，
 就是新 bug 的形状（参数化支撑之前，这种状态根本不可表达）。

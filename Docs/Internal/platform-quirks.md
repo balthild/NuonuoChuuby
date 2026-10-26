@@ -31,6 +31,16 @@
   且**不排除自己的 PID** —— 所以 overlay 的层级不能是 0，否则它会把自己判成全屏、
   隐藏、恢复、闪烁。
 
+- **私有 `CGSGetWindowBounds` 是单窗口矩形的正解**（`dlopen` SkyLight 后 `dlsym`，
+  不链接；符号缺失就回落到公有读）。`CGSMainConnectionID()` 取连接 id，返回 0 才是成功。
+  - **必须查返回码**：不存在的窗口返回 `kCGErrorFailure`（1000），而输出矩形是
+    `(inf, inf, 0, 0)` —— 看上去像「在无穷远处」，当矩形用会静默把一切算错。
+  - 返回的矩形**已是整数**（`kCGWindowBounds` 同），所以盒内 30 Hz 节流的
+    「矩形相等即静止」判据不受影响。已验证：窗口按 0.25/0.75 pt 步进移动 40 帧，
+    两侧 0 处不符、0 个分数字段。
+  - 在 macOS 15.7.7 上实测 26 个在屏窗口与 `kCGWindowBounds` **逐字段相同**。
+  - **别在紧循环里量它**：循环读数 2.5 µs，app 内 46 µs。见 `performance.md`。
+
 ## 绘图
 
 - **`NSView.isFlipped = true` 只改坐标原点，不镜像内容。**

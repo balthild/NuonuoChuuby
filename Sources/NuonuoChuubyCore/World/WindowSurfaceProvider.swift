@@ -3,6 +3,7 @@ import Foundation
 
 /// Re-reads a single window's bounds, for the surface the pet is standing on, so a
 /// dragged window does not lag the half-second graph rebuild.
+@MainActor
 enum WindowSurfaceProvider {
 	/// The window's top edge as a surface, read fresh this frame.
 	///
@@ -26,7 +27,33 @@ enum WindowSurfaceProvider {
 		)
 	}
 
+	/// The window's rectangle right now, from whichever read the launch flag chose.
+	///
+	/// The private read is the same question answered without building a window
+	/// description — see ``WindowServerBounds``. It falls back to the public read for
+	/// a window it cannot answer for, so a window closing mid-frame behaves as it did.
 	static func liveBounds(of windowID: UInt32) -> PixelRect? {
+		switch WindowServerBounds.mode {
+		case .publicAPI:
+			let bounds = readPublicBounds(of: windowID)
+			WindowServerBounds.noteRead(succeeded: bounds != nil)
+			return bounds
+		case .privateAPI:
+			let privateBounds = WindowServerBounds.bounds(of: windowID)
+			WindowServerBounds.noteRead(succeeded: privateBounds != nil)
+			return privateBounds ?? readPublicBounds(of: windowID)
+		case .verifying:
+			let publicBounds = readPublicBounds(of: windowID)
+			WindowServerBounds.noteRead(succeeded: publicBounds != nil)
+			WindowServerBounds.compare(
+				privateRead: WindowServerBounds.bounds(of: windowID),
+				publicRead: publicBounds
+			)
+			return publicBounds
+		}
+	}
+
+	private static func readPublicBounds(of windowID: UInt32) -> PixelRect? {
 		// Asking about one window is far cheaper than enumerating the list, which
 		// matters because this runs every frame for the window she stands on.
 		//

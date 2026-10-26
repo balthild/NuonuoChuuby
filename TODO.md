@@ -254,14 +254,20 @@ landing / curious` 五种落地状态运行，且只有两条路：
 - **若要继续降**（按收益排序，均未做）：
   1. **把地形图重建与矩形采样合并成一次枚举**（两者需要的 rect 完全相同，只差可按需丢弃的遮挡计算）：
      省掉 2 Hz 那次枚举，约 −0.1%（release）/ −0.35%（debug），行为不变。
-  2. **把两处 Swift 字典桥接换成 CoreFoundation 直读**（`MacOSPlatform.windows` 与 `liveBounds`）：
+  2. **把 Swift 字典桥接换成 CoreFoundation 直读**（现在只剩 `MacOSPlatform.windows` ——
+     `liveBounds` 已改为私有读、不再走字典）：
      实测解析快 **20 倍**（164 µs → 69 µs/次，结果逐字段一致）。release 约 −0.1%，debug 约 −1%，行为不变。
      注意这只影响 debug 数字的可读性，不影响发布版。
   3. **睡着时按 10 Hz 跑 step**：`sleep` 保持片段是 8 帧 × 0.185 s ≈ 5.4 fps，10 Hz 在视觉上完全一样。
      这是唯一能砍掉「每帧固定开销」（运行循环 + 框架 + 绘制推送）的办法，release 3.4% 有望降到 1–2%。
      注意它与第 1 项不相交：容器内不会进入 `.sleeping`（`updateWindowEnclosure` 会早退）。
-  4. 私有 `CGSGetWindowBounds`：矩形与 `kCGWindowBounds` 在 24 个窗口上**逐字段相同**、便宜 **12 倍**
-     （2.5 µs CPU），可让实时读取几乎免费。但要引入私有符号，倾向不做。
+
+  ~~4. 私有 `CGSGetWindowBounds`~~ —— **已做（2026-10-26），现在是默认**。
+  盒内 idle **2.87 → 2.19% 单核（−0.69 pt）**，单次读取 293 → 46 µs。
+  见 `Docs/Internal/performance.md` 与 `platform-quirks.md`；`--cgs-bounds-public` 可退回公有读做回归。
+  **仍未测**：站在窗口顶边（60 Hz，收益预计翻倍）、多显示器，
+  以及**整表枚举**能否也私有化（`CGSGetOnScreenWindowList` + level/alpha + 连接→PID，
+  还要 owner name 与 z 序 —— 那是比单次读取大得多的赌注，约 1.3 + 0.5 pt 上限）。
 - **测试套件是概率性绿的（2026-10-13 实测，与性能改动无关）。**
   连跑 20 次 `make test`，约 2 次失败，失败者总是同一族：
   `AirborneSupportTests.fastDownwardDragIsCaught`、`SuspensionTests.resumingKeepsHerFooting`
