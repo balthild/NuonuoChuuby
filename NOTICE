@@ -1,7 +1,7 @@
 NuonuoChuuby
 ============
 
-A macOS rewrite of JiuNuoDesktopPet（啾糯桌宠）, originally a C#/WPF Windows
+A macOS port of JiuNuoDesktopPet（啾糯桌宠）, originally a C#/WPF Windows
 desktop pet.
 
 
@@ -56,11 +56,16 @@ holders have not licensed this use.
 
 In deference to that:
 
-  * **This repository contains no asset bytes.** `.gitignore` excludes
-    `Sources/NuonuoChuubyCore/Resources/Assets/`.
-  * The committed `asset-manifest.json` lists only *paths* and a pinned commit id.
-  * A development build copies assets from the submodule locally.
-  * A release build downloads them from the upstream repository on first launch.
+  * **This repository contains no asset bytes.** The artwork lives in the
+    upstream submodule, and `.gitignore` excludes the generated
+    `Sources/NuonuoChuubyCore/Asset/AssetManifest.swift`.
+  * That manifest is generated from the submodule at build time and compiled
+    into the binary. It carries only the *paths* of the files and the pinned
+    commit, and is never committed.
+  * A development build (`make run` / `rerun`) hard-links the artwork out of the
+    submodule, so nothing is copied.
+  * A release build downloads the artwork on first launch, from a jsdelivr CDN
+    pinned to the commit recorded in the manifest.
 
 Redistribution of the artwork is therefore not performed by this project; the
 underlying rights status is unchanged and remains unresolved. Anyone shipping a
@@ -73,3 +78,18 @@ Third-party code
 No third-party Swift packages are used. The package has no external
 dependencies; everything is built on Apple's frameworks (AppKit, CoreGraphics,
 CoreServices, AVFoundation) plus the Swift standard library.
+
+Disclaimer
+----------
+
+THIS SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE MAINTAINER
+BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THIS
+SOFTWARE OR THE USE OR OTHER DEALINGS IN IT.
+
+Some jurisdictions do not allow the exclusion of certain warranties or the
+limitation of liability for certain damages, so the parts of the above that the
+law does not permit do not apply to you. Nothing here limits any liability that
+cannot be limited by law.
