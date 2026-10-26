@@ -40,7 +40,7 @@
 ## 时间预算
 
 - idle / 走动 / 拖动：**4–5% / ~25% / 28–38%**（改进前）；盒内 idle 在 30 Hz 节流后 **3.4%**。
-- `TODO.md` 原来那个 `< 0.5%` idle 预算**从未测量过**，来自原版 Windows 的数字，
+- 早期写下的 `< 0.5%` idle 预算**从未测量过**，来自原版 Windows 的数字，
   对 60 Hz 透明 overlay 不是现实目标。
 - **debug ≈ release for idle CPU**：idle 成本是框架 + run loop + 两次窗口枚举，不是我们的 Swift。
   不要用「release 更快」解释 idle 成本。

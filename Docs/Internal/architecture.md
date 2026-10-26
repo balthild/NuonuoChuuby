@@ -3,8 +3,11 @@
 macOS 重写版 JiuNuoDesktopPet（原版是 C#/WPF 的 Windows 桌宠）。当前只做糯糯；
 菲比、双宠同屏、窗口恶作剧均暂缓。
 
-> 引用「本项目的约定」之前，先 grep 本仓库。历史上曾把别的仓库的约束当成本项目约定
-> （「窗口标题永不读取」「零权限」两个论据都是错的，已撤回）。
+> 引用「本项目的约定」之前，先 grep 本仓库。历史上曾把别的仓库（Ledgeling、上游 submodule）
+> 的规则当成本项目约定，据此论证过三个错误结论：「窗口标题永不读取」（本仓库无此说法）、
+> 「零权限」（用户明确没有隐私要求，一次性 TCC 提示可接受）、「never commit to `main`」（本仓库
+> 只有 `main`，全部直接提交）。**权限成本不能作为设计理由** —— 唯一有效的偏好是「重建后不为
+> 同一权限重复提示」，那由稳定的签名身份解决（见 `signing.md`），不是靠避免权限。
 
 ## 世界模型
 
@@ -115,8 +118,14 @@ macOS 重写版 JiuNuoDesktopPet（原版是 C#/WPF 的 Windows 桌宠）。当�
 
 ## 参考实现：Ledgeling（Rust/Tauri 的 macOS 桌宠）
 
-只借思路，**不复制代码、不依赖上游任何 commit**（上游后来改用 PolyForm Strict 许可；
-我们参考的 fork 是 MIT）。下列取舍在出现新证据之前为**终态**。
+只借思路，**不复制代码、不依赖上游任何 commit**。上游于 `402f60be` 从 MIT 改为
+**PolyForm Strict**（禁止分发与修改）；用户的 fork `balthild/Ledgeling` 停在仍是 MIT 的
+`0b0014b9`，参考的内容都在这个 pin 上。下列取舍在出现新证据之前为**终态**。
+
+**定位（fork `0b0014b9`）**：macOS 平台层在 `src-tauri/src/platform/macos.rs`
+（`CGWindowListCopyWindowInfo(1|16, 0)`、把列表下标直接当 `z_index`），地形图 / 遮挡减法 /
+边界用例在 `src-tauri/src/world/`，`STARTLING_SPEED = 900` 在 `src-tauri/src/pet/`。
+它的 `tests/privacy.rs`（源码扫描）本项目不采用。
 
 > 其中两条思路已经落到本项目的具体结构里：位置用 `(SurfaceKey, t)` 而不是世界坐标、
 > 遮挡用一维区间减法。完整说明见上面的「窗口建模」。
@@ -144,6 +153,8 @@ macOS 重写版 JiuNuoDesktopPet（原版是 C#/WPF 的 Windows 桌宠）。当�
 - **webview overlay 渲染器、包格式、声明式 pack FSM、awareness 提示阶梯、packs→多宠、
   `PetSurface`/`Scene` 渲染协议**：我们有程序化捏脸形变、幽灵图标、气泡；单个 overlay
   表达不了它们，抽象没有第二实现。
+- **跨显示器行走语义的重设计**：只**钉住现状**（每个显示器边界反弹的语义不变），
+  不趁机重设计。
 
 **部分采纳**
 

@@ -48,6 +48,8 @@
 - **测试缝隙的绕过**：`provider.setBodies(...)` **完全绕过** `sampleBodiesIfStale`，
   所以通过这个缝做的集成测试**钉不住采样器内部的改动**。采样器行为要在驱动真实
   `platform.windows()` 的测试里钉。
+- **`MockPlatform.windows()` 按列表顺序赋 `zIndex`**（与 `MacOSPlatform` 一致）。
+  默认全 0 时，任何读 z 序的 mock 测试都是哑的。
 - **只改一处会让两个谓词打架时**，测试要同时覆盖 entry 与 ongoing 两条路径
   （否则会出现「能进但装不下」的坏状态）。
 

@@ -496,7 +496,7 @@ public final class PetController: SpriteAnimatorDelegate {
 
 		// Inside a window the four walls are what holds her, and she rests there
 		// with `state == .idle` — so reporting "none" would look exactly like the
-		// floating bug this heartbeat exists to catch (see TODO.md §1).
+		// floating bug this heartbeat exists to catch (see Docs/Internal/physics.md).
 		let support: String
 		let tracked: String
 		if let enclosure {

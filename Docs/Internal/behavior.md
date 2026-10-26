@@ -18,7 +18,7 @@
 `.patrol` 是 `MovementPurpose` 的一个 case，但**全仓库零生产者**。
 上游 `AutonomousAction.Wander` → `StartContinuousPatrol(preferClimb:false)`，
 `.Explore` → `preferClimb:true`；`StartContinuousPatrol` → `ChooseNextPatrolTarget`
-把 `targetX` 设成当前 run 的**某一端**（`margin = clamp(窗口宽*0.20, 24, 72)`，方向交替），
+把 `targetX` 设成当前 run 的**某一端**（`margin = clamp(她窗口宽*0.20, 24, 72)`，方向交替），
 到达时 `UpdateGroundRunning` 调 `TryBeginTerrainActionAtEdge`。
 **所以「到端头」是上游唯一到达 edge 的路径，所有边缘行为都挂在它下面。**
 
@@ -68,12 +68,35 @@
 - `rollIsEdgeLeg()`（`edgeLegChance = 0.6`）为真 → `beginPatrolLeg()`（purpose `.patrol`）；
 - 为假 → `beginStroll(purpose:)`（上游 `StartGroundMove` 的形状：
   `travel = 80…241` × 随机方向、夹进 run、太近(<36) 改去远端、<24 放弃）。
-- 爬窗尝试**只在 leg 开始时**做（上游在每次选目标时都试，但端口没有 12 s 失败冷却，
-  每次都试会浪费）。
+- 爬窗尝试**只在 leg 开始时**做（上游在每次选目标时都试，两者差别见「上游的爬窗冷却」）。
 
 **「到尽头无动作可做就重新判定」必须同时覆盖 turnaround 和冷却中两种情况。**
 用户只说了冷却那半句；turnaround 那半边也要重判，否则地板 78% 的到达都会立刻掉头再走，
 60/40 形同虚设。
+
+### 数值（均与上游对齐）
+
+- **停靠边距**：`patrolStopMargin = clamp(petSize * 0.20, 24, 72)`。上游量的是**她自己那个窗口**
+  的宽度（`GetWindowRect(_windowHandle)`），不是地形窗口的宽度 —— 这里用 `petSize`，是同一件事。
+- **放弃与翻向**：`maximumX - minimumX < 42` 时这个 leg 直接放弃（走不了几步，不如不动）；
+  起点距目标 `< 20` pt 时翻向，否则就是一次零距离行走。
+- **爬窗 34%**（`preferClimb` 时必试）。
+- **边缘动作冷却 14 s**（`_nextTerrainActionAt = now + 14`），否则窄窗口上（2 秒一趟）
+  她每次到边都往边缘跳。
+
+### 上游的爬窗冷却，端口一条都没有
+
+上游有 `_nextClimbAttemptAt` 的三个门：选中目标后 **12 s**、滑落后 **24 s**、成功后 **20 s**。
+端口没有这些冷却，替代品是「每个 leg 只试一次」—— leg 之间隔着走过去的时间。
+**若改成上游那样在每个目标选择处都试，就必须同时把这三个冷却补上**，
+否则她会反复往同一个爬不上去的边上撞。
+
+### 地板横向是整个显示器，不是工作区
+
+`SurfaceBuilder` 给每个显示器建一条 `floor`：`offset` 取 `visibleFrame.bottom`（工作区底边，
+已排除菜单栏与 Dock），但 `span` 取**整个 `frame` 的宽度**。上游的地板用工作区宽度。
+所以 Dock 停在左/右边缘时，她会沿地板线走进被 Dock 保留的那条竖带；那里她画在 Dock 之下
+（Dock 是 CGWindowLevel 20，overlay 是 2）。这是接受的现状，未打算修。
 
 ### 仍未动的同族缺口
 
