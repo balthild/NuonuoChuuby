@@ -53,6 +53,18 @@ public struct Monitor: Sendable, Equatable, Identifiable {
 	}
 }
 
+extension Array where Element == Monitor {
+	/// Whether any of these displays shows any part of the rectangle.
+	///
+	/// A rectangle that is on no display at all is not on this desktop: during a
+	/// Space switch the window server reports the neighbouring desks' windows too,
+	/// laid out along the strip the transition slides across, with coordinates far
+	/// outside every display. See `Docs/Internal/platform-quirks.md`.
+	public func shows(_ rect: PixelRect) -> Bool {
+		contains { $0.frame.intersects(rect) }
+	}
+}
+
 /// The windowing system, behind the smallest surface the simulation needs
 /// (geometry only).
 @MainActor

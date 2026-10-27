@@ -58,4 +58,12 @@ public struct PixelRect: Sendable, Equatable {
 	public func contains(_ other: PixelRect) -> Bool {
 		other.left >= left && other.right <= right && other.top >= top && other.bottom <= bottom
 	}
+
+	/// Whether the two rectangles share any area at all.
+	///
+	/// Touching edges count as nothing shared, so a rectangle that is exactly beside
+	/// another does not intersect it.
+	public func intersects(_ other: PixelRect) -> Bool {
+		left < other.right && other.left < right && top < other.bottom && other.top < bottom
+	}
 }

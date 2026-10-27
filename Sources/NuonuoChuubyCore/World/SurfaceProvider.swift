@@ -27,6 +27,35 @@ public final class SurfaceProvider {
 	/// Set by ``rebaselineBodySamples()``: the next sample is a starting point.
 	private var nextBodySampleIsBaseline = false
 
+	/// Whether the desktop is being swapped — the user switched Spaces.
+	///
+	/// While the transition runs, the window server reports the neighbouring desks'
+	/// windows as well as this one's, laid out along the strip the transition slides
+	/// along, so a large part of the list is on no display at all. Nothing can be read
+	/// from that: a window edge sweeping through her is the whole desktop moving past
+	/// her, the walls of a box she is in are being slid away, and the edge she is
+	/// standing on belongs to a desk she has left. The simulation holds still until
+	/// the list settles, which is what this flag is for.
+	///
+	/// Two independent signals raise it, because each misses cases the other catches:
+	/// a window on no display (the strip is being reported at all) and a desktop slide
+	/// (the transition is under way even when every window in the sample is still on
+	/// the display, which is what a shortcut switch looks like). See
+	/// ``DesktopSlideDetector``.
+	public private(set) var isDesktopSwapping = false
+	/// The rectangles of the most recent sample, kept only to tell a slide from a drag.
+	///
+	/// Deliberately **not** cleared by ``rebaselineBodySamples()``: that is about her
+	/// own movement, and clearing this would blind the slide detector for a sample in
+	/// the middle of the very transition it exists to catch.
+	private var previousSampleBounds: [UInt32: PixelRect] = [:]
+	/// Consecutive samples that looked like the desktop sliding.
+	///
+	/// Two rather than one: a sample taken across a gap — a suspension, a stall — is a
+	/// difference spanning the whole gap, and one such pair could otherwise pass for a
+	/// slide. Nothing real can produce two in a row.
+	private var slideSamples = 0
+
 	/// Windows change constantly, so the graph is rebuilt on an interval.
 	private static let refreshInterval: Double = 0.5
 	/// The body sample runs far faster than the graph, because the side collision
@@ -84,14 +113,18 @@ public final class SurfaceProvider {
 
 	public func refresh(displaySpace: DisplaySpace) {
 		let ownPID = ProcessInfo.processInfo.processIdentifier
-		let windows = platform.windows()
+		let monitors = displaySpace.displays
+		// Windows on no display are on another desktop, not on this one. Counting
+		// them would put edges she can never reach into the graph, and — worse — let
+		// her drop onto one, which is precisely what a Space switch used to do.
+		let windows = platform.windows().filter { monitors.shows($0.bounds) }
 		isFullscreenAppActive = FullscreenDetector.isFullscreenAppActive(
 			windows: windows,
-			monitors: displaySpace.displays
+			monitors: monitors
 		)
 		surfaces = SurfaceBuilder.build(
 			windows: windows,
-			monitors: displaySpace.displays,
+			monitors: monitors,
 			isTerrain: { window, monitor in
 				WindowTerrainEligibilityPolicy.isEligiblePlatform(
 					window,
@@ -128,23 +161,56 @@ public final class SurfaceProvider {
 		// over time, so an enormous gap would make every sweep look like nothing.
 		let elapsed = min(secondsSinceBodySample, Self.bodySampleInterval)
 		secondsSinceBodySample = 0
+		takeBodySample(displaySpace: displaySpace, elapsed: elapsed)
+	}
 
+	private func takeBodySample(displaySpace: DisplaySpace, elapsed: Double) {
 		let ownPID = ProcessInfo.processInfo.processIdentifier
+		let monitors = displaySpace.displays
 		var bodies: [UInt32: WindowBody] = [:]
+		var offScreen = false
 		for window in platform.windows() {
 			guard WindowTerrainEligibilityPolicy.isEligibleAppWindow(window, ownPID: ownPID)
 			else { continue }
+			guard monitors.shows(window.bounds) else {
+				offScreen = true
+				continue
+			}
 			bodies[window.id] = WindowBody(
 				bounds: window.bounds,
 				zIndex: window.zIndex,
 				isEnclosureCandidate: WindowEnclosureEligibilityPolicy.isBoundedBody(
 					window.bounds,
-					monitors: displaySpace.displays
+					monitors: monitors
 				)
 			)
 		}
 
-		previousWindowBodies = nextBodySampleIsBaseline ? bodies : windowBodies
+		// Nothing is a step across a desktop swap: both lists are of different desks,
+		// and the windows that are in both have been slid thousands of points. So the
+		// sample that notices a swap, and the first one after it, start from
+		// themselves rather than from the list before them.
+		//
+		// The slide is measured against the **raw** previous sample rather than against
+		// `previousWindowBodies`, because the rebaselining below makes that equal to the
+		// new list — which would leave the transition invisible after its first sample.
+		let rectangles = bodies.mapValues(\.bounds)
+		let minimumStep = WindowSideCollisionPolicy.minimumEdgeSpeed * elapsed
+		if DesktopSlideDetector.isSliding(
+			from: previousSampleBounds,
+			to: rectangles,
+			minimumStep: minimumStep
+		) {
+			slideSamples += 1
+		} else {
+			slideSamples = 0
+		}
+		previousSampleBounds = rectangles
+
+		let swapping = offScreen || slideSamples >= 2
+		let startsAfresh = nextBodySampleIsBaseline || swapping || swapping != isDesktopSwapping
+		isDesktopSwapping = swapping
+		previousWindowBodies = startsAfresh ? bodies : windowBodies
 		nextBodySampleIsBaseline = false
 		windowBodies = bodies
 		bodySampleElapsed = elapsed
@@ -154,6 +220,23 @@ public final class SurfaceProvider {
 	/// Which window is hiding the pet, if any. See ``WindowOcclusionPolicy``.
 	public func coveringWindow(of owner: UInt32, body: PixelRect) -> UInt32? {
 		WindowOcclusionPolicy.coveringWindow(of: owner, her: body, among: windowBodies)
+	}
+
+	/// Whether the window is on the desktop the user is looking at.
+	///
+	/// Presence in the body sample answers this exactly, and for free: the sample is
+	/// taken with `.optionOnScreenOnly`, which leaves out the windows of every other
+	/// Space — verified with a probe, together with the fact that it is the *only*
+	/// signal that says so. Switching Spaces moves the desktop, not the window: its
+	/// rectangle is unchanged, the public and the private live reads both go on
+	/// reporting that same rectangle, and the only difference in the window's entry is
+	/// a missing `kCGWindowIsOnscreen`.
+	///
+	/// So this is deliberately not a geometric question. "Is it inside a display" says
+	/// yes for a window she can no longer be seen on, which is how she used to stay
+	/// inside a box on the desk the user had left.
+	public func isOnThisDesktop(_ windowID: UInt32) -> Bool {
+		windowBodies[windowID] != nil
 	}
 
 	public var floors: [Surface] {

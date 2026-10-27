@@ -11,8 +11,24 @@ enum WindowSurfaceProvider {
 	/// the window she rides is in front of whatever it overlaps. Reachability **is**
 	/// recomputed: a window dragged up under the menu bar is no longer somewhere she
 	/// can stand, and she is dropped rather than carried out of reach.
-	static func liveWindowSurface(windowID: UInt32, monitors: [Monitor]) -> Surface? {
-		guard let bounds = liveBounds(of: windowID) else { return nil }
+	///
+	/// `isOnThisDesktop` is what stops her standing on a window of a desk she has
+	/// switched away from. That question cannot be answered from the rectangle: the
+	/// switch moves the desktop, not the window, so the live read goes on reporting
+	/// the same edges it reported before — verified with a probe. It is asked
+	/// separately for that reason, and answered from the on-screen sample.
+	static func liveWindowSurface(
+		windowID: UInt32,
+		monitors: [Monitor],
+		isOnThisDesktop: Bool
+	) -> Surface? {
+		guard let bounds = liveBounds(of: windowID), isOnThisDesktop else { return nil }
+		// A window on another desktop keeps its rectangle: switching Spaces moves the
+		// desktop, not the window, and the window server goes on answering for it. It
+		// is not somewhere she can be seen standing, so it is not somewhere she can
+		// stand — otherwise a switch leaves her on the edge of a window that is not
+		// on this screen, with nothing under her.
+		guard monitors.shows(bounds) else { return nil }
 		let span = Span(start: bounds.left, end: bounds.right)
 		let reachable = monitors.contains {
 			bounds.top >= $0.visibleFrame.top && bounds.top < $0.visibleFrame.bottom

@@ -192,6 +192,12 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var perchLogGate = ChangeGate<PlatformMotionResponse>()
 	/// A drag-resize grows a box continuously; this keeps the remark to one.
 	private var boxGrowthGate = ChangeGate<Bool>()
+	/// What the desktop looked like one sample ago: whether it was being swapped.
+	private var wasDesktopSwapping = false
+	/// How long the current swap episode has lasted.
+	private var desktopSwapSeconds: Double = 0
+	/// So the cap is logged once per episode rather than every frame after it.
+	private var hasCappedSwapHold = false
 	/// The window she is in the air because of, if any, and where its edge was last
 	/// frame, so one rising faster than she flies cannot pass through her.
 	private var airborneSupportWindowID: UInt32?
@@ -293,6 +299,14 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// before she notices a box that has started moving grows in proportion, and
 	/// that delay is the price of this.
 	private static let enclosureRestingResampleInterval: Double = 1.0 / 30
+
+	/// How long a swap may hold her still before she is let go regardless.
+	///
+	/// A transition lasts a second or two, but the signal that raises this — a window
+	/// on no display — would also be raised for ever by an application that parks one
+	/// off screen. The cap bounds that to one episode rather than freezing her for the
+	/// rest of the session. See ``holdForDesktopSwap(_:)``.
+	private static let maximumDesktopSwapSeconds: Double = 6
 
 	private let displayScale: Double = 1
 	private var timer: Timer?
@@ -453,6 +467,21 @@ public final class PetController: SpriteAnimatorDelegate {
 		// directly controlled by the cursor and skips this expensive path.
 		if !isDragging {
 			surfaceProvider.sampleBodiesIfStale(displaySpace: displaySpace, delta: simulation)
+		}
+
+		// Asked before the collision pass, because the sample that notices the swap
+		// is the first one that compares two different desktops.
+		if holdForDesktopSwap(simulation) {
+			// Her overlay is not on a Space, so she keeps her place on screen while the
+			// desktop slides past her.
+			animator.tick(timing.animationSeconds)
+			notifyPlacementIfChanged()
+			return
+		}
+
+		// Not while dragging: the cursor moves her directly, and a side impact is
+		// not something a hand on her can be given.
+		if !isDragging {
 			updateWindowSideCollisions()
 		}
 		tickCooldowns(simulation)
@@ -672,13 +701,75 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// ride then carries her to wherever the surface is now, which is what she should
 	/// do after a gap: the world moved, she did not.
 	private func resumeFromSuspension() {
+		rebaselineCrossFrameMotion()
+	}
+
+	/// Restarts every measurement made by differencing two frames, so the next frame
+	/// is read as a starting point rather than as a movement.
+	///
+	/// Used for the two gaps the simulation can have — a suspension, and the desktop
+	/// being swapped under her by a space switch — where nothing she observed changed
+	/// because of her.
+	private func rebaselineCrossFrameMotion() {
 		lastPerchOffset = nil
 		surfaceProvider.rebaselineBodySamples()
 		enclosureResampleRemaining = 0
 		enclosureBoxAgeSeconds = 0
+		catcherTop = nil
 		if let current = enclosure, let box = liveBounds(of: current.windowID) {
 			enclosure?.previousBox = box
 		}
+	}
+
+	/// Whether the desktop is being swapped under her, having noticed the change.
+	///
+	/// While the transition runs the window server reports the neighbouring desktops'
+	/// windows beside this one's — laid out along the strip the transition slides
+	/// across, thousands of points outside every display — so nothing about her
+	/// surroundings can be read from it. An edge sweeping through her is the whole
+	/// desktop moving rather than a window being dragged, the walls of a box she is in
+	/// are being slid out from under her, and the edge she stands on belongs to a desk
+	/// she has left.
+	///
+	/// Held still rather than corrected, for the same reason a suspension is handled
+	/// this way: there is no right answer to compute from the data, and every attempt
+	/// to interpolate through it gave her a sideways throw or a ledge to stand on that
+	/// was not there. Measured baselines are dropped on both edges, so neither the
+	/// transition nor its end can read as her own movement.
+	private func holdForDesktopSwap(_ delta: Double) -> Bool {
+		let reported = surfaceProvider.isDesktopSwapping
+		desktopSwapSeconds = reported ? desktopSwapSeconds + delta : 0
+		// An application that keeps a window parked off screen would raise the signal
+		// for ever. The cap ends one episode instead of holding her for the session;
+		// that window stays out of her world either way, because the sample drops it.
+		let swapping = reported && desktopSwapSeconds <= Self.maximumDesktopSwapSeconds
+		if reported, !swapping, !hasCappedSwapHold {
+			hasCappedSwapHold = true
+			DiagnosticsLog.shared.writeEvent(
+				"DesktopSwapHoldCapped",
+				[("Seconds", String(format: "%.1f", desktopSwapSeconds))]
+			)
+		}
+		if !reported { hasCappedSwapHold = false }
+
+		guard swapping != wasDesktopSwapping else { return swapping }
+
+		wasDesktopSwapping = swapping
+		rebaselineCrossFrameMotion()
+		// The graph is stale by the whole transition otherwise, and the first thing
+		// asked of it once she is moving again is whether the edge she is on still
+		// exists.
+		if !swapping { surfaceProvider.refresh(displaySpace: displaySpace) }
+		DiagnosticsLog.shared.writeEvent(
+			"DesktopSwapped",
+			[
+				("Swapping", "\(swapping)"),
+				("State", state.rawValue),
+				("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
+				("Support", enclosure != nil ? "enclosure" : perchSurface?.key.kind.rawValue ?? "none"),
+			]
+		)
+		return swapping
 	}
 
 	// MARK: - Window enclosure
@@ -706,13 +797,33 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// the largest single item in the whole simulation step — larger than everything
 	/// the enclosure does with it.
 	private func enclosureFitsTheBox(_ box: PixelRect?) -> Bool {
-		guard enclosure != nil else { return true }
+		guard let current = enclosure else { return true }
 		guard let box else {
 			surrenderEnclosure(reason: "WindowUnavailable")
 			beginFall(
 				reason: "EnclosureWindowLost",
 				initialVelocityY: velocity.y,
 				initialVelocityX: velocity.x
+			)
+			return false
+		}
+		// A window on another desktop is still a window, and it keeps every one of its
+		// edges: switching Spaces moves the desktop, not the window. So none of the
+		// checks below would notice that she is inside one she can no longer be seen
+		// in, and none of them can — the rectangle is unchanged and is still on the
+		// display. Presence in the on-screen sample is the answer, and the geometry
+		// below is only a second opinion for the moment a box slides off the display.
+		//
+		// She falls out of it, giving up only her own vertical speed: a swap moves the
+		// world, not her, so it must not hand her a sideways one.
+		guard surfaceProvider.isOnThisDesktop(current.windowID),
+			displaySpace.displays.shows(box)
+		else {
+			surrenderEnclosure(reason: "NotOnThisDesktop")
+			beginFall(
+				reason: "EnclosureWindowLost",
+				initialVelocityY: velocity.y,
+				initialVelocityX: 0
 			)
 			return false
 		}
@@ -1938,11 +2049,16 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// The graph lags by up to half a second, which is the difference between
 	/// riding a window and being punched through it, so anything that has to know
 	/// where a window *is* reads it here — the same single-window query throughout.
+	///
+	/// Where it is still leaves open whether it is hers to stand on: a window of a
+	/// desk she has switched away from keeps every one of its edges. See
+	/// ``SurfaceProvider/isOnThisDesktop(_:)``.
 	private func liveSurface(of windowID: UInt32) -> Surface? {
 		if let debugLiveWindowSurfaceOverride { return debugLiveWindowSurfaceOverride(windowID) }
 		return WindowSurfaceProvider.liveWindowSurface(
 			windowID: windowID,
-			monitors: displaySpace.displays
+			monitors: displaySpace.displays,
+			isOnThisDesktop: surfaceProvider.isOnThisDesktop(windowID)
 		)
 	}
 
