@@ -106,6 +106,41 @@ struct DesktopSwapTests {
 
 	// MARK: - Which windows are on this desktop
 
+	@Test("A gap in the middle of a transition does not hand her back to the simulation")
+	func aGapInTheSignalDoesNotEndTheSwap() {
+		// Measured shape of one gesture switch: the signal came and went four times over
+		// about two seconds, because the edges of the desktop come in and out of the
+		// enumeration as the gesture is steered. Releasing on the first quiet sample would
+		// measure her own movement across a desktop that is still sliding.
+		let platform = MockPlatform.singleMonitor(
+			width: Self.displayWidth,
+			height: Self.displayHeight
+		)
+		platform.setWindows([Self.window(id: Self.windowID, bounds: Self.box)])
+		let space = DisplaySpace(monitors: platform.monitors(), primaryHeight: Self.displayHeight)
+		let provider = SurfaceProvider(platform: platform)
+		provider.refresh(displaySpace: space)
+
+		let swapping = [
+			Self.window(id: Self.windowID, bounds: Self.box),
+			Self.window(id: 7101, bounds: Self.neighbouring),
+		]
+		let settled = [Self.window(id: Self.windowID, bounds: Self.box)]
+
+		for round in 0..<4 {
+			platform.setWindows(swapping)
+			provider.sampleBodiesIfStale(displaySpace: space, delta: 0.1)
+			#expect(provider.isDesktopSwapping, "the swap did not start in round \(round)")
+
+			platform.setWindows(settled)
+			provider.sampleBodiesIfStale(displaySpace: space, delta: 0.1)
+			#expect(provider.isDesktopSwapping, "released by one quiet sample in round \(round)")
+		}
+
+		for _ in 0..<4 { provider.sampleBodiesIfStale(displaySpace: space, delta: 0.1) }
+		#expect(!provider.isDesktopSwapping, "and it does end once the desktop has settled")
+	}
+
 	@Test("A window on no display is not terrain, and marks the desktop as being swapped")
 	func offDisplayWindowIsNotTerrain() {
 		let platform = MockPlatform.singleMonitor(

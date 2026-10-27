@@ -43,6 +43,9 @@ public final class SurfaceProvider {
 	/// the display, which is what a shortcut switch looks like). See
 	/// ``DesktopSlideDetector``.
 	public private(set) var isDesktopSwapping = false
+	/// What ``isDesktopSwapping`` was one sample ago, so the sample after a swap starts
+	/// from itself.
+	private var wasDesktopSwapping = false
 	/// The rectangles of the most recent sample, kept only to tell a slide from a drag.
 	///
 	/// Deliberately **not** cleared by ``rebaselineBodySamples()``: that is about her
@@ -55,6 +58,20 @@ public final class SurfaceProvider {
 	/// difference spanning the whole gap, and one such pair could otherwise pass for a
 	/// slide. Nothing real can produce two in a row.
 	private var slideSamples = 0
+	/// Consecutive samples that showed no sign of a swap, while one is in progress.
+	private var settledSamples = 0
+
+	/// How many clean samples in a row end a swap.
+	///
+	/// The two signals both come and go during a single transition — measured, a
+	/// gesture switch reads `true, false, true, false` over about two seconds, because
+	/// the edges of the desktop come in and out of the enumeration as the gesture is
+	/// steered. Releasing on the first quiet sample would hand her back to the simulation
+	/// while the desktop is still moving under her, which is the same thing as measuring
+	/// across the swap: she is dropped, or thrown sideways, by a desktop that is mid-slide.
+	/// Three samples at the 10 Hz body rate is 0.3 s, well under the shortest transition and
+	/// well over the gaps in one.
+	private static let swapSettleSamples = 3
 
 	/// Windows change constantly, so the graph is rebuilt on an interval.
 	private static let refreshInterval: Double = 0.5
@@ -207,9 +224,20 @@ public final class SurfaceProvider {
 		}
 		previousSampleBounds = rectangles
 
-		let swapping = offScreen || slideSamples >= 2
-		let startsAfresh = nextBodySampleIsBaseline || swapping || swapping != isDesktopSwapping
-		isDesktopSwapping = swapping
+		// The swap is latched while it lasts and only released once the desktop has been
+		// quiet for a few samples, so the gaps in the two signals cannot be mistaken for
+		// its end. See ``swapSettleSamples``.
+		if offScreen || slideSamples >= 2 {
+			settledSamples = 0
+			isDesktopSwapping = true
+		} else {
+			settledSamples += 1
+			if settledSamples >= Self.swapSettleSamples { isDesktopSwapping = false }
+		}
+
+		let swapping = isDesktopSwapping
+		let startsAfresh = nextBodySampleIsBaseline || swapping || swapping != wasDesktopSwapping
+		wasDesktopSwapping = swapping
 		previousWindowBodies = startsAfresh ? bodies : windowBodies
 		nextBodySampleIsBaseline = false
 		windowBodies = bodies
