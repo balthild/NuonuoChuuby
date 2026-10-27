@@ -155,6 +155,50 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate {
 		"hidden": NSNull(),
 	]
 
+	/// What the corner dots must never animate: they never move.
+	static let shapeCornerActions: [String: CAAction] = [
+		"bounds": NSNull(),
+		"position": NSNull(),
+		"backgroundColor": NSNull(),
+		"hidden": NSNull(),
+	]
+
+	/// One 8-bit step of alpha: enough to be part of the window's shape, far too little to
+	/// be seen.
+	static let shapeCornerAlpha: CGFloat = 1.0 / 255.0
+
+	/// How far each dot sits from the edge of the display.
+	///
+	/// A pointer reaches a screen edge easily — it stops there — so an anchor on the edge
+	/// would be the one place these dots could take a click by accident. One point in from
+	/// it is somewhere a hand practically never lands.
+	///
+	/// The cost is that the shape — their bounding box — loses this much on all four sides,
+	/// so during a transition the outermost point of the display is cut. Her feet land
+	/// exactly on the display's bottom edge, so one point of them goes; it has not been
+	/// visible.
+	static let shapeCornerInset: CGFloat = 1
+
+	/// Where the anchors go: their **bounding box** is what holds the window's shape, so each
+	/// has to sit at one of its extremes.
+	///
+	/// Two at the bottom, and one at the top centre. Deliberately **not** the top corners:
+	/// both of those are live controls — the Apple menu on the left, Notification Centre on
+	/// the right — and the menu bar's middle holds nothing, being the notch on a laptop.
+	static func shapeCorners(in size: CGSize) -> [(origin: CGPoint, size: CGSize)] {
+		let side: CGFloat = 2
+		let inset = shapeCornerInset
+		guard size.width > side + inset * 2, size.height > side + inset * 2 else { return [] }
+		let square = CGSize(width: side, height: side)
+		return [
+			// Bottom left and bottom right, clear of the corners.
+			(CGPoint(x: inset, y: size.height - inset - side), square),
+			(CGPoint(x: size.width - inset - side, y: size.height - inset - side), square),
+			// Top centre: the one stretch of the menu bar with nothing in it.
+			(CGPoint(x: (size.width - side) / 2, y: inset), square),
+		]
+	}
+
 	/// What the bubble's layer must never animate.
 	///
 	/// `position` is absent here too, and for the opposite reason to the pet's: the
@@ -260,6 +304,31 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate {
 			// The view is flipped, so the pet's sublayer must share its top-left
 			// origin for the two coordinate systems to agree.
 			root.layer?.isGeometryFlipped = true
+
+			// Three invisible dots near the edges of the window, which hold its **shape** at
+			// full size without taking any clicks where a hand goes.
+			//
+			// A Space transition freezes the window's shape — the region its opaque pixels
+			// cover — at the moment it begins, and goes on updating the contents. Whatever
+			// moves out of that frozen region is cut off, which is why she was seen sliced
+			// across: she fell, and everything below where she had been was dropped.
+			//
+			// The region is the **bounding box** of the opaque pixels, not the pixels: measured
+			// with a probe, four 2×2 pt dots at alpha 1/255 in the corners of a window stopped
+			// the clipping exactly as a full-display cover did. And unlike the cover, it does
+			// not cost the click-through — a click is still routed per pixel, so the display
+			// outside these dots belongs to whatever is behind her. That combination is what
+			// makes this possible at all: a cover layer fixes the clipping and takes the whole
+			// screen's clicks, because the shape is the same thing that decides both.
+			for corner in Self.shapeCorners(in: frame.size) {
+				let dot = CALayer()
+				dot.anchorPoint = .zero
+				dot.bounds = CGRect(origin: .zero, size: corner.size)
+				dot.position = corner.origin
+				dot.backgroundColor = CGColor(red: 0, green: 0, blue: 0, alpha: Self.shapeCornerAlpha)
+				dot.actions = Self.shapeCornerActions
+				root.layer?.addSublayer(dot)
+			}
 
 			let pet = CALayer()
 			// Pivot at the pet's bottom centre, so the lean rotates on the ground
