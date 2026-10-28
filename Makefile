@@ -163,28 +163,20 @@ signing-cert: ## Create the self-signed certificate the app is signed with.
 	Tools/create-signing-cert.sh "$(BUILD_DIR)/signing"
 
 package: sign ## Produce a distributable disk image in .build/dist.
-	@rm -rf "$(DIST_DIR)"
-	@mkdir -p "$(DIST_DIR)/dmg"
+	@mkdir -p "$(DIST_DIR)"
 
 	swift Tools/dmg-background.swift "$(DIST_DIR)/dmg-background.png"
-	ditto "$(BUNDLE)" "$(DIST_DIR)/dmg/$(BUNDLE_FILENAME).app"
 
 	@printf '%s\n' "Creating $(PACKAGE)..."
-	@nix run nixpkgs#create-dmg -- \
+	@nix run 'github:balthild/mkdmg#mkdmg-bin' -- \
 		--volname '$(BUNDLE_FILENAME)' \
 		--background '$(DIST_DIR)/dmg-background.png' \
-		--window-pos 200 120 \
-		--window-size 600 400 \
-		--icon-size 128 \
-		--icon '$(BUNDLE_FILENAME).app' 150 190 \
-		--app-drop-link 450 190 \
-		--hide-extension '$(BUNDLE_FILENAME).app' \
-		--filesystem HFS+ \
-		--format UDZO \
-		--hdiutil-quiet \
-		--no-internet-enable \
-		'$(PACKAGE)' \
-		'$(DIST_DIR)/dmg'
+		--window-size 600,400 \
+		--window-position 400,400 \
+		--icon '$(BUNDLE_FILENAME).app':150,190 \
+		--app-drop-link 450,190 \
+		--output '$(PACKAGE)' \
+		'$(BUNDLE)'
 	@printf '%s\n' "Created $(PACKAGE)"
 
 rerun: APP_ARGS ?=
