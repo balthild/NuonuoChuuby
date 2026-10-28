@@ -33,8 +33,36 @@
 
 ### 打包体积
 
-`make release` 打包**不带** seed（约 1.3 MB zip）；应用首次启动下载 390 个固定文件。
+`make release` 打包**不带** seed（约 1.3 MB dmg）；应用首次启动下载 390 个固定文件。
 带 seed 时是 39 MB。
+
+### 分发用磁盘映像（dmg）
+
+布局是常见的左右两栏：app 在左（x=150）、`Applications` 链接在右（x=450），
+中间一个箭头画在窗口背景图上。`make package` 调 **nixpkgs 的 `create-dmg`**（1.2.1）生成。
+
+- **不自写脚本。** 排布只能由 Finder 写（图标位置、图标大小、背景图都住在 `.DS_Store` 里，
+  没有命令行工具能生成它），所以任何实现都是「建读写镜像 → 挂载 → AppleScript 摆窗口 →
+  卸载 → `hdiutil convert`」。`create-dmg` 做的正是这一串，还多做了 `chmod go-w`、
+  删 `.fseventsd`、失败时非零退出，而项目已经在 `make` 里用 nix 取 `svu` / `gettext`。
+  曾自写过一个 100 行脚本，功能完全重合，已删除。
+- **选项必须写在两个位置参数之前。** 它的解析是 `while [[ $1 == -* ]]`，
+  遇到第一个非选项就停 —— 放在后面的 `--volname` 会被**静默当成位置参数忽略**，
+  卷名退化成输出文件名（实测：`test.dmg` → 卷名 `test`）。所以 Makefile 里所有 flag 在前。
+- **它不能覆盖已存在的镜像**（`hdiutil convert` 报「文件已经存在」），失败时还会把
+  29 MB 的半成品 `rw.<pid>.<name>.dmg` 留在 `dist/`。`package` 因此先删两者。
+- **排布需要终端的 Finder 自动化授权**（首次会弹一次）。被拒绝时它退出 64，
+  不会产出一个图标堆在左上角的镜像。打包时 Finder 窗口一闪而过是正常的。
+- **背景图是画出来的，不是提交进仓库的图片。** `Tools/dmg-background.swift` 按 Makefile
+  里同一套坐标画 600×400 pt 的箭头，写成 2× 位图并标 144 dpi ——
+  Finder 按点铺图，1× 图在 Retina 上会糊。改用 CoreGraphics 而非 AppKit 绘图：命令行工具
+  没有屏幕，AppKit 会自行猜比例（实测 `NSGraphicsContext(bitmapImageRep:)` 直接返回 nil）。
+- **dmg 自己不做签名。** 没有公证时签名改变不了 Gatekeeper 对里面 app 的判断
+  （见 [signing.md](signing.md)）。但**里面的 app 必须已签名**：`sign` 失败时
+  `package` 会中止，`codesign --verify` 对半成品包报
+  「code has no resources but signature indicates they must be present」。
+- 换产物格式的连带项在**仓库外**：`balthild/homebrew-tap` 的 `Casks/nuonuo-chuuby.rb`
+  里 `url` 必须以 `.dmg` 结尾，否则 cask 找不到下载物。
 
 ## Makefile：`run`/`rerun` 曾打包过期二进制
 
@@ -65,8 +93,8 @@
 
 ## 常用目标
 
-`make help` · `manifest` · `icon` · `build` · `test` · `app` · `sign` · `package` ·
-`run`/`rerun` · `reset-data` · `clean` · `release`（clean → 资源 → test → package）。
+`make help` · `manifest` · `icon` · `build` · `test` · `app` · `sign` · `dmg-background` ·
+`package` · `rerun` · `reset-data` · `clean` · `release`（clean → 资源 → test → package）。
 
 - `make run` / `open` 只用 LaunchServices：TCC 提示需要它。
 - `reset-data` 会删除 `~/Library/Application Support/NuonuoChuuby`。

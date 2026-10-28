@@ -55,7 +55,7 @@ op)
 	if [ -z "$item" ]; then
 		printf '%s\n' "sign-app.sh: OP_ITEM_REF is not set." \
 			"  Locally, export the 1Password item that holds the certificate:" \
-			"    set -Ux OP_ITEM_REF 'NuonuoChuuby Signing'" >&2
+			"    set -Ux OP_ITEM_REF 'NuonuoChuuby-Signing'" >&2
 		exit 1
 	fi
 	p12_base64=$(op item get "$item" --fields label=p12 --reveal)

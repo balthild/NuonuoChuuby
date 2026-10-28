@@ -68,9 +68,3 @@
   `isVisible(atCoordinate:inset: 10)`（更严），perch 用 `isVisible(at:)`（inset 0，更松）；
   同一张图上不可能严过而松不过，所以两者之间图被重建过。不是那次改动引入的。
   已加 `PerchCovered` 诊断，至今未触发。详见 [physics.md](physics.md) 文末。
-
-## 8. 发布
-
-- **发布版尚未单独生成签名证书**，开发期复用 CalendarShouter 的
-  （`OP_ITEM_REF="CalendarShouter Signing"`）。换证书会让 macOS 忘记已授予的自动化与
-  文件夹授权，所以只换一次。见 [signing.md](signing.md)。

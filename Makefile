@@ -38,7 +38,7 @@ FLAGS ?=
 # self-signed certificate, and --timestamp wants Apple's TSA.
 SIGN_IDENTITY ?= auto
 SIGNING_SOURCE ?= op
-OP_ITEM_REF ?= CalendarShouter Signing
+OP_ITEM_REF ?= NuonuoChuuby-Signing
 SIGN_OPTIONS ?=
 
 SVU_PKG := 'nixpkgs\#svu'
@@ -52,6 +52,7 @@ APP_DIR := $(BUILD_DIR)/app
 BIN_DIR = $(BUILD_DIR)/$(CONFIG)
 
 BUNDLE = $(APP_DIR)/$(BUNDLE_FILENAME).app
+PACKAGE = $(DIST_DIR)/$(APP_NAME)-v$(SEMVER).dmg
 
 # The manifest (pinned commit + file list) is generated into a git-ignored Swift
 # source and compiled in; the artwork is assembled into the .app by hand at
@@ -161,10 +162,30 @@ sign: app ## Codesign the app bundle (see SIGN_IDENTITY).
 signing-cert: ## Create the self-signed certificate the app is signed with.
 	Tools/create-signing-cert.sh "$(BUILD_DIR)/signing"
 
-package: sign ## Produce a distributable zip in .build/dist.
-	@mkdir -p "$(DIST_DIR)"
-	ditto -c -k --keepParent "$(BUNDLE)" "$(DIST_DIR)/$(APP_NAME)-v$(SEMVER).zip"
-	@printf '%s\n' "Created $(DIST_DIR)/$(APP_NAME)-v$(SEMVER).zip"
+package: sign ## Produce a distributable disk image in .build/dist.
+	@rm -rf "$(DIST_DIR)"
+	@mkdir -p "$(DIST_DIR)/dmg"
+
+	swift Tools/dmg-background.swift "$(DIST_DIR)/dmg-background.png"
+	ditto "$(BUNDLE)" "$(DIST_DIR)/dmg/$(BUNDLE_FILENAME).app"
+
+	@printf '%s\n' "Creating $(PACKAGE)..."
+	@nix run nixpkgs#create-dmg -- \
+		--volname '$(BUNDLE_FILENAME)' \
+		--background '$(DIST_DIR)/dmg-background.png' \
+		--window-pos 200 120 \
+		--window-size 600 400 \
+		--icon-size 128 \
+		--icon '$(BUNDLE_FILENAME).app' 150 190 \
+		--app-drop-link 450 190 \
+		--hide-extension '$(BUNDLE_FILENAME).app' \
+		--filesystem HFS+ \
+		--format UDZO \
+		--hdiutil-quiet \
+		--no-internet-enable \
+		'$(PACKAGE)' \
+		'$(DIST_DIR)/dmg'
+	@printf '%s\n' "Created $(PACKAGE)"
 
 rerun: APP_ARGS ?=
 rerun: DEV_ASSETS := 1

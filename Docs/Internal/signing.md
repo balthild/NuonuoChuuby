@@ -8,8 +8,9 @@
 
 ## 结论
 
-用**自签名证书**签名（`Tools/create-signing-cert.sh` 生成，私钥存在 1Password），
-`make` 的默认身份是 `SIGN_IDENTITY=auto`。既不用 ad-hoc，也不用 Developer ID。
+用**自签名证书**签名（`Tools/create-signing-cert.sh` 生成，私钥存在 1Password 的
+`NuonuoChuuby-Signing` 条目），`make` 的默认身份是 `SIGN_IDENTITY=auto`。
+既不用 ad-hoc，也不用 Developer ID。
 
 ## 为什么不用 ad-hoc
 
@@ -43,8 +44,6 @@ codesign 给自签名产物生成的 designated requirement 是
 由此得到两条纪律：
 
 1. **不要随便替换证书。** 换一次就等于让所有已授予的授权失效一次。
-   （目前默认 `OP_ITEM_REF` 指向另一个项目的证书 `CalendarShouter Signing`，
-   是为了共用同一个稳定身份；将来为本项目单独建证书时，**只换这一次**。）
 2. **证书有效期签 100 年**：让用户重新授权的是**替换证书**，不是到期。
 
 ## 实现细节：为什么是脚本而不是 Makefile 内联
@@ -81,7 +80,7 @@ codesign 给自签名产物生成的 designated requirement 是
 - **嵌入的 XPC service 不会向 launchd 注册**。
 - 若日后要存 keychain 条目，分区会是 `cdhash:…`，每次重建都会提示；
   只有真 Team ID 能结束这件事（目前不使用 keychain）。
-- 从 zip 解压的副本首次启动需要一次 `xattr -dr com.apple.quarantine`。
+- 从 dmg 拖进 `/Applications` 的副本首次启动需要一次 `xattr -dr com.apple.quarantine`。
 
 ## 启动方式也受它影响
 

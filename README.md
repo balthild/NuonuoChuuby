@@ -92,18 +92,19 @@ make rerun                      # 构建、打包、签名并启动
 
 `.app` 由 Makefile 手工拼装，不使用 Xcode 工程，也不需要 Xcode 工具链。
 
-签名用自维护证书（`Tools/create-signing-cert.sh` 生成，存在 1Password 里），
-**关闭 hardened runtime**：自签名证书没有 team 可以 pin，`--timestamp` 又需要 Apple 的 TSA。
+签名用自维护证书（`Tools/create-signing-cert.sh` 生成，存在 1Password 的
+`NuonuoChuuby-Signing` 条目里），**关闭 hardened runtime**：自签名证书没有 team 可以 pin，
+`--timestamp` 又需要 Apple 的 TSA。
 
 ```sh
-make sign SIGN_IDENTITY=auto SIGNING_SOURCE=op OP_ITEM_REF="CalendarShouter Signing"
+make sign
 ```
 
-开发期先复用 CalendarShouter 的证书；之后可为本项目单独生成一个
-（`make signing-cert`，然后把 `OP_ITEM_REF` 指向新条目）。**换证书会让 macOS 忘记已授予的
-自动化与文件夹授权**，所以换一次就好。
+条目名已经是 `OP_ITEM_REF` 的默认值，不需要额外传参。**换证书会让 macOS 忘记已授予的
+自动化与文件夹授权**，所以不要轻易更换；确实要换时用 `make signing-cert` 重新生成。
 
-`make package` 产出 `.build/dist/NuonuoChuuby-<版本>.zip`。
+`make package` 产出 `.build/dist/NuonuoChuuby-<版本>.dmg`：左边是应用，右边是 `Applications` 链接，
+中间一个箭头。
 
 要分发给别人，接收方需要解除隔离（Homebrew Tap 中的 Cask 安装脚本会自动完成这一步）：
 
@@ -125,7 +126,7 @@ xattr -dr com.apple.quarantine /Applications/NuonuoChuuby.app
 | `make app` | 拼装 `.app` |
 | `make sign` | 签名（见上） |
 | `make rerun` | 构建、签名并启动（可带参数）。产物是 `NuonuoChuuby-Dev.app`，bundle id 是 `com.balthild.NuonuoChuuby-Dev`，与正式安装的那份互不干扰 |
-| `make package` | 产出分发包 |
+| `make package` | 产出分发包（磁盘映像） |
 | `make reset-data` | 清空设置与存档 |
 | `make clean` | 清理构建产物与生成的素材清单 |
 

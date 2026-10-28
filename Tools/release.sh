@@ -30,10 +30,10 @@ make clean
 make test CONFIG=release
 make package CONFIG=release SEMVER="$semver"
 
-asset=".build/dist/NuonuoChuuby-$version.zip"
+asset=".build/dist/NuonuoChuuby-$version.dmg"
 test -f "$asset" || { echo "missing artifact: $asset" >&2; exit 1; }
 
-# Only this side has the assembled zip to hash; the tap stamps the value into
+# Only this side has the assembled image to hash; the tap stamps the value into
 # the cask from the workflow dispatched below.
 sha256="$(shasum -a 256 "$asset" | awk '{print $1}')"
 

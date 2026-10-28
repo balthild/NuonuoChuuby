@@ -141,3 +141,19 @@ Ledgeling 的 macOS 层同样只用 `CGWindowListCopyWindowInfo`。
 移植时 Trash 被降级成「佐证」。但它也不能纠正误吃，且 `cameFromTrash` 只赋值、无读取方。
 **`rm` 等直接解链的删除根本不进回收站**，所以「Trash 里没有」什么都证明不了。
 现已删除，沉降窗从 2.5 s 改成 0.5 s。详见 `meal-and-icons.md`。
+
+## 自写 dmg 排布脚本（否决，已删除）
+
+先写过 `Tools/create-dmg.sh`：暂存目录 → `hdiutil create` 读写镜像 → 挂载 → AppleScript
+让 Finder 摆窗口 → `hdiutil convert` UDZO。它没有做任何 `create-dmg` 1.2.1 不做的事，
+而后者还多做了 `chmod -Rf go-w`、删 `.fseventsd`、Finder 自动化被拒时**退出 64**。
+
+当初的两条理由都不成立：
+
+1. 「不引入依赖」——Makefile 早已用 nix 取 `svu` 和 `gettext`；
+2. 「控制每一步」——步骤完全相同，只是换成了别人维护。
+
+自写版唯一领先的地方，是它处理了「重复打包」和「失败后残留」，
+而这两点在 Makefile 里各一行就够（`rm -f "$(DMG)" "$(DIST_DIR)"/rw.*.dmg`）。
+**结论：能用现成工具就别自己写；只在工具确实缺能力时才自写**（`sign-app.sh` 是例子，
+codesign 与临时 keychain 的那些步骤没有现成工具能替）。
