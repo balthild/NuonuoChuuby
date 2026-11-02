@@ -620,10 +620,20 @@ struct WindowEnclosureIntegrationTests {
 	}
 
 	/// Moves the scripted box and steps one frame, as dragging it would.
-	private func dragBox(_ rig: Rig, byY delta: Double, frames: Int) {
+	private func dragBox(
+		_ rig: Rig,
+		byX deltaX: Double = 0,
+		byY deltaY: Double = 0,
+		frames: Int
+	) {
 		var box = Self.box
 		for _ in 0..<frames {
-			box = PixelRect(x: box.x, y: box.y + delta, width: box.width, height: box.height)
+			box = PixelRect(
+				x: box.x + deltaX,
+				y: box.y + deltaY,
+				width: box.width,
+				height: box.height
+			)
 			rig.controller.debugLiveWindowBoundsOverride = { _ in box }
 			_ = rig.controller.debugUpdateEnclosure(delta: Self.frame)
 		}
@@ -795,6 +805,39 @@ struct WindowEnclosureIntegrationTests {
 			#expect(state.state == .idle, "thrown off the floor at tick \(tick) after the drag stopped")
 			#expect(state.velocityY <= 0, "kicked upward at tick \(tick)")
 		}
+	}
+
+	// MARK: - Dragging the box sideways
+
+	@Test("A side wall knocking her in the box does not leave her falling for ever")
+	func sideKnockInsideTheBoxEnds() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		drop(rig, at: PixelPoint(x: 900, y: 900))
+		settle(rig)
+		#expect(rig.controller.state == .idle, "she should be resting before the drag")
+
+		// 20 pt a frame is 1200 pt/s, past the 15 pt that counts as a flick, so the
+		// wall that catches up with her knocks her instead of carrying her. Her foot
+		// is at x = 900 in a box spanning 600…1200, so the trailing wall has some
+		// 230 pt of her body to cover before it reaches her.
+		dragBox(rig, byX: -20, frames: 20)
+		#expect(
+			rig.controller.debugState.velocityX < -400,
+			"the wall never threw her: \(rig.controller.debugState.velocityX)"
+		)
+
+		// The drag is over, so the walls stop. She slides on towards the far wall,
+		// which only carries her — and the floor holds her throughout, so the knock's
+		// fall ends with the drag. Left running, she keeps the fall animation for as
+		// long as she is in the box.
+		advance(rig, seconds: 5)
+		#expect(
+			rig.controller.debugState.state == .idle,
+			"still \(rig.controller.debugState.state) after the drag stopped"
+		)
+		#expect(rig.controller.debugState.enclosureWindowID == Self.windowID)
 	}
 
 	// MARK: - Side impact

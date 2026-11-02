@@ -92,6 +92,25 @@
 行为现在是：释放 → 下落 → 下降的**天花板**接住她（不能穿过）→ 以盒子速度被携带 →
 拖动停止时落到新地板。天花板接住在一个只有约 2 倍她身高的盒子里不可避免。
 
+### 盒内被侧墙撞飞后，下坠动画不结束（已修）
+
+用户报：**在盒子里**被窗口侧边横向撞一下，她开始横移并播下坠动画；
+**拖动停止后那下坠动画一直留着**。
+
+- **原因**：横向**猛拽**（≥15 pt/帧 = 900 pt/s）的墙撞到她时 `resolve` 报 `impactSpeed`，
+  controller 的撞击分支把 `state` 置为 `.falling`（这条分支有意不看 `isResting`）——
+  而**同一帧地板仍撑着她**（`wasOnFloor && !verticalYank` ⇒ `isResting = true`，
+  下坠动画是「被撞」的表演，不是她真离开了地板）。
+  回到 `idle` 的唯一出口是 `step.isResting && !wasResting`，此时 `wasResting` 为真，
+  其余分支也都不成立 ⇒ 状态永远停在 `.falling`：下坠片段一直播，
+  并且一直按「下落」路径以 `fallRefreshInterval` 高频重建地形图。
+- **修法（controller）**：settle 分支的条件加上 `|| state == .falling` ——
+  「地板撑着她，她就不在下落」。**不动物理输入**是有意的：上游 C# 靠撞击分支里的
+  `_enclosureResting = false` 让下一帧地板重新判她为 resting，但那句在本端口里是
+  **粘性地板物理的输入**，照抄会让她在「同时纵向拖动」时凭空腾空一帧并弹一下。
+- **回归测试**：`WindowEnclosureIntegrationTests.sideKnockInsideTheBoxEnds` ——
+  20 pt/帧横拖 20 帧（撞出 `velocityX < -400`），再静止 5 s，断言 `state == .idle`。
+
 ### 窗口最大化：没有专门的顶飞规则（有意不移植）
 
 上游有一条专用反弹：支撑消失**且** `IsZoomed(支撑窗口)` 时，

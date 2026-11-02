@@ -954,7 +954,11 @@ public final class PetController: SpriteAnimatorDelegate {
 				]
 			)
 			announce(.platformLaunch, voice: .scream, priority: .important)
-		} else if step.isResting, !wasResting {
+		} else if step.isResting, !wasResting || state == .falling {
+			// Resting is what ends a fall, including one that never left the floor: a
+			// side wall can knock her while the floor goes on holding her, and then
+			// `wasResting` is already true, so a transition-only test never fires and
+			// the knock's fall animation stays on for as long as she is in the box.
 			state = .idle
 			stateElapsed = 0
 			animator.play("idle")
