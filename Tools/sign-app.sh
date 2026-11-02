@@ -37,7 +37,8 @@ sign_tree() {
 		[ "$nested" = "$main" ] && continue
 		case "$(file -b "$nested")" in
 		Mach-O*) # shellcheck disable=SC2086
-			codesign --force $options --sign "$signer" "$nested" ;;
+			codesign --force $options --sign "$signer" "$nested"
+			;;
 		esac
 	done
 	# shellcheck disable=SC2086
@@ -92,7 +93,7 @@ security import "$work/identity.p12" -k "$keychain" -P "$p12_password" \
 	-T /usr/bin/codesign -T /usr/bin/security
 # Without this, codesign is not allowed to use the key it just imported.
 security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
-	-k "$keychain_password" "$keychain" >/dev/null
+	-k "$keychain_password" "$keychain" > /dev/null
 rm -f "$work/identity.p12"
 
 security list-keychains -d user -s "$keychain" $search_list

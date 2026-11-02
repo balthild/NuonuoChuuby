@@ -4,11 +4,11 @@ set -eu
 kind="${1:-}"
 
 case "$kind" in
-	major | minor | patch) ;;
-	*)
-		echo "USAGE: $0 <major|minor|patch>" >&2
-		exit 1
-		;;
+major | minor | patch) ;;
+*)
+	echo "USAGE: $0 <major|minor|patch>" >&2
+	exit 1
+	;;
 esac
 
 if [ -n "$(git status --porcelain)" ]; then
@@ -21,7 +21,7 @@ version="v$semver"
 
 echo "Releasing $version"
 
-if gh release view "$version" >/dev/null 2>&1; then
+if gh release view "$version" > /dev/null 2>&1; then
 	echo "release $version already exists" >&2
 	exit 1
 fi
@@ -31,7 +31,10 @@ make test CONFIG=release
 make package CONFIG=release SEMVER="$semver"
 
 asset=".build/dist/NuonuoChuuby-$version.dmg"
-test -f "$asset" || { echo "missing artifact: $asset" >&2; exit 1; }
+if [ ! -f "$asset" ]; then
+	echo "missing artifact: $asset" >&2
+	exit 1
+fi
 
 # Only this side has the assembled image to hash; the tap stamps the value into
 # the cask from the workflow dispatched below.

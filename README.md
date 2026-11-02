@@ -23,8 +23,8 @@ brew upgrade --cask nuonuo-chuuby
 ## 开发
 
 ```sh
-git submodule update --init     # 取上游素材仓库
-make rerun                      # 构建、打包、签名并启动
+git submodule update --init # 取上游素材仓库
+make rerun                  # 构建、打包、签名并启动
 ```
 
 `make help` 列出全部目标。
@@ -50,9 +50,7 @@ make rerun                      # 构建、打包、签名并启动
 
 - 仓库里**不包含任何素材字节**：清单（路径 + 固定 commit）在构建时从 submodule 生成并编译进二进制，仓库只提交 submodule 指针；
 - 开发期由 `make app` 从 submodule 直接硬链（hard link）进 `.app`，不复制；
-- 发布版**首次启动时**按清单从上游（jsdelivr）下载到
-  `~/Library/Application Support/NuonuoChuuby/assets/<commit>/`。
-  清单固定了 commit，所以换了 pin 才会重新下载。
+- 发布版**首次启动时**按清单从上游（jsdelivr）下载到 `~/Library/Application Support/NuonuoChuuby/assets/<commit>/`。清单固定了 commit，所以换了 pin 才会重新下载。
 
 这样做感染性与原 Windows 版相同，但不会通过本仓库再分发素材。
 
@@ -77,8 +75,7 @@ make rerun                      # 构建、打包、签名并启动
 
 首次使用删除文件进食时，macOS 会弹出**桌面/下载目录访问权限**请求 —— 这是系统 TCC 授权，不是证书问题。
 
-应用还会请求**辅助功能**权限，用于读取桌面图标的真实位置（见上表）。这是**软依赖**：
-拒绝或不授权时会自动降级为布局近似，其余功能不受影响。
+应用还会请求**辅助功能**权限，用于读取桌面图标的真实位置（见上表）。这是**软依赖**：拒绝或不授权时会自动降级为布局近似，其余功能不受影响。
 
 上表中各项的判定细节、阈值与实测理由：
 
@@ -92,19 +89,15 @@ make rerun                      # 构建、打包、签名并启动
 
 `.app` 由 Makefile 手工拼装，不使用 Xcode 工程，也不需要 Xcode 工具链。
 
-签名用自维护证书（`Tools/create-signing-cert.sh` 生成，存在 1Password 的
-`NuonuoChuuby-Signing` 条目里），**关闭 hardened runtime**：自签名证书没有 team 可以 pin，
-`--timestamp` 又需要 Apple 的 TSA。
+签名用自维护证书（`Tools/create-signing-cert.sh` 生成，存在 1Password 的 `NuonuoChuuby-Signing` 条目里），**关闭 hardened runtime**：自签名证书没有 team 可以 pin，`--timestamp` 又需要 Apple 的 TSA。
 
 ```sh
 make sign
 ```
 
-条目名已经是 `OP_ITEM_REF` 的默认值，不需要额外传参。**换证书会让 macOS 忘记已授予的
-自动化与文件夹授权**，所以不要轻易更换；确实要换时用 `make signing-cert` 重新生成。
+条目名已经是 `OP_ITEM_REF` 的默认值，不需要额外传参。**换证书会让 macOS 忘记已授予的自动化与文件夹授权**，所以不要轻易更换；确实要换时用 `make signing-cert` 重新生成。
 
-`make package` 产出 `.build/dist/NuonuoChuuby-<版本>.dmg`：左边是应用，右边是 `Applications` 链接，
-中间一个箭头。
+`make package` 产出 `.build/dist/NuonuoChuuby-<版本>.dmg`：左边是应用，右边是 `Applications` 链接，中间一个箭头。
 
 要分发给别人，接收方需要解除隔离（Homebrew Tap 中的 Cask 安装脚本会自动完成这一步）：
 
@@ -114,8 +107,7 @@ xattr -dr com.apple.quarantine /Applications/NuonuoChuuby.app
 
 自签名证书**无法通过 Gatekeeper**（`spctl` 会拒绝，和 ad-hoc 一样），免费方案就是这样。
 
-为什么不用 ad-hoc、也不用 Developer ID，以及证书身份为什么不能随便换：
-见 [Docs/Internal/signing.md](Docs/Internal/signing.md)。
+为什么不用 ad-hoc、也不用 Developer ID，以及证书身份为什么不能随便换：见 [Docs/Internal/signing.md](Docs/Internal/signing.md)。
 
 ## 命令
 

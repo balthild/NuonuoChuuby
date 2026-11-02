@@ -32,7 +32,7 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 36500 \
 	-subj "/CN=$name/O=NuonuoChuuby" \
 	-addext "keyUsage=critical,digitalSignature" \
 	-addext "extendedKeyUsage=critical,codeSigning" \
-	-addext "basicConstraints=critical,CA:false" 2>/dev/null
+	-addext "basicConstraints=critical,CA:false" 2> /dev/null
 
 openssl pkcs12 -export -out "$p12" \
 	-inkey "$work/key.pem" -in "$work/cert.pem" \
