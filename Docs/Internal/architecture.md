@@ -81,8 +81,16 @@ ms。所以「她脚下的窗口」是实时的，「世界上有哪些边」是
 ## 目录
 
 - `Sources/NuonuoChuuby/` —— 可执行文件，只有 `main.swift`（NSApplication 启动）。
-- `Sources/NuonuoChuubyCore/` —— 其余全部，按子系统分： `Platform App Sprite Physics Life Voice
-  Dialogue Cheek World Meal System Asset Settings`。
+- `Sources/NuonuoChuubyCore/` —— 其余全部，按子系统分： `App Asset Cheek Common Dialogue Life
+  Meal Pet Physics Platform Presentation Settings Sprite System Vocabulary Voice World`。
+
+**目录的依赖方向是单向的（无环），这是一条要守住的约束。** 一次 2026-11 的重构专门消除了此前的
+循环依赖，因为 SwiftPM 的模块不允许成环，而下一步就是把 Core 拆成多个 target。层级（只允许向下依
+赖）：`Common`/`Vocabulary`（叶子）→ `Physics`/`Asset` → `Platform`/`Settings`/`Sprite`/`Cheek`/
+`Voice` → `Presentation`/`World`/`Life` → `Meal`/`Dialogue`/`System` → `Pet` → `App`。
+新增类型时先看它依赖什么，再决定目录：例如跨子系统共用的「无行为」类型进 `Vocabulary`，被
+多个渲染方共用的几何进 `Presentation`。已知仍需修正的两条反向边：`Life → Settings`（成因是
+`@Fallback` 属性包装器）与 `System → Physics`（菜单栏 UI 直接用 `PetSizePolicy`）。
 - `Tests/NuonuoChuubyCoreTests/` —— swift-testing。**测试数量以 `make test` 实际输出为准。**
 - `Vendor/JiuNuoDesktopPet` —— 上游 submodule（资源 + C# 参考实现）。
 - `App/Info.plist`、`Makefile`、`Tools/`、`README/NOTICE/LICENSE`。

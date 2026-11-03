@@ -153,7 +153,7 @@ cel 上、**不动 `animator`**，`land` 剪辑继续播（压扁 + 张嘴），
 ## 位置插值：恰好一帧的图层动画
 
 仿真仍是 60 Hz，但 `position` 交给 CA 时带一个**恰好一个 tick** 的线性动画，于是渲染服务器按显示器自
-身的 120 Hz 采样这条曲线，而不是显示 60 Hz 阶梯。 `Pet/FrameInterpolation.swift`。
+身的 120 Hz 采样这条曲线，而不是显示 60 Hz 阶梯。 `Presentation/FrameInterpolation.swift`。
 
 **平滑度就是延迟 —— 它们是同一个参数。** tick 间隔 `T`、时长 `D`，跟随滞后正好是 `v * D`。 `D < T`
 会提前结束然后停顿（比不插值更糟）；`D > T` 让滞后线性增长并被下一个目标截断（0.25 s 就是「她追着鼠
