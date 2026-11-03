@@ -218,6 +218,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 		public var setQuiet: (Bool) -> Void
 		public var setDeleteReaction: (Bool) -> Void
 		public var setBubbles: (Bool) -> Void
+		public var setTrayIcon: (Bool) -> Void
 		public var setLogging: (Bool) -> Void
 		public var setMuted: (Bool) -> Void
 		public var setLaunchAtLogin: (Bool) -> Void
@@ -231,6 +232,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 			setQuiet: @escaping (Bool) -> Void,
 			setDeleteReaction: @escaping (Bool) -> Void,
 			setBubbles: @escaping (Bool) -> Void,
+			setTrayIcon: @escaping (Bool) -> Void,
 			setLogging: @escaping (Bool) -> Void,
 			setMuted: @escaping (Bool) -> Void,
 			setLaunchAtLogin: @escaping (Bool) -> Void,
@@ -243,6 +245,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 			self.setQuiet = setQuiet
 			self.setDeleteReaction = setDeleteReaction
 			self.setBubbles = setBubbles
+			self.setTrayIcon = setTrayIcon
 			self.setLogging = setLogging
 			self.setMuted = setMuted
 			self.setLaunchAtLogin = setLaunchAtLogin
@@ -261,6 +264,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 	private let quietItem = NSMenuItem()
 	private let deleteReactionItem = NSMenuItem()
 	private let bubblesItem = NSMenuItem()
+	private let trayIconItem = NSMenuItem()
 	private let loggingItem = NSMenuItem()
 	private let mutedItem = NSMenuItem()
 	private let launchItem = NSMenuItem()
@@ -377,8 +381,15 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 
 		menu.addItem(.separator())
 
-		// The two switches about the app rather than about her. Logging trades the
-		// ~26 µs a line that writing one costs.
+		// The switches about the app rather than about her. The first decides whether the
+		// menu has a menu-bar icon to be opened from at all — off, a right-click on her
+		// borrows the very same menu, which is what keeps the toggle reachable.
+		trayIconItem.title = "显示托盘图标"
+		trayIconItem.target = self
+		trayIconItem.action = #selector(toggleTrayIcon)
+		menu.addItem(trayIconItem)
+
+		// Logging trades the ~26 µs a line that writing one costs.
 		loggingItem.title = "记录日志"
 		loggingItem.target = self
 		loggingItem.action = #selector(toggleLogging)
@@ -402,11 +413,17 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 		quietItem.state = settings.quietMode ? .on : .off
 		deleteReactionItem.state = settings.reactToDeletes ? .on : .off
 		bubblesItem.state = settings.showSpeechBubbles ? .on : .off
+		trayIconItem.state = settings.showTrayIcon ? .on : .off
 		loggingItem.state = settings.loggingEnabled ? .on : .off
 		// The item reads as "mute", so it is checked when sound is off.
 		mutedItem.state = settings.soundEnabled ? .off : .on
 		if launchAtLoginEnabled == nil { launchAtLoginEnabled = callbacks.isLaunchAtLogin() }
 		launchItem.state = launchAtLoginEnabled == true ? .on : .off
+
+		// Applied here rather than in the toggle's own action so it also takes effect at
+		// startup, where the item is built before the stored settings arrive. The controller
+		// and its menu outlive this: only the icon leaves the menu bar.
+		statusItem.isVisible = settings.showTrayIcon
 
 		if let sliderView = sizeItem.view as? SliderMenuItemView {
 			sliderView.slider.doubleValue = settings.petSize
@@ -448,6 +465,7 @@ public final class StatusItemController: NSObject, NSMenuDelegate {
 		callbacks.setDeleteReaction(!settings.reactToDeletes)
 	}
 	@objc private func toggleBubbles() { callbacks.setBubbles(!settings.showSpeechBubbles) }
+	@objc private func toggleTrayIcon() { callbacks.setTrayIcon(!settings.showTrayIcon) }
 	@objc private func toggleLogging() { callbacks.setLogging(!settings.loggingEnabled) }
 	@objc private func toggleMuted() { callbacks.setMuted(settings.soundEnabled) }
 	@objc private func toggleLaunchAtLogin() {

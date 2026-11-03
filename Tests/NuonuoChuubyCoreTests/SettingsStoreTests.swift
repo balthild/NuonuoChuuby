@@ -34,6 +34,7 @@ struct SettingsStoreTests {
 		settings.soundEnabled = false
 		settings.voiceVolume = 0.31
 		settings.petSize = 286
+		settings.showTrayIcon = false
 		settings.watchedFolders = ["/tmp/one"]
 		store.save(settings)
 
@@ -43,6 +44,7 @@ struct SettingsStoreTests {
 		#expect(!reloaded.soundEnabled)
 		#expect(reloaded.voiceVolume == 0.31)
 		#expect(reloaded.petSize == 286)
+		#expect(!reloaded.showTrayIcon)
 		#expect(reloaded.watchedFolders == ["/tmp/one"])
 	}
 

@@ -442,6 +442,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 				setBubbles: { [weak self] on in
 					self?.update { $0.showSpeechBubbles = on }
 				},
+				setTrayIcon: { [weak self] on in
+					self?.update { $0.showTrayIcon = on }
+				},
 				setLogging: { [weak self] on in
 					guard let self else { return }
 					self.update { $0.loggingEnabled = on }

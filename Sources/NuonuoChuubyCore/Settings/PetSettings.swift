@@ -19,6 +19,9 @@ public struct PetSettings: Sendable, Equatable, Codable {
 	@Fallback<PetSettingsDefault.InfiniteMode> public var infiniteMode: Bool
 	@Fallback<PetSettingsDefault.CoexistenceMode> public var coexistenceMode: Bool
 	@Fallback<PetSettingsDefault.ShowSpeechBubbles> public var showSpeechBubbles: Bool
+	/// Whether the menu-bar icon is shown. Off leaves the pet as the only way into this
+	/// menu — a right-click on her borrows the same one.
+	@Fallback<PetSettingsDefault.ShowTrayIcon> public var showTrayIcon: Bool
 	@Fallback<PetSettingsDefault.QuietMode> public var quietMode: Bool
 	@Fallback<PetSettingsDefault.AllowMischief> public var allowMischief: Bool
 	@Fallback<PetSettingsDefault.VoiceVolume> public var voiceVolume: Double
@@ -62,6 +65,7 @@ public enum PetSettingsDefault {
 	public enum InfiniteMode: FallbackProvider { public static let fallbackValue = false }
 	public enum CoexistenceMode: FallbackProvider { public static let fallbackValue = false }
 	public enum ShowSpeechBubbles: FallbackProvider { public static let fallbackValue = true }
+	public enum ShowTrayIcon: FallbackProvider { public static let fallbackValue = true }
 	public enum QuietMode: FallbackProvider { public static let fallbackValue = false }
 	public enum AllowMischief: FallbackProvider { public static let fallbackValue = true }
 	public enum VoiceVolume: FallbackProvider { public static let fallbackValue = 0.72 }
