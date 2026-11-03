@@ -761,7 +761,7 @@ struct PlatformRideIntegrationTests {
 		var stopped = false
 		for _ in 0..<1200 {
 			rig.controller.debugStep(delta: Self.frame)
-			if rig.controller.debugState.movementPurpose == .none {
+			if rig.controller.debugState.movementPurpose == .unset {
 				stopped = true
 				break
 			}
@@ -790,7 +790,7 @@ struct PlatformRideIntegrationTests {
 		var stopped = false
 		for _ in 0..<1200 {
 			rig.controller.debugStep(delta: Self.frame)
-			if rig.controller.debugState.movementPurpose == .none {
+			if rig.controller.debugState.movementPurpose == .unset {
 				stopped = true
 				break
 			}

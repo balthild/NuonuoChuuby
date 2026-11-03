@@ -7,7 +7,11 @@ public struct DragReleaseMotion: Sendable, Equatable {
 	public var speed: Double
 	public var sampleSeconds: Double
 
-	public static let none = DragReleaseMotion(
+	/// A release with no throw behind it: no flick was measurable.
+	///
+	/// Deliberately not spelled `.none`, which would be ambiguous with `Optional.none`
+	/// wherever a `DragReleaseMotion?` is in play (``PetController.debugReleaseMotionOverride``).
+	public static let atRest = DragReleaseMotion(
 		hasInertia: false,
 		velocityX: 0,
 		velocityY: 0,
@@ -61,10 +65,10 @@ public struct DragMotionTracker: Sendable {
 	) -> DragReleaseMotion {
 		add(point: point, atSeconds: atSeconds)
 		guard samples.count >= 2, let newest = samples.last else {
-			return .none
+			return .atRest
 		}
 		if atSeconds - newest.atSeconds > 0.10 {
-			return .none
+			return .atRest
 		}
 
 		let oldest = samples[0]

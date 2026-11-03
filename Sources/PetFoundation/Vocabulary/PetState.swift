@@ -22,7 +22,7 @@ public enum PetState: String, Sendable, CaseIterable {
 }
 
 public enum MovementPurpose: String, Sendable, CaseIterable {
-	case none
+	case unset
 	case meal
 	case iconLick
 	case wander

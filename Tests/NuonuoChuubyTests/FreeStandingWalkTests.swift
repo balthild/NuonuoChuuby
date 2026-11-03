@@ -130,7 +130,7 @@ struct FreeStandingWalkTests {
 		let afterTheLick = rig.controller.debugState
 		#expect(afterTheLick.state == .falling, "the lick ends in a fall")
 		#expect(afterTheLick.perchKey == nil, "nothing holds her once the walk is over")
-		#expect(afterTheLick.movementPurpose == .none, "the walk's purpose is finished with")
+		#expect(afterTheLick.movementPurpose == .unset, "the walk's purpose is finished with")
 		#expect(abs(afterTheLick.foot.y - Self.spot.y) < 150, "she falls from the icon")
 
 		// Straight down, onto the edge she licked above.
@@ -176,7 +176,7 @@ struct FreeStandingWalkTests {
 		let falling = rig.controller.debugState
 		#expect(falling.state == .falling)
 		#expect(falling.perchKey == nil)
-		#expect(falling.movementPurpose == .none)
+		#expect(falling.movementPurpose == .unset)
 		#expect(abs(falling.foot.y - Self.spot.y) < 150, "she falls from the food, not the floor")
 	}
 

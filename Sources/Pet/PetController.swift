@@ -178,7 +178,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// Whether the lick under way is aimed at a real Finder icon rather than the
 	/// guessed grid, which is what she can taste when it finishes.
 	private var iconLickUsedRealIcons = false
-	private var movementPurpose: MovementPurpose = .none
+	private var movementPurpose: MovementPurpose = .unset
 	private var fallStartFootY: Double = 0
 	private var fallReason = "support-lost"
 	private var cheek = CheekPinchDynamics()
@@ -1104,7 +1104,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		airborneSupportTop = nil
 		enter(
 			.falling,
-			purpose: MovementPurpose.none,
+			purpose: MovementPurpose.unset,
 			velocity: PixelPoint(x: velocityX, y: velocityY)
 		)
 		remainderX = 0
@@ -1152,7 +1152,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	private func surrenderEnclosure(reason: String) {
 		guard let current = enclosure else { return }
 		enclosure = nil
-		movementPurpose = .none
+		movementPurpose = .unset
 		boxGrowthGate.reset()
 		DiagnosticsLog.shared.writeEvent(
 			"WindowEnclosureReleased",
@@ -1260,9 +1260,9 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// - Parameters:
 	///   - velocity: the velocity to enter with; `.zero` to come to rest, `nil` to
 	///     leave whatever she already had.
-	///   - purpose: the purpose to enter with. **Spell `MovementPurpose.none` out in
-	///     full when that is the case you mean**: a bare `.none` in this position is
-	///     `Optional.none` — "leave the purpose alone" — and it compiles silently.
+	///   - purpose: `MovementPurpose.unset` to clear it, `nil` to leave it as it was.
+	///     That case is deliberately not spelled `.none`: in this optional position
+	///     `.none` resolves to `Optional.none` and compiles.
 	///   - transientSeconds: how long a one-shot state (`landing`, `curious`,
 	///     `satisfied`, `rolling`) lasts before it falls back to idle.
 	private func enter(
@@ -1514,7 +1514,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	}
 
 	private func beginHungryPlea() {
-		enter(.rolling, clip: "hungry", purpose: MovementPurpose.none, transientSeconds: 1.6)
+		enter(.rolling, clip: "hungry", purpose: MovementPurpose.unset, transientSeconds: 1.6)
 		announce(.hungryRoll, voice: .sad, priority: .important)
 	}
 
@@ -1522,7 +1522,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		enter(
 			.rolling,
 			clip: "roll",
-			purpose: MovementPurpose.none,
+			purpose: MovementPurpose.unset,
 			transientSeconds: animator.durationSeconds
 		)
 		announce(.hungryRoll, voice: .sad, priority: .important)
@@ -1604,7 +1604,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		enter(
 			.satisfied,
 			clip: stuffed ? "satisfied" : "satisfied_quick",
-			purpose: MovementPurpose.none,
+			purpose: MovementPurpose.unset,
 			transientSeconds: animator.durationSeconds
 		)
 		DiagnosticsLog.shared.writeEvent(
@@ -1632,7 +1632,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	}
 
 	private func returnToIdle() {
-		enter(.idle, clip: "idle", purpose: MovementPurpose.none)
+		enter(.idle, clip: "idle", purpose: MovementPurpose.unset)
 		remainderX = 0
 		wakeForMeal = false
 		resetIdleTimer()
@@ -2301,7 +2301,7 @@ public final class PetController: SpriteAnimatorDelegate {
 			return
 		}
 
-		enter(.curious, clip: "curious", purpose: MovementPurpose.none, transientSeconds: 0.9)
+		enter(.curious, clip: "curious", purpose: MovementPurpose.unset, transientSeconds: 0.9)
 		remainderX = 0
 	}
 
@@ -2812,7 +2812,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		enter(
 			.climbing,
 			clip: hopSeconds > 0 ? "jump" : "climb",
-			purpose: MovementPurpose.none,
+			purpose: MovementPurpose.unset,
 			facing: plan.side == .left ? 1 : -1
 		)
 		remainderX = 0
@@ -2935,7 +2935,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		enter(
 			.waking,
 			clip: "sleep_exit",
-			purpose: MovementPurpose.none,
+			purpose: MovementPurpose.unset,
 			transientSeconds: animator.durationSeconds
 		)
 		if forMeal {
@@ -3029,7 +3029,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		// covers for her would land somewhere she is not.
 		animator.play("idle")
 		pinchOrigin = authoredPoint(viewPoint)
-		enter(.pinching, purpose: MovementPurpose.none)
+		enter(.pinching, purpose: MovementPurpose.unset)
 		remainderX = 0
 		remainderY = 0
 		announce(.pickedUp, voice: .aggrieved, priority: .normal)
@@ -3128,7 +3128,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// Places her on a known surface and anchors her to it.
 	func debugPlaceOnSurface(_ surface: Surface) {
 		state = .idle
-		movementPurpose = .none
+		movementPurpose = .unset
 		foot = PixelPoint(x: surface.span.start + surface.span.length / 2, y: surface.offset)
 		adopt(surface)
 	}
@@ -3316,7 +3316,7 @@ public final class PetController: SpriteAnimatorDelegate {
 				initialVelocityY: release.velocityY,
 				initialVelocityX: release.velocityX,
 				clip: release.hasInertia && release.velocityY < 0 ? "toss" : "fall",
-				purpose: MovementPurpose.none
+				purpose: MovementPurpose.unset
 			)
 		}
 		// A weak release is a drop, not a throw; only a real flick earns the
@@ -3448,7 +3448,7 @@ public final class PetController: SpriteAnimatorDelegate {
 			)
 			// She drops from the icon's height rather than snapping back to the edge
 			// she set off from; `purpose` is cleared so the ride resumes on landing.
-			beginFall(reason: "IconLickFinished", purpose: MovementPurpose.none)
+			beginFall(reason: "IconLickFinished", purpose: MovementPurpose.unset)
 		case "satisfied", "satisfied_quick":
 			advanceAfterMeal()
 		case "land", "curious":
