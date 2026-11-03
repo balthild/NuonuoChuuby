@@ -195,3 +195,19 @@ go-w`、删 `.fseventsd`、Finder 自动化被拒时**退出 64**。
 
 另外：探针脚本别放在 `.build/` 下——`make clean` 会删掉它，脚本静默失败后「探针没生效」看起来和「没
 内联」完全相同。
+
+## 整表窗口枚举私有化（否决，2026-11-03）
+
+把 `MacOSPlatform.windows()` 的 `CGWindowListCopyWindowInfo` 换成 `CGSGetOnScreenWindowList(0, …)`
+加逐窗口 `CGSGetWindowLevel` / `Alpha` / `Owner` / `ConnectionGetPID`，并借此**跳过没人读的 chrome
+窗口**（只有 `layer == 0` 会被当地形 / 遮挡体 / 身体）。
+
+**等价性完全成立**（在屏集合、z 序、level、alpha、bounds、PID 逐字段一致；app 内 500 次比对零差异、
+零回落），**但慢 14%**：每次枚举 830 → 945 µs，总 idle 1.88 → 2.08 pt。
+
+机制与 `CGSGetWindowBounds` 的成功**恰好相反**：那个是拿私有读**替代**一个「为四个数字构建整份描述字
+典」的昂贵批量调用；整表枚举却是拿 N 次服务器往返**换**一次批量，而**至少要为每个在屏窗口读一次
+level** 才能跳过 chrome，单这一项（~19 窗口 × ~29 µs ≈ 550 µs）就接近公有一次枚举的全部成本。
+
+数据、探针与两处 API 陷阱（`targetCID` 必须为 0、`CGSGetWindowAlpha` 实际是 `float *`）见
+`performance.md` 与 `platform-quirks.md`。

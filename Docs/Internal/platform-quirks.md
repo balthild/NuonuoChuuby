@@ -76,6 +76,19 @@
   - 在 macOS 15.7.7 上实测 26 个在屏窗口与 `kCGWindowBounds` **逐字段相同**。
   - **别在紧循环里量它**：循环读数 2.5 µs，app 内 46 µs。见 `performance.md`。
 
+- **私有整表枚举 `CGSGetOnScreenWindowList`**（2026-11-03 实测）——**别用**（性能见
+  `rejected-approaches.md`），但两个坑值得记：
+  - **`targetCID` 必须是 0**（「全部连接」）。传自己的 `CGSMainConnectionID()` 返回 **0 个窗口且不报
+    错**，看上去像「屏幕上没有窗口」。
+  - **`CGSGetWindowAlpha` 实际是 `float *`，不是头文件写的 `CGFloat *`。** 按 CGFloat 读会把 float
+    `1.0`（0x3F800000）塞进 double 的低半字，得到 `5.26e-315` —— 所有窗口同一个怪值。**头文件签名不
+    可信，要拿公有读对账。**
+  - 它返回的在屏集合、**z 序**、level、alpha、bounds、PID 与
+    `CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements])` 逐字段一致（后者是
+    子集：前者还多带 4 个负 layer 的桌面元素，诸如 Dock 的 wallpaper 层）。
+  - **owner name 没有私有读法**：`CGSCopyConnectionProperty` 对 7 个候选 key × 3 个 target 都返回
+    `kCGErrorSuccess` 却从不写出值；`CGSGetWindowProperty` 符号已不存在。
+
 ## 绘图
 
 - **`NSView.isFlipped = true` 只改坐标原点，不镜像内容。** `CGContext.draw(_:in:)` 假定左下原
