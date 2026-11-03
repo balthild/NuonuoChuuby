@@ -3,7 +3,7 @@
 		"!.vscode",
 		".build",
 		"Vendor",
-		"Sources/NuonuoChuubyCore/Asset/AssetManifest.swift",
+		"Sources/PetMedia/Asset/AssetManifest.swift",
 	],
 	"useTabs": true,
 	"indentWidth": 2,

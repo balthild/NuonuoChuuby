@@ -1,5 +1,5 @@
 import AppKit
-import NuonuoChuubyCore
+import PetApp
 
 // The app runs on AppKit's lifecycle so the status item, the pet panel and the
 // auxiliary panels can all be driven directly. SwiftUI, where used, is hosted

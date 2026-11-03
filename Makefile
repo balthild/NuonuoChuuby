@@ -63,7 +63,7 @@ PACKAGE = $(DIST_DIR)/$(APP_NAME)-v$(SEMVER).dmg
 DEV_ASSETS ?=
 
 UPSTREAM_SUBMODULE := Vendor/JiuNuoDesktopPet
-MANIFEST_SWIFT := Sources/NuonuoChuubyCore/Asset/AssetManifest.swift
+MANIFEST_SWIFT := Sources/PetMedia/Asset/AssetManifest.swift
 TEST_ASSETS_DIR := $(BUILD_DIR)/test-assets
 
 # Substituted by `envsubst` with BUNDLE_ID/SEMVER/BUILD_NUMBER when the bundle is

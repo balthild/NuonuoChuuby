@@ -12,17 +12,32 @@ let package = Package(
 		.executable(name: "NuonuoChuuby", targets: ["NuonuoChuuby"])
 	],
 	targets: [
-		.target(name: "NuonuoChuubyCore"),
-		.executableTarget(
-			name: "NuonuoChuuby",
-			dependencies: [
-				.target(name: "NuonuoChuubyCore")
-			]
+		// Pure types and policies, with nothing below them.
+		.target(name: "PetFoundation"),
+		// Reading the desktop, and describing where things can be drawn.
+		.target(name: "PetDesktop", dependencies: ["PetFoundation"]),
+		// Loading and playing the artwork and the voice.
+		.target(name: "PetMedia", dependencies: ["PetFoundation"]),
+		// Her state, her drives, and what she does about them.
+		.target(
+			name: "PetBehaviour",
+			dependencies: ["PetFoundation", "PetDesktop", "PetMedia"]
 		),
+		// The pet herself: her brain, her body and her overlay.
+		.target(
+			name: "Pet",
+			dependencies: ["PetFoundation", "PetDesktop", "PetMedia", "PetBehaviour"]
+		),
+		// The app shell: the menu bar, and everything wired together.
+		.target(
+			name: "PetApp",
+			dependencies: ["PetFoundation", "PetDesktop", "PetMedia", "PetBehaviour", "Pet"]
+		),
+		.executableTarget(name: "NuonuoChuuby", dependencies: ["PetApp"]),
 		.testTarget(
-			name: "NuonuoChuubyCoreTests",
+			name: "NuonuoChuubyTests",
 			dependencies: [
-				.target(name: "NuonuoChuubyCore")
+				"PetFoundation", "PetDesktop", "PetMedia", "PetBehaviour", "Pet", "PetApp",
 			]
 		),
 	]

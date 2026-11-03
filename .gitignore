@@ -9,4 +9,4 @@ DerivedData/
 
 # Generated from the upstream submodule by `make manifest`; the pinned commit and
 # the file list travel in the binary, so the source is never committed.
-/Sources/NuonuoChuubyCore/Asset/AssetManifest.swift
+/Sources/PetMedia/Asset/AssetManifest.swift

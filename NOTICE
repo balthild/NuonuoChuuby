@@ -58,7 +58,7 @@ In deference to that:
 
   * **This repository contains no asset bytes.** The artwork lives in the
     upstream submodule, and `.gitignore` excludes the generated
-    `Sources/NuonuoChuubyCore/Asset/AssetManifest.swift`.
+    `Sources/PetMedia/Asset/AssetManifest.swift`.
   * That manifest is generated from the submodule at build time and compiled
     into the binary. It carries only the *paths* of the files and the pinned
     commit, and is never committed.

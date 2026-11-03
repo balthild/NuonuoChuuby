@@ -34,15 +34,20 @@ make rerun                  # 构建、打包、签名并启动
 | 路径 | 内容 |
 | - | - |
 | `Sources/NuonuoChuuby/` | 可执行目标，只负责 `NSApplication` 引导 |
-| `Sources/NuonuoChuubyCore/` | 全部逻辑与界面 |
-| `Sources/NuonuoChuubyCore/Asset/AssetManifest.swift` | 生成的素材清单（不提交，每次构建重生成） |
+| `Sources/PetFoundation/` | 纯类型与策略，不依赖任何其它模块 |
+| `Sources/PetDesktop/` | 读取桌面（窗口/显示器/地形图）与绘制几何 |
+| `Sources/PetMedia/` | 美术与语音的加载、播放 |
+| `Sources/PetBehaviour/` | 她的状态、需求，以及吃东西/说话这些事 |
+| `Sources/Pet/` | 她本人：大脑、身体（捏脸）与 overlay |
+| `Sources/PetApp/` | 菜单栏与全部接线 |
+| `Sources/PetMedia/Asset/AssetManifest.swift` | 生成的素材清单（不提交，每次构建重生成） |
 | `Tests/` | swift-testing 测试 |
 | `App/Info.plist.template` | 拼装时由 `envsubst` 补上 bundle id 与版本号 |
 | `Tools/` | 素材清单生成/链接、签名、证书脚本 |
 | `Makefile` | 格式化、构建、测试、打包、签名 |
 | `Vendor/JiuNuoDesktopPet/` | 上游素材仓库（submodule） |
 
-代码按子系统分目录：`App` `Sprite` `Physics` `Life` `Voice` `Dialogue` `Cheek` `World` `Meal` `System` `Asset` `Settings`。
+模块**只能依赖更低的模块**（无环）。每个模块内部再按子系统分子目录： `App` `Sprite` `Physics` `Life` `Voice` `Dialogue` `Cheek` `World` `Meal` `System` `Asset` `Settings` `Common` `Vocabulary` `Presentation`。
 
 ## 素材
 

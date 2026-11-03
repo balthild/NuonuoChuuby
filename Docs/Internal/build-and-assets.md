@@ -6,8 +6,8 @@
   https://cdn.jsdelivr.net/gh/<owner/repo>@<commit>` 拼出； `repositorySlug(from:)` 从 `upstream` 解
   析（去掉 `.git`）。**中文路径**（`音效/…`）需要百分号编码 —— 已在真实 CDN 上按固定 commit 验证过
   200。
-- **manifest 是生成的 Swift 源码、编译进二进制**（`Asset/AssetManifest.swift`，git-ignored，由 `make
-  manifest` 生成，`build`/`test` 依赖它）。生成器枚举 **submodule** （经
+- **manifest 是生成的 Swift 源码、编译进二进制**（`Sources/PetMedia/Asset/AssetManifest.swift`，
+  git-ignored，由 `make manifest` 生成，`build`/`test` 依赖它）。生成器枚举 **submodule** （经
   `Tools/asset-files.sh`），**只在内容变化时才重写文件**（`cmp -s`，mtime 稳定 —— 否则整个模块每次构
   建都重编译）。生成后 `chmod 644`（`mktemp` 留下 600）。
 - **没有 seed 目录，没有 `make assets`，没有 `strip-assets`。** `Tools/seed-assets.sh` →
@@ -16,7 +16,8 @@
 ### `.app` 里资源的路径（踩过）
 
 - 布局是 `Contents/Resources/Assets.bundle/Assets`，通过 **`Bundle.main.resourceURL`** 读取
-  （`Asset/BundledAssets.rootURL`）。已验证 390 个文件、与 submodule 同 inode。
+  （`PetMedia/Asset/AssetLocator.swift` 的 `BundledAssets.rootURL`）。已验证 390 个文件、与
+  submodule 同 inode。
 - `DEV_ASSETS ?=` 门控：未设（默认，`app`/`package`）= 不带美术资源（release 首次启动下载）；
   `run`/`rerun` 设 `DEV_ASSETS := 1`（目标专用变量，已验证能传到 `app` 前置目标）。
 - **`Bundle.main.bundleURL` 是 `.app` 的根目录**； **`Bundle.module` 解析到
@@ -81,8 +82,8 @@ $(BUILD_DIR)/$(CONFIG)`（递归展开）。
 
 - dprint 用 `Sources/**/*.swift` 的**白名单**，所以生成的 `AssetManifest.swift` 要显式加进
   `excludes`（它的行超过 100 列；布局由生成器负责）。
-- **markdown 不在 dprint 范围内。** README / docs 的表格重排**不是 dprint 干的**，是外部 markdown 格
-  式化器（编辑器）。`dprint fmt` 不会碰 markdown —— 别再把 markdown 的格式变化归因于 dprint。
+- **markdown 也在范围内。** 配置里有 `markdown` 段与 `@dprint/markdown` 插件，所以 README / NOTICE /
+  docs 的表格与折行都归 `dprint fmt` 管，`dprint check` 也会因未格式化的 markdown 而失败。
 
 ## 常用目标
 

@@ -1,0 +1,193 @@
+import AppKit
+import PetFoundation
+
+/// Watches the folders a deletion can happen in, and reports meals once a
+/// disappearance has settled.
+@MainActor
+public final class FileDeletionWatcher {
+	/// Called with the items that are ready to be eaten.
+	public var onMealsReady: (([DeletedItem]) -> Void)?
+	/// Called with the names of files that have appeared, so their icons can be
+	/// read while they are still on the desktop.
+	public var onFilesAppeared: (([String]) -> Void)?
+
+	private var detectors = DeletionMealDetector()
+	private var watchers: [FolderWatcher] = []
+	private var pump: Timer?
+	private var nextIdentifier = 1
+	/// The desktop's path, so an appearance can be told apart from one in any other
+	/// watched folder: only the desktop's files have icons to look for.
+	private var desktopPath: String?
+
+	/// Where a deleted icon was, and how big it was, resolved by file name. The
+	/// icon's accessibility element still exists for a fraction of a second after
+	/// the deletion, so this is asked right here rather than when she sets off.
+	public struct Anchor: Sendable {
+		public var point: PixelPoint
+		/// True when the point is the icon's real position rather than a guess.
+		public var exact: Bool
+		/// The icon's on-screen size in points, when it is known.
+		public var iconSize: Double?
+
+		public init(point: PixelPoint, exact: Bool, iconSize: Double? = nil) {
+			self.point = point
+			self.exact = exact
+			self.iconSize = iconSize
+		}
+	}
+
+	/// Resolves every name in one call and returns one anchor per name, so a batch
+	/// of deletions costs a single read of the desktop rather than one per file.
+	private let anchorProvider: ([String]) -> [String: Anchor]
+
+	public init(anchorProvider: @escaping ([String]) -> [String: Anchor]) {
+		self.anchorProvider = anchorProvider
+	}
+
+	/// Desktop and Downloads by default; `extraFolders` are added from settings.
+	public func start(extraFolders: [String] = []) {
+		guard watchers.isEmpty else { return }
+
+		let manager = FileManager.default
+		var directories: [URL] = []
+		if let desktop = manager.urls(for: .desktopDirectory, in: .userDomainMask).first {
+			directories.append(desktop)
+			desktopPath = desktop.path
+		}
+		if let downloads = manager.urls(for: .downloadsDirectory, in: .userDomainMask).first {
+			directories.append(downloads)
+		}
+		directories.append(
+			contentsOf: extraFolders.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
+		)
+
+		for directory in directories where manager.fileExists(atPath: directory.path) {
+			let watcher = FolderWatcher(url: directory)
+			watcher.onEvents = { [weak self] outcome in
+				Task { @MainActor in self?.handle(outcome) }
+			}
+			watcher.start()
+			watchers.append(watcher)
+		}
+
+		// A removal settles for a moment before it is accepted, so a burst of raw
+		// events is drained together rather than one at a time.
+		let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+			MainActor.assumeIsolated { self?.drain() }
+		}
+		RunLoop.main.add(timer, forMode: .common)
+		pump = timer
+
+		DiagnosticsLog.shared.writeEvent(
+			"DeletionWatcherStarted",
+			[("Count", "\(watchers.count)")]
+		)
+	}
+
+	public func stop() {
+		pump?.invalidate()
+		pump = nil
+		for watcher in watchers { watcher.stop() }
+		watchers.removeAll()
+	}
+
+	private func handle(_ outcome: FolderEventBatch.Outcome) {
+		// A name change inside the folder is not a meal, but it is logged: from the
+		// outside, "she ignored a rename" and "she never saw the file at all" are
+		// otherwise the same report.
+		if !outcome.renamed.isEmpty {
+			DiagnosticsLog.shared.writeEvent(
+				"DeletionIgnored",
+				[
+					("Reason", "renamed"),
+					("Count", "\(outcome.renamed.count)"),
+				]
+			)
+		}
+
+		let names = outcome.deleted.map { ($0 as NSString).lastPathComponent }
+
+		// Told before the deletions are looked up: a file can appear and disappear in
+		// one batch, and the appearance is what lets its icon be found at all.
+		//
+		// Only the desktop's own files: the index reads Finder's desktop icons, so a
+		// file in any other watched folder has nothing to look for and a wait on it
+		// would be three seconds of reads that cannot succeed.
+		if !outcome.appeared.isEmpty, let desktopPath {
+			let appeared = outcome.appeared
+				.filter { ($0 as NSString).deletingLastPathComponent == desktopPath }
+				.map { ($0 as NSString).lastPathComponent }
+			if !appeared.isEmpty { onFilesAppeared?(appeared) }
+		}
+
+		// A rename-only batch has nothing to look up, and the lookup is a full read
+		// of Finder's tree — so it is not made for one.
+		guard !names.isEmpty else { return }
+
+		let anchors = anchorProvider(names)
+		let now = Date()
+		for (path, name) in zip(outcome.deleted, names) {
+			// The provider answers for every name it is given, so this cannot fire
+			// today. It is logged rather than skipped silently because a dropped
+			// anchor means a deleted file she never goes for, which looks exactly
+			// like a file she never saw.
+			guard let anchor = anchors[name] else {
+				DiagnosticsLog.shared.writeEvent(
+					"DeletionIgnored",
+					[("Reason", "anchor"), ("Count", "1")]
+				)
+				continue
+			}
+			detectors.noteRemoval(
+				DeletionMealDetector.Pending(
+					name: name,
+					path: path,
+					detectedAt: now,
+					anchor: anchor.point,
+					exactAnchor: anchor.exact,
+					iconSize: anchor.iconSize
+				)
+			)
+		}
+	}
+
+	private func drain() {
+		let ready = detectors.collectReady(now: Date())
+		guard !ready.isEmpty else { return }
+
+		// If no real position is known, spread the ghosts out so a burst does not
+		// pile every item on the same spot.
+		var occupied: [PixelPoint] = []
+		let items = ready.map { entry -> DeletedItem in
+			let anchor: PixelPoint
+			if entry.exactAnchor {
+				anchor = entry.anchor
+			} else {
+				anchor = GhostAnchorLayout.chooseDistinct(preferred: entry.anchor, occupied: occupied)
+			}
+			occupied.append(anchor)
+
+			let item = DeletedItem(
+				id: nextIdentifier,
+				originalPath: entry.path,
+				displayName: entry.name,
+				detectedAt: entry.detectedAt,
+				anchor: anchor,
+				exactAnchor: entry.exactAnchor,
+				iconSize: entry.iconSize
+			)
+			nextIdentifier += 1
+			return item
+		}
+
+		DiagnosticsLog.shared.writeEvent(
+			"DeletionDetected",
+			[
+				("Count", "\(items.count)"),
+				// A file name is user content, so it is logged as a reference.
+				("Name", items.map(\.displayName).joined(separator: ",")),
+			]
+		)
+		onMealsReady?(items)
+	}
+}
