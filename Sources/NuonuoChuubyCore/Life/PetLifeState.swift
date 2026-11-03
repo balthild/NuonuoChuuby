@@ -1,19 +1,24 @@
 import Foundation
 
 /// The four long-term needs that drive 糯糯's autonomy. All are 0…100.
+///
+/// Every field carries `@Fallback` for the reason ``PetSettings`` does: `PetLifeStateStore
+/// .load()` answers a decode that throws with a wholly fresh state, so one unreadable key
+/// would otherwise cost the entire save — how many meals she has eaten included. A new
+/// field takes a wrapper and an entry in ``PetLifeStateDefault``, and nothing else changes.
 public struct PetLifeState: Sendable, Equatable, Codable {
 	public static let version = 1
 
-	public var version: Int = PetLifeState.version
-	public var hunger: Double = 36
-	public var fullness: Double = 24
-	public var sleepiness: Double = 20
-	public var curiosity: Double = 48
-	public var totalMeals: Int = 0
-	public var favoriteFoodType: String = ""
+	@Fallback<PetLifeStateDefault.Version> public var version: Int
+	@Fallback<PetLifeStateDefault.Hunger> public var hunger: Double
+	@Fallback<PetLifeStateDefault.Fullness> public var fullness: Double
+	@Fallback<PetLifeStateDefault.Sleepiness> public var sleepiness: Double
+	@Fallback<PetLifeStateDefault.Curiosity> public var curiosity: Double
+	@Fallback<PetLifeStateDefault.TotalMeals> public var totalMeals: Int
+	@Fallback<PetLifeStateDefault.FavoriteFoodType> public var favoriteFoodType: String
 	/// Keys are lowercased so lookups behave case-insensitively.
-	public var foodTypeCounts: [String: Int] = [:]
-	public var lastUpdatedUtc: Date = Date()
+	@Fallback<PetLifeStateDefault.FoodTypeCounts> public var foodTypeCounts: [String: Int]
+	@Fallback<PetLifeStateDefault.LastUpdated> public var lastUpdatedUtc: Date
 
 	public init() {}
 
@@ -80,6 +85,36 @@ public struct PetLifeState: Sendable, Equatable, Codable {
 		}
 		let ext = (path as NSString).pathExtension.lowercased()
 		return ext.isEmpty ? "文件夹" : ext
+	}
+}
+
+/// The value each ``PetLifeState`` field takes when the saved file has no usable one.
+///
+/// They follow the field list above in the same order. The defaults for a fresh pet are the
+/// ones the original shipped; they are repeated in ``PetLifeState/clampNeeds()``, which is
+/// what a *stored* value out of range is pulled back to.
+public enum PetLifeStateDefault {
+	public enum Version: FallbackProvider {
+		public static let fallbackValue = PetLifeState.version
+	}
+
+	public enum Hunger: FallbackProvider { public static let fallbackValue: Double = 36 }
+	public enum Fullness: FallbackProvider { public static let fallbackValue: Double = 24 }
+	public enum Sleepiness: FallbackProvider { public static let fallbackValue: Double = 20 }
+	public enum Curiosity: FallbackProvider { public static let fallbackValue: Double = 48 }
+	public enum TotalMeals: FallbackProvider { public static let fallbackValue = 0 }
+	public enum FavoriteFoodType: FallbackProvider {
+		public static let fallbackValue: String = ""
+	}
+	public enum FoodTypeCounts: FallbackProvider {
+		public static let fallbackValue: [String: Int] = [:]
+	}
+	/// Now, rather than a fixed instant: `load()` reads this as the moment the pet was last
+	/// seen, so a file that does not date itself must be taken as dated at startup. A fixed
+	/// past instant would instead be read as an absence and drain every need by the maximum
+	/// twelve hours.
+	public enum LastUpdated: FallbackProvider {
+		public static var fallbackValue: Date { Date() }
 	}
 }
 

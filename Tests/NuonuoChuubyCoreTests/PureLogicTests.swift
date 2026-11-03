@@ -302,6 +302,71 @@ struct PetLifeStateStoreTests {
 		#expect(reloaded.totalMeals == 1)
 		#expect(reloaded.favoriteFoodType == "png")
 	}
+
+	private func write(_ json: String, into directory: URL, as store: PetLifeStateStore) throws {
+		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+		try Data(json.utf8).write(to: store.statePath)
+	}
+
+	/// A build that adds a field must not cost the save it is reading: without `@Fallback`
+	/// the missing key throws, `load()` falls back to a fresh state, and every meal she has
+	/// eaten is forgotten.
+	@Test("A file written before a field existed keeps the rest of the state")
+	func fileWithoutEveryKey() throws {
+		let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+			.appendingPathComponent("nuonuo-tests-\(UUID().uuidString)")
+		defer { try? FileManager.default.removeItem(at: directory) }
+
+		let store = PetLifeStateStore(stateDirectory: directory)
+		try write(
+			#"{"hunger":80,"totalMeals":7,"foodTypeCounts":{"png":7}}"#,
+			into: directory,
+			as: store
+		)
+
+		let state = store.load()
+		#expect(state.hunger == 80)
+		#expect(state.totalMeals == 7)
+		#expect(state.foodTypeCounts == ["png": 7])
+		// The fields the file did not carry take their defaults.
+		#expect(state.fullness == 24)
+		#expect(state.favoriteFoodType.isEmpty)
+	}
+
+	/// An undated file is read as dated *now*, not as a long absence — otherwise a missing
+	/// timestamp would drain every need by the twelve hours `advance` clamps to.
+	@Test("A file with no timestamp is not read as an absence")
+	func missingTimestampIsNotAnAbsence() throws {
+		let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+			.appendingPathComponent("nuonuo-tests-\(UUID().uuidString)")
+		defer { try? FileManager.default.removeItem(at: directory) }
+
+		let store = PetLifeStateStore(stateDirectory: directory)
+		try write(#"{"hunger":50,"fullness":50}"#, into: directory, as: store)
+
+		let state = store.load()
+		#expect(state.hunger == 50)
+		#expect(state.fullness == 50)
+	}
+
+	@Test("An unreadable value costs only its own field")
+	func unreadableValue() throws {
+		let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+			.appendingPathComponent("nuonuo-tests-\(UUID().uuidString)")
+		defer { try? FileManager.default.removeItem(at: directory) }
+
+		let store = PetLifeStateStore(stateDirectory: directory)
+		try write(
+			#"{"hunger":"lots","totalMeals":7,"foodTypeCounts":"png"}"#,
+			into: directory,
+			as: store
+		)
+
+		let state = store.load()
+		#expect(state.hunger == 36)
+		#expect(state.totalMeals == 7)
+		#expect(state.foodTypeCounts.isEmpty)
+	}
 }
 
 @Suite("Autonomous behaviour planner")

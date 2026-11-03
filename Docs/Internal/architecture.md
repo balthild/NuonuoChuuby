@@ -99,15 +99,27 @@ ms。所以「她脚下的窗口」是实时的，「世界上有哪些边」是
 **新增功能的典型做法**：纯逻辑抽成 struct/enum（可单测），副作用留在 controller/app 层。项目里大量
 `*Policy` 类型就是这种「纯函数策略」。
 
-## 设置存储（一个已知的易踩点）
+## 存档文件的容错（`@Fallback`）
 
-`SettingsStore.load()` 在解码失败时**直接 `return PetSettings()`**，而 Swift 合成的 `Decodable` **不
-使用属性默认值** —— 缺 key 就抛。合起来的结果是： **给 `PetSettings` 增加任何新字段，都会让已有用户
-的全部设置被静默重置。**
+两份持久化文件——设置（`SettingsStore`）与养成状态（`PetLifeStateStore`）——的读法都是「解码抛异常就整
+份丢弃、回落到全新默认值」；而 Swift 合成的 `Decodable` **不使用属性默认值**，缺 key 或类型不符就
+抛。两者合起来，曾经意味着「给 `PetSettings` / `PetLifeState` 加一个字段，就把已有用户的全部设置或全
+部养成记录静默重置」。
 
-- 目前只有一个用户且自用，所以**没有**逐字段 `init(from:)`。
-- 若日后需要保留旧设置，这是必须先修的地方（补自定义 `init(from:)` 或改用 `decodeIfPresent` + 默认
-  值）。
+所以这两个 struct 的**每个字段**都包在 `@Fallback<...Default.X>` 里：缺 key、非可选字段上的 `null`、
+值类型不符，都只影响那一个字段，其余照常读出。
+
+- 实现：`Sources/NuonuoChuubyCore/Settings/Fallback.swift`（与 CalendarShouter 的
+  `Settings/Fallback.swift` 是同一份）。行为由 `SettingsStoreTests.swift` 与
+  `PetLifeStateStoreTests` 钉住。
+- 字段的默认值**不在字段上**，而在 `PetSettingsDefault` / `PetLifeStateDefault` 里的同名 provider ——
+  `FallbackProvider` 协议只带一个 `Value` 类型，没有地方放值，所以每个字段都要有自己的 provider 类
+  型。
+- **新增字段 = 一个 `@Fallback` + 一条 provider。** 不加 `@Fallback` 的字段会把整份文件拖下水（它一
+  缺 key，`load()` 就整体回落到默认值），这是唯一还要记住的规矩。
+- `fallbackValue` 可以是**计算属性**，`PetLifeStateDefault.LastUpdated` 就用了这一手：文件里没有时间
+  戳时按「就是现在」处理，否则会被读成一段漫长缺席，把四项需求一次性抽干。要用「每次新生成一个」作默
+  认值（例如新 identifier）时同理。
 - 相关：`configure(fileURL:maximumBytes:enabled:)` 在启动时直接设初值、不写日志行，所以「日志关闭状
   态下启动」一行都不写（连 `ProcessStarted` 都没有）。为此外层把**设置加载提到 `configure` 之前**。
 
