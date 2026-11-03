@@ -63,6 +63,6 @@
 
 - `make rerun` —— 构建、打包、签名、杀掉旧实例、启动。**手动测试一律用它**，接受 `APP_ARGS=`。
 - `make test` —— 跑测试。**测试数量以它的实际输出为准**，不要把数字写进文档再引用。
-- `make lint` —— dprint 检查。**注意：干净树上它本来就会失败**（`Docs/Internal/rendering.md` 与
-  `rejected-approaches.md` 在 HEAD 就没通过 dprint）。**别对整仓库跑 `dprint fmt`**，那会把无关重排
-  混进你的改动。
+- `make lint` —— dprint 检查，只报告、不改动。
+- **每次提交之前跑完整 `make format`**（= `dprint fmt`）。**仓库里不留未格式化的文件**，比「提交只含
+  本次改动的文件」更重要：格式化带出的无关改动一并提交即可，不必为此拆分或还原。

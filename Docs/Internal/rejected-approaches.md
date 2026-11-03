@@ -178,10 +178,10 @@ go-w`、删 `.fseventsd`、Finder 自动化被拒时**退出 64**。
 
 - 标志确实到达编译器并改变代码生成：release 二进制 1,851,984 → 1,878,480 字节（**+26 KB**）。
 - 但消费方目标文件里**仍保留对被调方的未定义符号引用**：`nm -u
-  .build/release/Pet.build/PetController+Walking.swift.o` 在两种情况下都命中 `SubpixelMotion`。调用还
-  在，就是没内联。
-- 机制：CMO 要从依赖模块里读 SIL，而 `PetFoundation.swiftmodule` 里**没有序列化 SIL**（`sil_stage` 出
-  现 0 次，函数体局部变量名也不在其中）。唯一能提供 SIL 的 `-serialize-sil` 被 SwiftPM 直接拒绝
+  .build/release/Pet.build/PetController+Walking.swift.o` 在两种情况下都命中 `SubpixelMotion`。调用
+  还在，就是没内联。
+- 机制：CMO 要从依赖模块里读 SIL，而 `PetFoundation.swiftmodule` 里**没有序列化 SIL**（`sil_stage`
+  出现 0 次，函数体局部变量名也不在其中）。唯一能提供 SIL 的 `-serialize-sil` 被 SwiftPM 直接拒绝
   （`Build/LLBuildCommands.swift: unknown argument: '-serialize-sil'`）。
 - 增量构建不受影响（改底层文件：开 1.80 s / 关 1.75 s），所以它既没有收益也没有代价——只是没用。
 
@@ -193,8 +193,8 @@ go-w`、删 `.fseventsd`、Finder 自动化被拒时**退出 64**。
 2. **在函数体里放字符串常量再用 `strings` 找。** 字符串常量会被合并到一处，内联也不会把它复制进消费
    方；短于 16 字节的标记还会被 Swift 的小字符串优化内联进代码，`strings` 根本看不到。
 
-另外：探针脚本别放在 `.build/` 下——`make clean` 会删掉它，脚本静默失败后「探针没生效」看起来和「没
-内联」完全相同。
+另外：探针脚本别放在 `.build/` 下——`make clean` 会删掉它，脚本静默失败后「探针没生效」看起来和「没内
+联」完全相同。
 
 ## 整表窗口枚举私有化（否决，2026-11-03）
 
