@@ -82,7 +82,6 @@ struct SuspensionTests {
 		PlatformWindow(
 			id: 7001,
 			ownerPID: 4242,
-			ownerName: "Keynote",
 			bounds: PixelRect(x: 0, y: 0, width: 1728, height: 1117),
 			layer: 0,
 			alpha: 1
@@ -141,7 +140,6 @@ struct SuspensionTests {
 			PlatformWindow(
 				id: 7002,
 				ownerPID: 4242,
-				ownerName: "Finder",
 				bounds: PixelRect(
 					x: right - 600,
 					y: her.top - 100,

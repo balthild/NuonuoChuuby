@@ -9,19 +9,6 @@ public enum WindowTerrainEligibilityPolicy {
 	public static let minimumHeight: Double = 60
 	public static let minimumAlpha: Double = 0.05
 
-	/// Owners that are chrome or system surfaces, never something to stand on.
-	public static let excludedOwners: Set<String> = [
-		"Window Server",
-		"Dock",
-		"Control Center",
-		"Notification Center",
-		"Spotlight",
-		"SystemUIServer",
-		"WindowManager",
-		"loginwindow",
-		"universalaccessd",
-	]
-
 	public static func isEligiblePlatform(
 		_ window: PlatformWindow,
 		ownPID: Int32,
@@ -42,13 +29,14 @@ public enum WindowTerrainEligibilityPolicy {
 	/// ignoring where its edges are.
 	public static func isEligibleAppWindow(_ window: PlatformWindow, ownPID: Int32) -> Bool {
 		// Only ordinary windows: anything raised above or dropped below the
-		// normal level is chrome or an overlay.
+		// normal level is chrome or an overlay. The level is the whole chrome filter
+		// — the Dock (20), the menu bar (24) and the Control Center (25) are all above
+		// 0. Owner names are no help: they are localized, so a list of English names
+		// ("Dock", "Control Center") never matched what the window server reports
+		// ("程序坞", "控制中心").
 		guard window.layer == 0 else { return false }
 		guard window.alpha >= minimumAlpha else { return false }
 		guard window.ownerPID != ownPID else { return false }
-		guard !window.ownerName.isEmpty, !excludedOwners.contains(window.ownerName) else {
-			return false
-		}
 		guard window.bounds.width >= minimumWidth, window.bounds.height >= minimumHeight else {
 			return false
 		}

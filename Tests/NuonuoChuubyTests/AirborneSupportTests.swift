@@ -36,7 +36,6 @@ struct AirborneSupportTests {
 		PlatformWindow(
 			id: id,
 			ownerPID: 4242,
-			ownerName: "Safari",
 			bounds: PixelRect(x: 400, y: top, width: 800, height: 400),
 			layer: 0,
 			alpha: 1

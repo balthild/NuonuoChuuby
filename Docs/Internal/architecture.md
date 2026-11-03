@@ -56,10 +56,11 @@ macOS 重写版 JiuNuoDesktopPet（原版是 C#/WPF 的 Windows 桌宠）。当�
 - 图是**有延迟的**：2 Hz 重建，下落期按时间 + 距离门控（约 5.5 Hz）。所以落地判定不能依赖图的刷新
   率，见 `physics.md`。
 - `visible` 只回答「这条线有没有被盖住」，不是面积判定。
-- **什么样的窗口算「普通窗口」由资格策略决定**：`layer == 0`、alpha ≥ 0.05、不是自己的 PID、owner 不
-  在 chrome 名单里（Window Server / Dock / 控制中心 / 通知中心 / Spotlight / SystemUIServer /
-  WindowManager / loginwindow / universalaccessd）、且不小于 140×60。这条策略与「它的顶边在哪」是两
-  个独立问题，见 `physics.md`。
+- **什么样的窗口算「普通窗口」由资格策略决定**：`layer == 0`、alpha ≥ 0.05、不是自己的 PID、且不小于
+  140×60。`layer == 0` 同时也是全部的系统外壳过滤 —— Dock 在 20、菜单栏在 24、控制中心在 25，都高于
+  0。**曾经还有一张 owner 名字黑名单，已删除**：`kCGWindowOwnerName` 是**本地化**的（中文系统上报
+  「程序坞」「控制中心」），英文名单从来匹配不上，而这些窗口本来就靠 `layer != 0` 被排除了。这条策略
+  与「它的顶边在哪」是两个独立问题，见 `physics.md`。
 
 ### 读取频率是分层的（关键设计）
 

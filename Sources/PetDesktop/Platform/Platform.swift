@@ -9,7 +9,6 @@ public struct PlatformWindow: Sendable, Equatable {
 	/// `CGWindowID`, used as the owner of a surface key.
 	public var id: UInt32
 	public var ownerPID: Int32
-	public var ownerName: String
 	/// Top-left origin, Y down, in points.
 	public var bounds: PixelRect
 	/// `CGWindowLevel`. Ordinary app windows sit at 0.
@@ -21,7 +20,6 @@ public struct PlatformWindow: Sendable, Equatable {
 	public init(
 		id: UInt32,
 		ownerPID: Int32,
-		ownerName: String,
 		bounds: PixelRect,
 		layer: Int,
 		alpha: Double = 1,
@@ -29,7 +27,6 @@ public struct PlatformWindow: Sendable, Equatable {
 	) {
 		self.id = id
 		self.ownerPID = ownerPID
-		self.ownerName = ownerName
 		self.bounds = bounds
 		self.layer = layer
 		self.alpha = alpha

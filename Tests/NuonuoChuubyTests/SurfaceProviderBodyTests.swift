@@ -22,7 +22,6 @@ struct SurfaceProviderBodyTests {
 		PlatformWindow(
 			id: Self.windowID,
 			ownerPID: 900,
-			ownerName: "Finder",
 			bounds: PixelRect(x: left, y: 200, width: 500, height: 400),
 			layer: 0,
 			alpha: 1
@@ -49,7 +48,6 @@ struct SurfaceProviderBodyTests {
 			PlatformWindow(
 				id: 9001,
 				ownerPID: 900,
-				ownerName: "Keynote",
 				bounds: monitor.visibleFrame,
 				layer: 0,
 				alpha: 1
@@ -76,7 +74,6 @@ struct SurfaceProviderBodyTests {
 			PlatformWindow(
 				id: 9001,
 				ownerPID: 900,
-				ownerName: "Keynote",
 				bounds: monitor.visibleFrame,
 				layer: 0,
 				alpha: 1

@@ -57,7 +57,6 @@ struct FreeStandingWalkTests {
 			PlatformWindow(
 				id: Self.windowID,
 				ownerPID: 4242,
-				ownerName: "Safari",
 				bounds: Self.ledge,
 				layer: 0,
 				alpha: 1

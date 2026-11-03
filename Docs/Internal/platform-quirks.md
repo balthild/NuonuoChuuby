@@ -15,8 +15,12 @@
 - **`CGWindowListCopyWindowInfo` 的列表顺序就是 z 序**，且读 `kCGWindowName` 在实践中不花权限。我们
   曾把它读进 `TerrainWindow.title`，而没有任何消费者 —— 纯死代码。
 
-- **读窗口的几何与身份（number/bounds/layer/alpha/ownerPID/name）不需要任何权限**，屏幕录制只对窗
-  口**内容**（`CGWindowListCreateImage`、ScreenCaptureKit）才需要。所以地形与遮挡天然免权限。
+- **读窗口的几何与身份（number/bounds/layer/alpha/ownerPID）不需要任何权限**，屏幕录制只对窗口**内
+  容**（`CGWindowListCreateImage`、ScreenCaptureKit）才需要。所以地形与遮挡天然免权限。
+
+- **`kCGWindowOwnerName` 是本地化的**：中文系统上 Dock 报「程序坞」、Control Center 报「控制中心」、
+  Dock 的窗口在 `CGWindowLevel` 20。所以**按名字排除系统外壳不可靠，按层级才可靠**。这条曾让地形策略
+  里的英文名字黑名单变成纯死代码，现已删除（见 `architecture.md`）。
 
 - **窗口层级是粗粒度整数**：Dock 是 20、菜单栏是 24、`.floating` 是 3。所以「把她的窗口夹在 A、B 两
   个普通窗口之间」不可能（它们都是 0）。画在菜单栏上面需要 25+，但那样会盖住 Dock。

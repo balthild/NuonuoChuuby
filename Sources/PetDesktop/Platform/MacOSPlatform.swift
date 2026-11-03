@@ -31,7 +31,6 @@ public final class MacOSPlatform: Platform {
 			return PlatformWindow(
 				id: number,
 				ownerPID: ownerPID,
-				ownerName: entry[kCGWindowOwnerName as String] as? String ?? "",
 				bounds: PixelRect(
 					x: Double(rect.origin.x),
 					y: Double(rect.origin.y),

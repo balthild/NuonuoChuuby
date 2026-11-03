@@ -38,7 +38,6 @@ struct DesktopSwapTests {
 		PlatformWindow(
 			id: id,
 			ownerPID: 4242,
-			ownerName: "Safari",
 			bounds: bounds,
 			layer: 0,
 			alpha: 1

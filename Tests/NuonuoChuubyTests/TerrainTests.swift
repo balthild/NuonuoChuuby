@@ -11,7 +11,6 @@ struct WindowTerrainEligibilityTests {
 	private func window(
 		number: UInt32 = 1,
 		pid: Int32 = 500,
-		owner: String = "Safari",
 		x: Double = 200,
 		y: Double = 200,
 		width: Double = 800,
@@ -22,7 +21,6 @@ struct WindowTerrainEligibilityTests {
 		PlatformWindow(
 			id: number,
 			ownerPID: pid,
-			ownerName: owner,
 			bounds: PixelRect(x: x, y: y, width: width, height: height),
 			layer: layer,
 			alpha: alpha
@@ -69,20 +67,6 @@ struct WindowTerrainEligibilityTests {
 		)
 	}
 
-	@Test("System chrome owners are excluded")
-	func systemOwnersExcluded() {
-		for owner in ["Dock", "Window Server", "Control Center", "WindowManager"] {
-			#expect(
-				!WindowTerrainEligibilityPolicy.isEligiblePlatform(
-					window(owner: owner),
-					ownPID: 1,
-					workArea: workArea
-				),
-				"\(owner) should be excluded"
-			)
-		}
-	}
-
 	@Test("Tiny or fully transparent windows are excluded")
 	func tinyAndInvisible() {
 		#expect(
@@ -118,17 +102,6 @@ struct WindowTerrainEligibilityTests {
 			)
 		)
 	}
-
-	@Test("An unnamed owner is not trusted as terrain")
-	func unnamedOwner() {
-		#expect(
-			!WindowTerrainEligibilityPolicy.isEligiblePlatform(
-				window(owner: ""),
-				ownPID: 1,
-				workArea: workArea
-			)
-		)
-	}
 }
 
 @Suite("Window terrain surfaces")
@@ -145,7 +118,6 @@ struct WindowSurfaceTests {
 		let window = PlatformWindow(
 			id: 7,
 			ownerPID: 500,
-			ownerName: "Safari",
 			bounds: PixelRect(x: 100, y: 225, width: 800, height: 500),
 			layer: 0,
 			alpha: 1

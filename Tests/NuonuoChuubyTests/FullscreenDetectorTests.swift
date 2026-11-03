@@ -24,7 +24,6 @@ struct FullscreenDetectorTests {
 		PlatformWindow(
 			id: id,
 			ownerPID: 900,
-			ownerName: "Game",
 			bounds: PixelRect(x: x, y: y, width: width, height: height),
 			layer: layer,
 			alpha: 1

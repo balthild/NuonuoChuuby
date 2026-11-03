@@ -49,8 +49,10 @@
 
 ## 6. 未测 / 未验证
 
-- **整表枚举能否也私有化未知**：`CGSGetOnScreenWindowList` + level/alpha + 连接→PID，还要 owner name
-  与 z 序 —— 比单窗口读大得多的赌注（上限约 1.3 + 0.5 pt）。
+- **整表枚举能否也私有化未知**：`CGSGetOnScreenWindowList(0, …)` + 逐窗口 level/alpha/连接→PID。等价
+  性探针已验证在屏集合、z 序、level、alpha、PID 与公有读**逐字段一致**；owner name 私有路径**拿不
+  到**，因此名字黑名单已删（见 `architecture.md`）。剩下的只是省不省：基线（地板 idle）里整表枚举约
+  占 0.5 pt，实验进行中。
 - **私有 `CGSGetWindowBounds` 的收益只测过盒内 idle**。站在窗口顶边（`liveSurface`， 60 Hz）预计翻
   倍，未测；多显示器未测。等价性也只覆盖在屏窗口，见 [platform-quirks.md](platform-quirks.md)。
 - **多显示器全未验证**（开发机单屏）：overlay 每屏一块、她画在含其中心的那块上；**跨屏时会被 overlay

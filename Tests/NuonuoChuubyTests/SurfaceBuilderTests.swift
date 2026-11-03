@@ -20,7 +20,6 @@ struct SurfaceBuilderTests {
 		PlatformWindow(
 			id: id,
 			ownerPID: 900,
-			ownerName: "App",
 			bounds: PixelRect(x: x, y: y, width: w, height: h),
 			layer: 0,
 			alpha: 1
@@ -132,7 +131,6 @@ struct SurfaceBuilderTests {
 		let overlay = PlatformWindow(
 			id: 1,
 			ownerPID: 900,
-			ownerName: "NuonuoChuuby",
 			bounds: PixelRect(x: 400, y: 200, width: 300, height: 300),
 			layer: 3,
 			alpha: 1
@@ -147,7 +145,6 @@ struct SurfaceBuilderTests {
 		let overlay = PlatformWindow(
 			id: 1,
 			ownerPID: 900,
-			ownerName: "HUD",
 			bounds: PixelRect(x: 400, y: 200, width: 300, height: 300),
 			layer: 0,
 			alpha: 0.01

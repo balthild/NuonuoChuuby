@@ -450,7 +450,6 @@ struct PlatformRideIntegrationTests {
 			PlatformWindow(
 				id: 1001,
 				ownerPID: 4242,
-				ownerName: "Safari",
 				bounds: PixelRect(x: 200, y: 300, width: 1200, height: 400),
 				layer: 0,
 				alpha: 1
@@ -458,7 +457,6 @@ struct PlatformRideIntegrationTests {
 			PlatformWindow(
 				id: 1002,
 				ownerPID: 4242,
-				ownerName: "Notes",
 				bounds: PixelRect(x: 1430, y: 300, width: 270, height: 400),
 				layer: 0,
 				alpha: 1
@@ -534,7 +532,6 @@ struct PlatformRideIntegrationTests {
 			PlatformWindow(
 				id: 1001,
 				ownerPID: 4242,
-				ownerName: "Safari",
 				bounds: PixelRect(x: 200, y: 300, width: 1200, height: 400),
 				layer: 0,
 				alpha: 1
@@ -543,7 +540,6 @@ struct PlatformRideIntegrationTests {
 			PlatformWindow(
 				id: 1002,
 				ownerPID: 4242,
-				ownerName: "Notes",
 				bounds: PixelRect(x: 1430, y: 310, width: 270, height: 400),
 				layer: 0,
 				alpha: 1

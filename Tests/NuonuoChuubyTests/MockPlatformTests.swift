@@ -11,7 +11,6 @@ import Testing
 struct MockPlatformTests {
 	private func window(
 		id: UInt32,
-		owner: String = "Safari",
 		x: Double,
 		y: Double,
 		width: Double = 800,
@@ -22,7 +21,6 @@ struct MockPlatformTests {
 		PlatformWindow(
 			id: id,
 			ownerPID: 900 + Int32(id),
-			ownerName: owner,
 			bounds: PixelRect(x: x, y: y, width: width, height: height),
 			layer: layer,
 			alpha: alpha
@@ -52,12 +50,14 @@ struct MockPlatformTests {
 		#expect(provider.floors.first?.offset == space.displays[0].visibleFrame.bottom)
 	}
 
-	@Test("Chrome and raised windows are not terrain")
+	@Test("Chrome above the desktop level is not terrain")
 	func chromeIsNotTerrain() {
 		let platform = MockPlatform.singleMonitor()
 		let space = DisplaySpace(monitors: platform.monitors(), primaryHeight: 900)
 		platform.setWindows([
-			window(id: 1, owner: "Dock", x: 100, y: 200),
+			// The Dock sits at 20, the menu bar at 24, the Control Center at 25:
+			// level is what excludes every piece of system chrome.
+			window(id: 1, x: 100, y: 200, layer: 20),
 			window(id: 2, x: 100, y: 300, layer: 3),
 		])
 
@@ -95,7 +95,6 @@ struct MockPlatformTests {
 			PlatformWindow(
 				id: 10,
 				ownerPID: ProcessInfo.processInfo.processIdentifier,
-				ownerName: "NuonuoChuuby",
 				bounds: PixelRect(x: 600, y: 700, width: 256, height: 256),
 				layer: 3,
 				alpha: 1
@@ -104,7 +103,6 @@ struct MockPlatformTests {
 			PlatformWindow(
 				id: 20,
 				ownerPID: 900,
-				ownerName: "Safari",
 				bounds: PixelRect(x: 100, y: 800, width: 1200, height: 400),
 				layer: 0,
 				alpha: 1
