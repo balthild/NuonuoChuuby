@@ -80,10 +80,8 @@ $(BUILD_DIR)/$(CONFIG)`（递归展开）。
 
 ## 格式化
 
-- dprint 用 `Sources/**/*.swift` 的**白名单**，所以生成的 `AssetManifest.swift` 要显式加进
-  `excludes`（它的行超过 100 列；布局由生成器负责）。
-- **markdown 也在范围内。** 配置里有 `markdown` 段与 `@dprint/markdown` 插件，所以 README / NOTICE /
-  docs 的表格与折行都归 `dprint fmt` 管，`dprint check` 也会因未格式化的 markdown 而失败。
+- **markdown 在 dprint 的范围内**，docs / README 的表格与折行由 `dprint fmt` 负责。
+- **生成的 `AssetManifest.swift` 必须在 `excludes` 里**：行长超限，布局由生成器负责。
 
 ## 常用目标
 
