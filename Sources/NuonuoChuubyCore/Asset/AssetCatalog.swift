@@ -33,10 +33,4 @@ public final class AssetCatalog {
 		cache[key] = images
 		return images
 	}
-
-	/// True when at least one frame is present for every required clip folder.
-	public func hasRequiredClips(for character: PetCharacterProfile) -> Bool {
-		let required = SpriteClipTable.requiredAssetFolders(for: character)
-		return required.allSatisfy { !frames(character: character, folder: $0).isEmpty }
-	}
 }

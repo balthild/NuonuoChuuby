@@ -360,24 +360,6 @@ public enum SpriteClipTable {
 		"drag": "bare_drag", "fall": "bare_fall", "toss": "bare_fall",
 		"land": "bare_recover",
 	]
-
-	/// The clip folders a character must ship for every behaviour to be playable.
-	public static func requiredAssetFolders(for profile: PetCharacterProfile) -> [String] {
-		var folders = defaultClips.values.map(\.assetFolder)
-		var seen = Set<String>()
-		var ordered: [String] = []
-		for folder in folders where seen.insert(folder).inserted {
-			ordered.append(folder)
-		}
-		folders = ordered
-
-		if profile.usesMischief {
-			folders = folders.filter { !foodAssetFolders.contains($0) }
-		} else {
-			folders = folders.filter { $0 != "pair_icon_kick" }
-		}
-		return folders
-	}
 }
 
 /// Pair-scene timings referenced by the clip table.

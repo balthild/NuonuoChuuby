@@ -42,25 +42,6 @@ public struct AssetLocator: Sendable {
 		return FileManager.default.fileExists(atPath: sentinel.path) ? AssetLocator(root: url) : nil
 	}
 
-	/// Assets previously downloaded into the assets root.
-	public static func installed(root: URL, commit: String?) -> AssetLocator? {
-		if let commit {
-			let exact = root.appendingPathComponent(commit)
-			guard FileManager.default.fileExists(atPath: exact.path) else { return nil }
-			return AssetLocator(root: exact)
-		}
-		// Newest revision wins; the folder name is the pinned commit id.
-		let manager = FileManager.default
-		guard let versions = try? manager.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
-		else { return nil }
-		let newest =
-			versions
-			.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
-			.max { $0.lastPathComponent < $1.lastPathComponent }
-		guard let newest else { return nil }
-		return AssetLocator(root: newest)
-	}
-
 	public func frameURL(character: PetCharacterProfile, clip folder: String, index: Int) -> URL {
 		root.appendingPathComponent(character.runtimeRelativeDirectory)
 			.appendingPathComponent(folder)
