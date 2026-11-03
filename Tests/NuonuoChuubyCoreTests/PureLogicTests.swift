@@ -535,26 +535,26 @@ struct PetCharacterProfileTests {
 	}
 }
 
-@Suite("Sprite animator")
+@Suite("Sprite clip table")
 @MainActor
-struct SpriteAnimatorTests {
+struct SpriteClipTableTests {
 	@Test("糯糯 needs every food clip but 菲比 needs none of them")
 	func requiredFolders() {
-		let nuonuo = SpriteAnimator.requiredAssetFolders(for: .nuonuo)
+		let nuonuo = SpriteClipTable.requiredAssetFolders(for: .nuonuo)
 		#expect(nuonuo.contains("hungry"))
 		#expect(nuonuo.contains("lick"))
 		#expect(nuonuo.contains("chomp"))
 		#expect(nuonuo.contains("satisfied"))
 		#expect(!nuonuo.contains("pair_icon_kick"))
 
-		let feibi = SpriteAnimator.requiredAssetFolders(for: .feibiJiubi)
+		let feibi = SpriteClipTable.requiredAssetFolders(for: .feibiJiubi)
 		#expect(!feibi.contains("hungry"))
 		#expect(!feibi.contains("chomp"))
 	}
 
 	@Test("Clip folders are de-duplicated")
 	func uniqueFolders() {
-		let folders = SpriteAnimator.requiredAssetFolders(for: .nuonuo)
+		let folders = SpriteClipTable.requiredAssetFolders(for: .nuonuo)
 		#expect(Set(folders).count == folders.count)
 	}
 }

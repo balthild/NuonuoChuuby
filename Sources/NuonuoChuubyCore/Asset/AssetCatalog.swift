@@ -36,7 +36,7 @@ public final class AssetCatalog {
 
 	/// True when at least one frame is present for every required clip folder.
 	public func hasRequiredClips(for character: PetCharacterProfile) -> Bool {
-		let required = SpriteAnimator.requiredAssetFolders(for: character)
+		let required = SpriteClipTable.requiredAssetFolders(for: character)
 		return required.allSatisfy { !frames(character: character, folder: $0).isEmpty }
 	}
 }
