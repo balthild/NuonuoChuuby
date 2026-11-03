@@ -92,9 +92,8 @@ struct AssetStoreTests {
 	private func makeStore() -> (AssetStore, URL) {
 		let root = URL(fileURLWithPath: NSTemporaryDirectory())
 			.appendingPathComponent("nuonuo-assets-\(UUID().uuidString)")
-		let environment = AppEnvironment(storageDirectory: root)
 		return (
-			MainActor.assumeIsolated { AssetStore(environment: environment, manifest: manifest) }, root
+			MainActor.assumeIsolated { AssetStore(root: root, manifest: manifest) }, root
 		)
 	}
 

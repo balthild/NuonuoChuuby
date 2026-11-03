@@ -60,7 +60,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 	private func resolveAssets(environment: AppEnvironment) async -> AssetLocator? {
 		if let seeded = AssetLocator.bundled() { return seeded }
 
-		let store = AssetStore(environment: environment)
+		let store = AssetStore(root: environment.assetsRootDirectory)
 		if store.isComplete() {
 			return AssetLocator(root: store.installDirectory)
 		}

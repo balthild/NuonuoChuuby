@@ -65,13 +65,13 @@ public final class AssetStore {
 		public var total: Int
 	}
 
-	private let environment: AppEnvironment
+	private let root: URL
 	private let manifest: AssetManifest
 	private let session: URLSession
 	private let concurrency = 6
 
-	public init(environment: AppEnvironment, manifest: AssetManifest) {
-		self.environment = environment
+	public init(root: URL, manifest: AssetManifest) {
+		self.root = root
 		self.manifest = manifest
 		let configuration = URLSessionConfiguration.ephemeral
 		configuration.timeoutIntervalForRequest = 30
@@ -79,12 +79,12 @@ public final class AssetStore {
 		self.session = URLSession(configuration: configuration)
 	}
 
-	public convenience init(environment: AppEnvironment) {
-		self.init(environment: environment, manifest: .bundled)
+	public convenience init(root: URL) {
+		self.init(root: root, manifest: .bundled)
 	}
 
 	public var installDirectory: URL {
-		environment.assetsRootDirectory.appendingPathComponent(manifest.commit)
+		root.appendingPathComponent(manifest.commit)
 	}
 
 	/// The upstream revision these assets came from.

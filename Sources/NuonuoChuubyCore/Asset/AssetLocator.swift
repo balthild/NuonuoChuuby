@@ -42,9 +42,8 @@ public struct AssetLocator: Sendable {
 		return FileManager.default.fileExists(atPath: sentinel.path) ? AssetLocator(root: url) : nil
 	}
 
-	/// Assets previously downloaded into Application Support.
-	public static func installed(environment: AppEnvironment, commit: String?) -> AssetLocator? {
-		let root = environment.assetsRootDirectory
+	/// Assets previously downloaded into the assets root.
+	public static func installed(root: URL, commit: String?) -> AssetLocator? {
 		if let commit {
 			let exact = root.appendingPathComponent(commit)
 			guard FileManager.default.fileExists(atPath: exact.path) else { return nil }
