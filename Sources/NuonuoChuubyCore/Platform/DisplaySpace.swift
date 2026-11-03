@@ -51,13 +51,3 @@ public struct DisplaySpace: Sendable {
 		return dx * dx + dy * dy
 	}
 }
-
-extension PixelRect {
-	public func contains(_ point: PixelPoint) -> Bool {
-		point.x >= left && point.x <= right && point.y >= top && point.y <= bottom
-	}
-
-	public func insetBy(dx: Double, dy: Double) -> PixelRect {
-		PixelRect(x: x + dx, y: y + dy, width: max(0, width - 2 * dx), height: max(0, height - 2 * dy))
-	}
-}
