@@ -109,7 +109,7 @@ overlay 是全屏**透明**窗口，只有精灵所在那一块不透明。这�
 
 - **捏脸：控制器不再合成位图。** 新增 `cheekPinchState`（`{geometry, dynamics}`）与委托方法
   `didUpdateCheekPinch`（协议扩展给默认空实现）。`didProduceFrame` **永远送 cel 本身**，捏脸作为「叠
-  在上面的一层」由 presenter 画。 overlay 用 `Cheek/CheekPinchLayer.swift`（容器是 **pet 图层的子
+  在上面的一层」由 presenter 画。 overlay 用 `Pet/Cheek/CheekPinchLayer.swift`（容器是 **pet 图层的子
   层**，白捡 lean+mirror），几何在 `CheekPinchShapes.swift`（纯路径）。
 - **lean 必须在 `didUpdateCheekPinch` 里重设**：pinch 可以多帧不送新 cel，只在 `didProduceFrame` 里
   设 transform 会让倾斜不跟手。

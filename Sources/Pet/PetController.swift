@@ -55,10 +55,15 @@ extension PetMealDelegate {
 /// The pet's brain: it owns the simulation position, the behavioural state
 /// machine and the sprite animator, and reports where the window should be.
 ///
+/// The behaviour lives in `PetController+…` files, split by which part of her it
+/// belongs to; the stored state stays here, because a stored property cannot be
+/// declared in an extension. `private` on a member therefore means **this file only** —
+/// the split is why some members that look equally internal are not private.
+///
 /// Coordinates are points, top-left origin, Y down (see ``DisplaySpace``).
 @MainActor
 public final class PetController: SpriteAnimatorDelegate {
-	private enum Motion {
+	enum Motion {
 		static let gravity: Double = 1650
 		static let terminalVelocity: Double = 1350
 		static let horizontalAirDrag: Double = 0.48
@@ -96,7 +101,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// callers fall back to ``DesktopIconGrid``.
 	public var desktopIcons: DesktopIconIndex?
 
-	public private(set) var state: PetState = .idle {
+	public internal(set) var state: PetState = .idle {
 		didSet {
 			guard state != oldValue else { return }
 			DiagnosticsLog.shared.writeEvent(
@@ -109,11 +114,11 @@ public final class PetController: SpriteAnimatorDelegate {
 			)
 		}
 	}
-	public private(set) var life: PetLifeState
-	public private(set) var petSize: Double
-	public private(set) var foot: PixelPoint
+	public internal(set) var life: PetLifeState
+	public internal(set) var petSize: Double
+	public internal(set) var foot: PixelPoint
 	/// -1 faces left, +1 faces right.
-	public private(set) var facing: Double = 1
+	public internal(set) var facing: Double = 1
 
 	public var fastingMode = false
 	public var quietMode = false {
@@ -133,69 +138,69 @@ public final class PetController: SpriteAnimatorDelegate {
 		}
 	}
 
-	private let catalog: AssetCatalog
-	private let animator: SpriteAnimator
-	private let surfaceProvider: SurfaceProvider
-	private let lifeStore: PetLifeStateStore
-	private var displaySpace: DisplaySpace
+	// MARK: - State
 
-	private var velocity = PixelPoint.zero
-	private var remainderX: Double = 0
-	private var remainderY: Double = 0
-	private var stateElapsed: Double = 0
+	private let catalog: AssetCatalog
+	let animator: SpriteAnimator
+	let surfaceProvider: SurfaceProvider
+	private let lifeStore: PetLifeStateStore
+	var displaySpace: DisplaySpace
+
+	var velocity = PixelPoint.zero
+	var remainderX: Double = 0
+	var remainderY: Double = 0
+	var stateElapsed: Double = 0
 	private var idleRemaining: Double
 	/// Which way she is currently patrolling, or 0 until she picks one.
-	private var patrolDirection: Double = 0
+	var patrolDirection: Double = 0
 	/// The purpose a stroll to a point is walked under, remembered for the strolls
 	/// that follow an edge leg. ``explore`` takes the quicker pace.
-	private var strollPurpose: MovementPurpose = .wander
-	private var terrainActionCooldown: Double = 0
+	var strollPurpose: MovementPurpose = .wander
+	var terrainActionCooldown: Double = 0
 	/// Seconds since the controller started, which is what the cooldowns below are
 	/// measured against. ``stateElapsed`` cannot serve: it restarts with every state.
-	private var elapsedSeconds: Double = 0
+	var elapsedSeconds: Double = 0
 	/// When she may next stop a patrol for a given need. See
 	/// ``tryInterruptPatrolForNeed()``.
-	private var actionReadyAt: [AutonomousAction: Double] = [:]
-	private var nextHungerReactionAt: Double = 0
-	private var patrolNeedCheckRemaining: Double = 0
+	var actionReadyAt: [AutonomousAction: Double] = [:]
+	var nextHungerReactionAt: Double = 0
+	var patrolNeedCheckRemaining: Double = 0
 	/// Every random draw she makes. Seeded in tests so a run is reproducible.
-	private var random: PetRandom
-	private var dragTracker = DragMotionTracker()
-	private var dragOffset = PixelPoint.zero
-	private var isDragging = false
+	var random: PetRandom
+	var dragTracker = DragMotionTracker()
+	var dragOffset = PixelPoint.zero
+	var isDragging = false
 	/// No display (session locked, screen asleep) or a fullscreen app in front of
 	/// everything. Nothing advances while this is true, and her window is hidden,
 	/// because a frozen sprite left floating over the fullscreen app reads as a bug
 	/// — and keeping out of that app's way is the point of suspending.
 	public private(set) var isSuspended = false
-	private var targetX: Double = 0
-	private var targetPoint: PixelPoint = .zero
-	private var mealQueue = MealQueue()
-	private var activeMeal: DeletedItem?
-	private var burstTracker = DeletionBurstTracker()
+	var targetX: Double = 0
+	var targetPoint: PixelPoint = .zero
+	var mealQueue = MealQueue()
+	var activeMeal: DeletedItem?
+	var burstTracker = DeletionBurstTracker()
 	/// Simulated seconds until her next unprompted remark about how she feels.
-	private var selfReportRemaining: Double
+	var selfReportRemaining: Double
 	/// Whether the lick under way is aimed at a real Finder icon rather than the
 	/// guessed grid, which is what she can taste when it finishes.
-	private var iconLickUsedRealIcons = false
-	private var movementPurpose: MovementPurpose = .unset
-	private var fallStartFootY: Double = 0
-	private var fallReason = "support-lost"
-	private var cheek = CheekPinchDynamics()
+	var iconLickUsedRealIcons = false
+	var movementPurpose: MovementPurpose = .unset
+	var fallStartFootY: Double = 0
+	var fallReason = "support-lost"
+	var cheek = CheekPinchDynamics()
 	/// Where the pinch started, in view points.
-	private var pinchOrigin: CGPoint = .zero
+	var pinchOrigin: CGPoint = .zero
 
-	// MARK: - Support
-
-	private var perch: Perch?
-	private var perchSurface: Surface?
-	private var lastPerchOffset: Double?
-	private var perchUnavailableSeconds: Double = 0
+	var perch: Perch?
+	var perchSurface: Surface?
+	var lastPerchOffset: Double?
+	var perchUnavailableSeconds: Double = 0
 	/// So the grace is logged once, not per frame.
-	private var isInPerchGrace = false
-	private var perchLogGate = ChangeGate<PlatformMotionResponse>()
+	var isInPerchGrace = false
+	var perchLogGate = ChangeGate<PlatformMotionResponse>()
 	/// A drag-resize grows a box continuously; this keeps the remark to one.
-	private var boxGrowthGate = ChangeGate<Bool>()
+	var boxGrowthGate = ChangeGate<Bool>()
 	/// What the desktop looked like one sample ago: whether it was being swapped.
 	private var wasDesktopSwapping = false
 	/// How long the current swap episode has lasted.
@@ -204,19 +209,19 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var hasCappedSwapHold = false
 	/// The window she is in the air because of, if any, and where its edge was last
 	/// frame, so one rising faster than she flies cannot pass through her.
-	private var airborneSupportWindowID: UInt32?
-	private var airborneSupportTop: Double?
-	private var pendingClimb: WindowClimbPlan?
-	private var activeClimb: WindowClimbPlan?
-	private var climbProgress: Double = 0
-	private var climbStart: PixelPoint = .zero
+	var airborneSupportWindowID: UInt32?
+	var airborneSupportTop: Double?
+	var pendingClimb: WindowClimbPlan?
+	var activeClimb: WindowClimbPlan?
+	var climbProgress: Double = 0
+	var climbStart: PixelPoint = .zero
 	/// Where the visible wall begins: the window's bottom, or her feet if higher.
-	private var climbWallStartY: Double = 0
-	private var climbHopFraction: Double = 0
-	private var climbDuration: Double = 3
-	private var climbWillSucceed = true
-	private var climbSlipAt: Double = 1
-	private var transientDuration: Double = 0
+	var climbWallStartY: Double = 0
+	var climbHopFraction: Double = 0
+	var climbDuration: Double = 3
+	var climbWillSucceed = true
+	var climbSlipAt: Double = 1
+	var transientDuration: Double = 0
 
 	/// Her state while a window's walls hold her.
 	///
@@ -224,18 +229,18 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// every state-driven rule (the ride, autonomy, the clip table) would need a
 	/// case for it. Holding the window and returning early from ``step(_:)`` says
 	/// the same thing without touching any of them.
-	private struct Enclosure {
+	struct Enclosure {
 		var windowID: UInt32
 		var previousBox: PixelRect
 		var isResting: Bool
 	}
 
-	private var enclosure: Enclosure?
+	var enclosure: Enclosure?
 	/// Simulated seconds left before another side impact may be felt.
-	private var sideImpactCooldown: Double = 0
+	var sideImpactCooldown: Double = 0
 	/// The window-server body sample the collision pass last looked at, so it runs
 	/// once per sample rather than once per frame.
-	private var processedBodyRefreshVersion = -1
+	var processedBodyRefreshVersion = -1
 	/// A window that has just thrown her must not catch her again on its own top
 	/// edge in the same instant: at a corner the side hit and the platform top are
 	/// the same window.
@@ -248,38 +253,38 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// when a sample happens to land inside it. The graph is rebuilt at 30 Hz while she
 	/// falls, so a window rising faster than about 700 pt/s steps clean over the whole
 	/// band the landing test looks in, and she used to go straight through it.
-	private var catcherWindowID: UInt32?
-	private var catcherTop: Double?
-	private var ignoredLandingWindow: UInt32?
-	private var ignoredLandingSeconds: Double = 0
+	var catcherWindowID: UInt32?
+	var catcherTop: Double?
+	var ignoredLandingWindow: UInt32?
+	var ignoredLandingSeconds: Double = 0
 	/// Simulated seconds the window holding her has been covered by one in front
 	/// of it. Held briefly, because switching apps covers a window for a moment.
-	private var enclosureCoveredSeconds: Double = 0
+	var enclosureCoveredSeconds: Double = 0
 	/// Simulated seconds left before the box's rectangle is read again while she
 	/// rests on its floor. Zero or less means it is read this frame.
-	private var enclosureResampleRemaining: Double = 0
+	var enclosureResampleRemaining: Double = 0
 	/// Simulated seconds since the box's rectangle was last read, which is the
 	/// interval the two rectangles the physics compares really span.
-	private var enclosureBoxAgeSeconds: Double = 0
+	var enclosureBoxAgeSeconds: Double = 0
 
 	/// How long the window holding her may be covered before she gives up on it.
 	///
 	/// She cannot be composited between two ordinary windows, so a covered box
 	/// would leave her looking like she is standing on nothing.
-	private static let enclosureCoverageGraceSeconds: Double = 0.6
+	static let enclosureCoverageGraceSeconds: Double = 0.6
 
 	/// How long she goes between unprompted remarks.
 	///
 	/// Drawn from ``random`` like everything else she does, so adding or removing
 	/// any consumer shifts every seeded draw that follows it.
-	private static func selfReportInterval(using random: inout PetRandom) -> Double {
+	static func selfReportInterval(using random: inout PetRandom) -> Double {
 		Double.random(in: 45...95, using: &random)
 	}
 
 	/// How long she must wait before another edge action (a hop, a slide or a jump
 	/// off the side). Without it a narrow window, which she can cross in a couple of
 	/// seconds, would send her off the edge every time she got there.
-	private static let terrainActionInterval: Double = 14
+	static let terrainActionInterval: Double = 14
 
 	/// How often a leg of an autonomous walk is one out to an edge rather than a
 	/// stroll to a point she settles at.
@@ -288,11 +293,11 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// something else — a hop, a slide, a jump off, or another lap — so she walks
 	/// without pause for as long as she is awake. Strolling to a point is what gives a
 	/// walk an ending.
-	private static let edgeLegChance: Double = 0.6
+	static let edgeLegChance: Double = 0.6
 
 	/// How much a box must grow in one step before she remarks on it, so the
 	/// pixel of drift a drag-resize leaves behind is not a window "getting big".
-	private static let boxGrowthTolerance: Double = 24
+	static let boxGrowthTolerance: Double = 24
 
 	/// How often the box's rectangle is re-read while she rests on its floor.
 	///
@@ -302,7 +307,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// steeply (60 → 30 Hz is most of what 60 → 15 Hz gets) while the delay
 	/// before she notices a box that has started moving grows in proportion, and
 	/// that delay is the price of this.
-	private static let enclosureRestingResampleInterval: Double = 1.0 / 30
+	static let enclosureRestingResampleInterval: Double = 1.0 / 30
 
 	/// How long a swap may hold her still before she is let go regardless.
 	///
@@ -312,7 +317,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// rest of the session. See ``holdForDesktopSwap(_:)``.
 	private static let maximumDesktopSwapSeconds: Double = 6
 
-	private let displayScale: Double = 1
+	let displayScale: Double = 1
 	private var timer: Timer?
 	private var lastTick: CFAbsoluteTime = 0
 	private var heartbeatRemaining: Double = 10
@@ -320,8 +325,8 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var lastNotifiedSize: Double?
 	private var dragRefreshRemaining: Double = 0
 	private static let dragSurfaceRefreshInterval: Double = 2
-	private var fallRefreshRemaining: Double = 0
-	private var lastFallRefreshFootY: Double = 0
+	var fallRefreshRemaining: Double = 0
+	var lastFallRefreshFootY: Double = 0
 	/// How often the terrain graph is rebuilt while she is airborne, and how far she
 	/// has to fall before it is rebuilt regardless of the clock.
 	///
@@ -335,23 +340,23 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// the live read. What the graph is still needed for is **occlusion**, and occlusion
 	/// that is too old is not harmless — a spot it wrongly calls clear puts her down
 	/// somewhere she is covered, and the perch is rejected on the next frame.
-	private var fallRefreshInterval: Double = 0.25
-	private var fallRefreshDistance: Double = 100
+	var fallRefreshInterval: Double = 0.25
+	var fallRefreshDistance: Double = 100
 	/// How many simulation ticks and graph rebuilds the current fall has cost.
 	///
 	/// Sampling counts cannot be used as a denominator — a symbol that is cheap is
 	/// under-sampled, so the denominator moves with the thing being measured. These are
 	/// exact, and the rebuild count is what says whether a lower rate was actually
 	/// achieved.
-	private var fallTickCount = 0
-	private var fallRefreshCount = 0
+	var fallTickCount = 0
+	var fallRefreshCount = 0
 	/// Collapses a run of catches by one window into a single line.
 	///
 	/// A window rising into her is caught **every frame** while it keeps rising, and a log
 	/// line costs about 45 us — measured, not guessed — so a run of them is worth real
 	/// CPU. What is worth recording is that the catch happened, by which window and at
 	/// what speed, and that is the same for every frame of the run.
-	private var caughtLogGate = ChangeGate<UInt32>()
+	var caughtLogGate = ChangeGate<UInt32>()
 
 	/// The rate the graph is rebuilt at while she is airborne, for a trace to be told
 	/// apart from one taken at another rate without guessing from the launch command.
@@ -390,6 +395,10 @@ public final class PetController: SpriteAnimatorDelegate {
 		animator.play("idle")
 	}
 
+	var sleepRemaining: Double = 0
+	/// Whether the wake-up in progress should end in a meal.
+	var wakeForMeal = false
+
 	// MARK: - Lifecycle
 
 	public func start() {
@@ -412,7 +421,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		try? lifeStore.save(life)
 	}
 
-	private func tick() {
+	func tick() {
 		let now = CFAbsoluteTimeGetCurrent()
 		let elapsed = now - lastTick
 		lastTick = now
@@ -420,7 +429,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		step(min(max(elapsed, 0), 0.1))
 	}
 
-	private func step(_ delta: Double) {
+	func step(_ delta: Double) {
 		let timing = FrameTiming.fromElapsed(delta)
 		let simulation = timing.simulationSeconds
 		guard simulation > 0 else { return }
@@ -639,18 +648,18 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	/// Says how she feels, unprompted: the one line here that is not tied to
 	/// something happening.
-	private func reportOwnMood() {
+	func reportOwnMood() {
 		guard state == .idle, !quietMode else { return }
 		guard let line = PetMoodSpeech.line(life: life, fastingMode: fastingMode) else { return }
 		announce(line.cue, voice: line.voice, priority: .ambient)
 	}
 
-	// MARK: - Meals and icon licks
+	// MARK: - Geometry
 
 	/// Where a canvas anchor sits on screen for the pet's current size.
-	private var canvasScale: Double { petSize / SpriteGeometry.canvasSize }
+	var canvasScale: Double { petSize / SpriteGeometry.canvasSize }
 
-	private func screenPoint(canvasX: Double, canvasY: Double) -> PixelPoint {
+	func screenPoint(canvasX: Double, canvasY: Double) -> PixelPoint {
 		PixelPoint(
 			x: foot.x + (canvasX - profile.geometry.footCanvasX) * canvasScale,
 			y: foot.y + (canvasY - profile.geometry.footCanvasY) * canvasScale
@@ -661,7 +670,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	///
 	/// The feet are deliberately outside it, so standing on a window's top edge can
 	/// never be mistaken for that window's side edge sweeping through her.
-	private func bodyRect(bottomCanvasY: Double? = nil) -> PixelRect {
+	func bodyRect(bottomCanvasY: Double? = nil) -> PixelRect {
 		let topLeft = screenPoint(
 			canvasX: profile.geometry.bodyCollisionLeftCanvasX,
 			canvasY: profile.geometry.bodyCollisionTopCanvasY
@@ -686,9 +695,11 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// standing with her feet below the window's bottom edge by the gap between the body's
 	/// bottom and the foot anchor, which grows with her size. The original draws the same
 	/// line: its enclosure passes `FootCanvasY`, while its side-impact hitbox omits the feet.
-	private var enclosureBodyRect: PixelRect {
+	var enclosureBodyRect: PixelRect {
 		bodyRect(bottomCanvasY: profile.geometry.footCanvasY)
 	}
+
+	// MARK: - Suspension and the desktop swap
 
 	/// Forgets everything that measures movement **across frames**, because the frames
 	/// it is measured over did not happen.
@@ -776,473 +787,6 @@ public final class PetController: SpriteAnimatorDelegate {
 		return swapping
 	}
 
-	// MARK: - Window enclosure
-
-	/// The window's rectangle right now, read fresh.
-	///
-	/// The graph lags by up to half a second, which inside a box is the difference
-	/// between being carried by a wall and being punched through it, so the walls
-	/// come from the window server — the same single-window query the ride uses.
-	/// ``updateWindowEnclosure(_:)`` decides how often that has to happen.
-	private func liveBounds(of windowID: UInt32) -> PixelRect? {
-		if let debugLiveWindowBoundsOverride { return debugLiveWindowBoundsOverride(windowID) }
-		return WindowSurfaceProvider.liveBounds(of: windowID)
-	}
-
-	/// Whether the box still holds her, leaving it if it does not.
-	///
-	/// The capacity rule, shared with entry through the same wall inset: a box big
-	/// enough for her when she goes in is big enough until it — or she — is
-	/// resized. Where she is *inside* it is ``WindowEnclosurePhysics/resolve``'s
-	/// business, not this one's, so a window being dragged can never trip it.
-	///
-	/// `box` is the rectangle the caller already read this frame. Reading it again
-	/// here was a second window-server round trip per frame, and inside a box it was
-	/// the largest single item in the whole simulation step — larger than everything
-	/// the enclosure does with it.
-	private func enclosureFitsTheBox(_ box: PixelRect?) -> Bool {
-		guard let current = enclosure else { return true }
-		guard let box else {
-			surrenderEnclosure(reason: "WindowUnavailable")
-			beginFall(
-				reason: "EnclosureWindowLost",
-				initialVelocityY: velocity.y,
-				initialVelocityX: velocity.x
-			)
-			return false
-		}
-		// A window on another desktop is still a window, and it keeps every one of its
-		// edges: switching Spaces moves the desktop, not the window. So none of the
-		// checks below would notice that she is inside one she can no longer be seen
-		// in, and none of them can — the rectangle is unchanged and is still on the
-		// display. Presence in the on-screen sample is the answer, and the geometry
-		// below is only a second opinion for the moment a box slides off the display.
-		//
-		// She falls out of it, giving up only her own vertical speed: a swap moves the
-		// world, not her, so it must not hand her a sideways one.
-		guard surfaceProvider.isOnThisDesktop(current.windowID),
-			displaySpace.displays.shows(box)
-		else {
-			surrenderEnclosure(reason: "NotOnThisDesktop")
-			beginFall(
-				reason: "EnclosureWindowLost",
-				initialVelocityY: velocity.y,
-				initialVelocityX: 0
-			)
-			return false
-		}
-		guard
-			WindowEnclosurePhysics.boxHasRoom(
-				for: enclosureBodyRect,
-				in: box,
-				inset: WindowEnclosurePhysics.wallInset * displayScale
-			)
-		else {
-			surrenderEnclosure(reason: "BoxTooSmall")
-			beginFall(reason: "EnclosureTooSmall")
-			return false
-		}
-		return true
-	}
-
-	/// The same check for callers that do not already have the rectangle, which are
-	/// the ones outside the per-frame path.
-	private func enclosureFitsTheBox() -> Bool {
-		guard let current = enclosure else { return true }
-		return enclosureFitsTheBox(liveBounds(of: current.windowID))
-	}
-
-	/// Steps her as a free body inside the window's walls.
-	///
-	/// Returns true while the box holds her, which is the signal to skip the whole
-	/// terrain path for this frame: inside a box its four walls are the world.
-	private func updateWindowEnclosure(_ delta: Double) -> Bool {
-		guard let current = enclosure, !isDragging else {
-			enclosureBoxAgeSeconds = 0
-			return false
-		}
-
-		// The walls come from the window server, as the same single-window query the
-		// ride uses, so they follow a dragged window exactly. A resting pet's box is
-		// normally still, though, and that read is the largest single cost in the
-		// frame — so while she rests it runs 30 times a second instead of 60. The
-		// full rate comes back on the first read that shows the box moving.
-		enclosureResampleRemaining -= delta
-		let skippedRead = current.isResting && enclosureResampleRemaining > 0
-
-		let box: PixelRect
-		if skippedRead {
-			// Nothing has been seen moving it, so the rectangle she was given last is
-			// still the truth about the walls.
-			box = current.previousBox
-		} else {
-			guard let fresh = liveBounds(of: current.windowID) else {
-				enclosureBoxAgeSeconds = 0
-				let velocityY = velocity.y
-				let velocityX = velocity.x
-				surrenderEnclosure(reason: "WindowUnavailable")
-				beginFall(
-					reason: "EnclosureWindowLost",
-					initialVelocityY: velocityY,
-					initialVelocityX: velocityX
-				)
-				return false
-			}
-			box = fresh
-		}
-		let moved = box != current.previousBox
-		// A box that has grown around her is a window being made bigger. Position
-		// changes do not move either edge of the rectangle, so only a real resize
-		// counts; the gate turns a drag-resize, which grows it a little every
-		// frame, into one remark. It has to be shown every frame to notice the
-		// growth ending, so it is asked before the answer is used.
-		let growing =
-			box.width > current.previousBox.width + Self.boxGrowthTolerance
-			|| box.height > current.previousBox.height + Self.boxGrowthTolerance
-		if boxGrowthGate.emits(growing), growing {
-			announce(.windowMaximized, voice: .scream, priority: .normal)
-		}
-
-		let scale = displayScale
-		let step = WindowEnclosurePhysics.resolve(
-			pet: enclosureBodyRect,
-			previousBox: current.previousBox,
-			currentBox: box,
-			baselineSeconds: enclosureBoxAgeSeconds,
-			velocityX: velocity.x,
-			velocityY: velocity.y,
-			wasOnFloor: current.isResting,
-			elapsedSeconds: delta,
-			scale: scale
-		)
-		enclosure?.previousBox = box
-		enclosureBoxAgeSeconds = skippedRead ? enclosureBoxAgeSeconds + delta : delta
-
-		// She is worth reading every frame while she is not resting, and while the
-		// box is moving under her. Anything else earns the slower clock again.
-		if !skippedRead {
-			enclosureResampleRemaining =
-				step.isResting && !moved ? Self.enclosureRestingResampleInterval : 0
-		}
-		velocity = PixelPoint(x: step.velocityX, y: step.velocityY)
-
-		// A window top that has come under her since she was let go is where she
-		// lands, rather than something the box carries her past on the way down to its
-		// floor. Entry asks the same question, but only once, at the moment of release
-		// — and a throw can carry her up over a window that was not under her then, so
-		// the box swallowed a descent that should have ended on that edge.
-		//
-		// She is handed back to the open desktop rather than landed here, so which
-		// surface she meets and where it is are read exactly as they are for any other
-		// fall: live, and again on every frame.
-		if velocity.y > 0, landingInsideTheBox(footX: foot.x, box: box) != nil {
-			surrenderEnclosure(reason: "EnclosureLanding")
-			beginFall(
-				reason: "EnclosureLanding",
-				initialVelocityY: velocity.y,
-				initialVelocityX: velocity.x
-			)
-			return false
-		}
-
-		let movementX = SubpixelMotion.takeWholePixels(step.offsetX, remainder: &remainderX)
-		let movementY = SubpixelMotion.takeWholePixels(step.offsetY, remainder: &remainderY)
-		// A wall absorbs whatever subpixel drift was in flight, so a bounce does
-		// not carry a stale fraction through the impact.
-		if step.hitHorizontal { remainderX = 0 }
-		if step.hitVertical { remainderY = 0 }
-		foot.x += Double(movementX)
-		foot.y += Double(movementY)
-
-		if abs(velocity.x) > 8 { facing = velocity.x < 0 ? -1 : 1 }
-
-		// The floor's own answer is the truth about whether she is standing on it.
-		// Reading it back only when she happened to be moving fast enough left her
-		// "resting" for ever after a yank that gave her no speed of her own — a
-		// downward one — so the floor went on carrying her for the whole drag
-		// instead of dropping away from her.
-		let wasResting = current.isResting
-		enclosure?.isResting = step.isResting
-
-		if step.hitAny, step.impactSpeed >= 70 * scale {
-			state = .falling
-			stateElapsed = 0
-			animator.play(velocity.y < -40 * scale ? "toss" : "fall")
-			DiagnosticsLog.shared.writeEvent(
-				"WindowEnclosureImpact",
-				[
-					("Window", "\(current.windowID)"),
-					("Walls", "L=\(step.hitLeft),T=\(step.hitTop),R=\(step.hitRight),B=\(step.hitBottom)"),
-					("ImpactSpeed", String(format: "%.0f", step.impactSpeed)),
-				]
-			)
-			announce(.platformLaunch, voice: .scream, priority: .important)
-		} else if step.isResting, !wasResting || state == .falling {
-			// Resting is what ends a fall, including one that never left the floor: a
-			// side wall can knock her while the floor goes on holding her, and then
-			// `wasResting` is already true, so a transition-only test never fires and
-			// the knock's fall animation stays on for as long as she is in the box.
-			state = .idle
-			stateElapsed = 0
-			animator.play("idle")
-			DiagnosticsLog.shared.writeEvent(
-				"WindowEnclosureSettled",
-				[("Window", "\(current.windowID)")]
-			)
-		} else if !step.isResting {
-			// Nothing holds her: the box was yanked, or the walls are only shutting
-			// her in loosely. Either way she is a falling body inside it.
-			state = .falling
-			if animator.currentClip != "toss", animator.currentClip != "fall" {
-				animator.play(velocity.y < 0 ? "toss" : "fall")
-			}
-		}
-
-		// The capacity question — "is this box still big enough for her" — is asked
-		// here rather than before ``resolve``. It is about size and not position, so
-		// the order cannot change the answer; it sits at the end because the walls
-		// had to run first to have a box at all. It reuses the rectangle read at the
-		// top of this method.
-		guard enclosureFitsTheBox(box) else { return true }
-
-		// A box covered by a window in front of it is no longer a place she can be
-		// seen standing in. Held for a moment first, because switching apps covers
-		// a window and then uncovers it again.
-		guard let cover = surfaceProvider.coveringWindow(of: current.windowID, body: bodyRect())
-		else {
-			enclosureCoveredSeconds = 0
-			return true
-		}
-		enclosureCoveredSeconds += delta
-		guard enclosureCoveredSeconds >= Self.enclosureCoverageGraceSeconds else { return true }
-
-		// What is now in front of her could have held her had she been let go
-		// inside it, so it does. She stays in play on the window the user is
-		// actually looking at, instead of dropping out to the desktop.
-		//
-		// Checked against the container candidates, not against every body: the
-		// window covering her may have no room for her at all — filling the display,
-		// say — and moving her into it would seal her against the screen.
-		if let bounds = surfaceProvider.windowBodies.enclosureCandidates[cover]?.bounds,
-			WindowEnclosurePhysics.bodyFits(
-				enclosureBodyRect,
-				in: bounds,
-				inset: WindowEnclosurePhysics.wallInset * scale
-			)
-		{
-			transferEnclosure(to: cover, bounds: bounds)
-			return true
-		}
-
-		surrenderEnclosure(reason: "EnclosureCovered")
-		beginFall(reason: "EnclosureCovered")
-		return true
-	}
-
-	/// Hands her to the window that was covering the one she was in.
-	///
-	/// She is already drawn on top of that window and already between its walls,
-	/// so this moves no pixel: only which rectangle the walls come from. Her
-	/// velocity carries over, so whatever she was doing continues — a walk she was
-	/// resting from simply falls to the new floor.
-	private func transferEnclosure(to windowID: UInt32, bounds: PixelRect) {
-		let from = enclosure?.windowID
-		enclosure = Enclosure(windowID: windowID, previousBox: bounds, isResting: false)
-		// The next cover earns its own grace rather than inheriting this one.
-		enclosureCoveredSeconds = 0
-		enclosureBoxAgeSeconds = 0
-		DiagnosticsLog.shared.writeEvent(
-			"WindowEnclosureTransferred",
-			[("From", from.map(String.init) ?? "none"), ("To", "\(windowID)")]
-		)
-	}
-
-	/// Puts her inside a window when she is let go wholly within one.
-	///
-	/// Stricter than the original, which asked only for her *centre* to be inside.
-	/// A body hanging out of the frame would be visibly half in and half out, and
-	/// the walls would shove her on the very first frame.
-	///
-	/// The **frontmost** window her body fits in is the one that takes her, since
-	/// that is the one she is visibly standing inside. Choosing by size instead let
-	/// a small window *behind* a larger one capture her, and the occlusion rule then
-	/// handed her straight on to the larger one — two captures in a row, which reads
-	/// as falling twice. Whether a window may hold her at all was decided when it
-	/// was sampled.
-	private func tryBeginWindowEnclosure(velocityX: Double, velocityY: Double) -> Bool {
-		let body = enclosureBodyRect
-		let inset = WindowEnclosurePhysics.wallInset * displayScale
-		let holders = surfaceProvider.windowBodies.enclosureCandidates.filter {
-			WindowEnclosurePhysics.bodyFits(body, in: $0.value.bounds, inset: inset)
-		}
-		guard let fitted = holders.min(by: { $0.value.zIndex < $1.value.zIndex }) else {
-			return false
-		}
-
-		// A window top between her feet and the box's floor is a landing, not a
-		// reason to be swallowed whole: she comes down on it as she would anywhere
-		// else, and only a box with nothing inside it to land on takes her in.
-		//
-		// Without this she fell straight past a window in front of the one holding
-		// her — dropped above a small window while inside a large one, she went into
-		// the large one and came to rest on its floor instead of on the small
-		// window's top edge.
-		//
-		// Asked here about the moment of release only. The descent inside the box asks
-		// the same question again, because a throw carries her up over windows that were
-		// not under her then; see ``updateWindowEnclosure(_:)``.
-		guard landingInsideTheBox(footX: foot.x, box: fitted.value.bounds) == nil else {
-			return false
-		}
-
-		enclosure = Enclosure(
-			windowID: fitted.key,
-			previousBox: fitted.value.bounds,
-			isResting: false
-		)
-		airborneSupportWindowID = nil
-		airborneSupportTop = nil
-		enter(
-			.falling,
-			purpose: MovementPurpose.unset,
-			velocity: PixelPoint(x: velocityX, y: velocityY)
-		)
-		remainderX = 0
-		remainderY = 0
-		ignoredLandingWindow = nil
-		ignoredLandingSeconds = 0
-		enclosureCoveredSeconds = 0
-		enclosureBoxAgeSeconds = 0
-		releasePerch()
-		animator.play(velocityY < -1 ? "toss" : "fall")
-		DiagnosticsLog.shared.writeEvent(
-			"WindowEnclosureEntered",
-			[
-				("Window", "\(fitted.key)"),
-				(
-					"Bounds",
-					"\(Int(fitted.value.bounds.left)),\(Int(fitted.value.bounds.top)),\(Int(fitted.value.bounds.right)),\(Int(fitted.value.bounds.bottom))"
-				),
-				("Velocity", String(format: "%.0f,%.0f", velocityX, velocityY)),
-			]
-		)
-		return true
-	}
-
-	/// A standable surface between her feet and the box's floor: something inside the
-	/// box she would come down on, rather than fall past to its floor.
-	///
-	/// **One question, asked at both ends of a box's life.** Entry refuses a box that
-	/// has one, so she is not swallowed while a ledge is under her; the descent inside
-	/// the box leaves for that same ledge. Sharing the helper is what keeps the two from
-	/// disagreeing about which surfaces count and how far down the box reaches.
-	///
-	/// The floor is the window's own bottom edge, not one pulled in with the walls
-	/// (``WindowEnclosurePhysics/walls(of:inset:)``) — the feet rest on the edge itself.
-	private func landingInsideTheBox(footX: Double, box: PixelRect) -> Surface? {
-		surfaceProvider.landingSurface(
-			footX: footX,
-			fromY: foot.y,
-			toY: box.bottom - WindowEnclosurePhysics.wallInset * displayScale,
-			inset: Motion.landingInset
-		)
-	}
-
-	/// Leaves the box without deciding what happens next.
-	private func surrenderEnclosure(reason: String) {
-		guard let current = enclosure else { return }
-		enclosure = nil
-		movementPurpose = .unset
-		boxGrowthGate.reset()
-		DiagnosticsLog.shared.writeEvent(
-			"WindowEnclosureReleased",
-			[("Window", "\(current.windowID)"), ("Reason", reason)]
-		)
-	}
-
-	/// Leaves the box to go and eat, through whichever wall faces the food.
-	private func releaseEnclosureForMeal(target: PixelPoint) {
-		guard let current = enclosure else { return }
-		let body = bodyRect()
-		let deltaX = target.x - body.centerX
-		let deltaY = target.y - body.centerY
-		let exitSide =
-			abs(deltaX) >= abs(deltaY)
-			? (deltaX < 0 ? "Left" : "Right")
-			: (deltaY < 0 ? "Top" : "Bottom")
-		surrenderEnclosure(reason: "MealEscape")
-		DiagnosticsLog.shared.writeEvent(
-			"WindowEnclosureMealEscape",
-			[
-				("Window", "\(current.windowID)"),
-				("ExitSide", exitSide),
-				("Target", "\(Int(target.x)),\(Int(target.y))"),
-			]
-		)
-	}
-
-	// MARK: - Window side impact
-
-	/// A window's left or right edge sweeping sideways through her body throws her
-	/// clear of it, rather than passing through her.
-	private func updateWindowSideCollisions() {
-		let version = surfaceProvider.bodyRefreshVersion
-		guard version != processedBodyRefreshVersion else { return }
-		processedBodyRefreshVersion = version
-
-		guard enclosure == nil, !isDragging, state != .dragging, sideImpactCooldown <= 0
-		else { return }
-
-		let elapsed = surfaceProvider.bodySampleElapsed
-		let body = bodyRect()
-		var strongest: (id: UInt32, impact: WindowSideImpact)?
-
-		for (windowID, current) in surfaceProvider.windowBodies {
-			guard current.isEnclosureCandidate else { continue }
-			guard let previous = surfaceProvider.previousWindowBodies[windowID],
-				previous.isEnclosureCandidate
-			else { continue }
-			guard
-				let impact = WindowSideCollisionPolicy.resolve(
-					previous: previous.bounds,
-					current: current.bounds,
-					pet: body,
-					elapsedSeconds: elapsed,
-					scale: displayScale
-				)
-			else { continue }
-			if strongest == nil
-				|| abs(impact.edgeVelocityX) > abs(strongest!.impact.edgeVelocityX)
-			{
-				strongest = (windowID, impact)
-			}
-		}
-
-		guard let strongest else { return }
-		sideImpactCooldown = Self.sideImpactCooldownSeconds
-		ignoredLandingWindow = strongest.id
-		ignoredLandingSeconds = Self.sideImpactLandingGraceSeconds
-		DiagnosticsLog.shared.writeEvent(
-			"WindowSideImpact",
-			[
-				("Window", "\(strongest.id)"),
-				("Direction", "\(strongest.impact.direction)"),
-				("EdgeVelocityX", String(format: "%.0f", strongest.impact.edgeVelocityX)),
-				("PetVelocityX", String(format: "%.0f", strongest.impact.petVelocityX)),
-				("PetVelocityY", String(format: "%.0f", strongest.impact.petVelocityY)),
-			]
-		)
-		announce(.platformLaunch, voice: .scream, priority: .critical)
-		beginFall(
-			reason: "WindowSideImpact",
-			initialVelocityY: strongest.impact.petVelocityY,
-			initialVelocityX: strongest.impact.petVelocityX
-		)
-	}
-
-	private static let sideImpactCooldownSeconds: Double = 0.32
-	private static let sideImpactLandingGraceSeconds: Double = 0.48
-
 	// MARK: - State dispatch
 
 	/// The single way she leaves one state for another.
@@ -1265,7 +809,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	///     `.none` resolves to `Optional.none` and compiles.
 	///   - transientSeconds: how long a one-shot state (`landing`, `curious`,
 	///     `satisfied`, `rolling`) lasts before it falls back to idle.
-	private func enter(
+	func enter(
 		_ next: PetState,
 		clip: String? = nil,
 		purpose: MovementPurpose? = nil,
@@ -1306,1766 +850,29 @@ public final class PetController: SpriteAnimatorDelegate {
 	}
 
 	/// Her mouth and lick point, which are what actually reach the target.
-	private var mouthPoint: PixelPoint {
+	var mouthPoint: PixelPoint {
 		screenPoint(
 			canvasX: profile.geometry.mouthCanvasX,
 			canvasY: profile.geometry.mouthCanvasY
 		)
 	}
 
-	private var lickPoint: PixelPoint {
+	var lickPoint: PixelPoint {
 		screenPoint(
 			canvasX: profile.geometry.lickContactCanvasX,
 			canvasY: profile.geometry.lickContactCanvasY
 		)
 	}
 
-	/// Accepts deleted items, subject to the mode and queue limits, then starts
-	/// eating if she is free.
-	@discardableResult
-	public func enqueueMeals(_ items: [DeletedItem]) -> Int {
-		guard profile.supportsFood, PetModePolicy.allowsDeletionMeal(quietMode: quietMode) else {
-			return 0
-		}
-
-		var acceptedItems: [DeletedItem] = []
-		let hadMealsPending = activeMeal != nil || !mealQueue.isEmpty
-		for item in items {
-			guard
-				MealQueuePolicy.canAcceptDeletion(
-					queuedCount: mealQueue.count,
-					hasActiveDeletionMeal: activeMeal != nil
-				)
-			else {
-				DiagnosticsLog.shared.writeEvent("MealQueueFull", [("Dropped", "1")])
-				break
-			}
-			mealQueue.enqueue(item)
-			acceptedItems.append(item)
-		}
-		guard !acceptedItems.isEmpty else { return 0 }
-
-		if burstTracker.register(detectedAt: Date()) {
-			announce(.buffet, voice: .positive, priority: .important)
-		} else if hadMealsPending {
-			announce(.mealQueueContinues, voice: .positive, priority: .normal)
-		} else {
-			announce(.mealSpotted, voice: .question, priority: .normal)
-		}
-
-		// Their icons go up straight away, whether or not she can set off now.
-		mealDelegate?.petController(self, didEnqueueMeals: acceptedItems)
-
-		// Being inside a window is no reason to sit out a meal: she leaves through
-		// whichever wall faces the food and runs to it.
-		let escaping = WindowEnclosureBehaviorPolicy.shouldEscapeForMeal(
-			isEnclosed: enclosure != nil,
-			pendingMeals: mealQueue.count
-		)
-		guard activeMeal == nil else { return acceptedItems.count }
-		if escaping {
-			_ = beginNextMeal()
-			return acceptedItems.count
-		}
-		// A meal is not something she sleeps through: she is woken for it. The
-		// other steps she can be interrupted at are the ones she is not already
-		// busy eating in.
-		switch state {
-		case .sleeping:
-			beginWake(forMeal: true)
-		case .waking:
-			wakeForMeal = true
-		case .idle, .curious, .licking:
-			_ = beginNextMeal()
-		case .running where movementPurpose != .meal:
-			_ = beginNextMeal()
-		default:
-			// She cannot leave yet — airborne, mid-clip, on a wall — so she says she
-			// is waiting rather than going silent about the food she just saw.
-			announce(.hungryRequestQueued, voice: .question, priority: .normal)
-		}
-		return acceptedItems.count
-	}
-
-	/// Starts walking to the next queued meal. Returns false when there is none.
-	@discardableResult
-	private func beginNextMeal() -> Bool {
-		guard activeMeal == nil, !quietMode else { return false }
-		guard let item = mealQueue.dequeue() else { return false }
-
-		wakeForMeal = false
-		releaseEnclosureForMeal(target: item.anchor)
-		activeMeal = item
-		targetPoint = item.anchor
-		enter(.running, clip: "run", purpose: .meal)
-		remainderX = 0
-		remainderY = 0
-		mealDelegate?.petController(self, didBeginMeal: item)
-		DiagnosticsLog.shared.writeEvent(
-			"MealRunStarted",
-			[
-				("Name", item.displayName),
-				("Target", "\(Int(item.anchor.x)),\(Int(item.anchor.y))"),
-			]
-		)
-		return true
-	}
-
-	/// Sends her to lick an icon when she is hungry but has nothing to eat.
-	///
-	/// - Parameter ignoringQuietMode: quiet mode is meant to stop this — the original's
-	///   own menu item returns silently when it is on — so nothing that speaks for the
-	///   user passes this. It is for the launch-argument demo, which has been asked for
-	///   explicitly and has no other way to be seen.
-	@discardableResult
-	public func tryBeginIconLick(manual: Bool, ignoringQuietMode: Bool = false) -> Bool {
-		guard profile.supportsFood, ignoringQuietMode || !quietMode else { return false }
-		guard WindowEnclosureBehaviorPolicy.allowsIconLick(isEnclosed: enclosure != nil) else {
-			DiagnosticsLog.shared.writeEvent(
-				"IconLickSuppressedInEnclosure",
-				[("Manual", "\(manual)")]
-			)
-			return false
-		}
-
-		let display = displaySpace.display(containing: foot) ?? displaySpace.displays.first
-		guard let workArea = display?.visibleFrame else { return false }
-		// The real Finder positions when Accessibility allows them; otherwise the
-		// Finder-default layout approximation, which is not where the icons are.
-		let realIcons = desktopIcons?.positions ?? []
-		// Whether these are the real Finder positions decides what she has to say
-		// when the lick finishes; the guessed grid is somewhere to lick, not
-		// something to taste.
-		iconLickUsedRealIcons = !realIcons.isEmpty
-		let candidates =
-			realIcons.isEmpty ? DesktopIconGrid.positions(count: 12, in: workArea) : realIcons
-		guard
-			let target = IconLickTargetSelector.choose(
-				candidates: candidates,
-				origin: lickPoint,
-				randomUnit: Double.random(in: 0..<1, using: &random)
-			)
-		else { return false }
-
-		targetPoint = target
-		enter(.running, clip: "run", purpose: .iconLick)
-		remainderX = 0
-		remainderY = 0
-		announce(
-			manual ? .manualIconLick : .curiousIconLick,
-			voice: manual ? .aggrieved : .question,
-			priority: manual ? .important : .normal
-		)
-		return true
-	}
-
-	/// Walks in two dimensions to a free-standing target (a meal or an icon).
-	private func updateMealRun(_ delta: Double) {
-		let isMeal = movementPurpose == .meal
-		let contact = isMeal ? mouthPoint : lickPoint
-
-		let deltaX = targetPoint.x - contact.x
-		let deltaY = targetPoint.y - contact.y
-		let distance = (deltaX * deltaX + deltaY * deltaY).squareRoot()
-
-		if distance < 18 || stateElapsed > 6.5 {
-			foot.x += deltaX
-			foot.y += deltaY
-			if isMeal {
-				beginChomp()
-			} else {
-				beginLickAnimation()
-			}
-			return
-		}
-
-		let speed =
-			min(max(distance * 3.2, 250), isMeal ? 720 : 640) * displayScale
-			* profile.movementSpeedMultiplier
-		let desiredX = deltaX / distance * speed
-		let desiredY = deltaY / distance * speed
-		let response = min(1, delta * 7.5)
-		velocity.x += (desiredX - velocity.x) * response
-		velocity.y += (desiredY - velocity.y) * response
-
-		let movementX = SubpixelMotion.takeWholePixels(velocity.x * delta, remainder: &remainderX)
-		let movementY = SubpixelMotion.takeWholePixels(velocity.y * delta, remainder: &remainderY)
-		foot.x += Double(movementX)
-		foot.y += Double(movementY)
-		if abs(velocity.x) > 8 { facing = velocity.x < 0 ? -1 : 1 }
-	}
-
-	private func beginChomp() {
-		enter(.chomping, clip: "chomp", facing: 1)
-		remainderX = 0
-		remainderY = 0
-		if let item = activeMeal, !item.exactAnchor {
-			announce(.suction, voice: .positive, priority: .normal)
-		} else if !mealQueue.isEmpty {
-			// Biting into a meal with more still waiting behind it.
-			announce(.anotherBite, voice: .positive, priority: .normal)
-		}
-	}
-
-	private func beginLickAnimation() {
-		enter(.licking, clip: "lick")
-		remainderX = 0
-		remainderY = 0
-	}
-
-	private func beginHungryPlea() {
-		enter(.rolling, clip: "hungry", purpose: MovementPurpose.unset, transientSeconds: 1.6)
-		announce(.hungryRoll, voice: .sad, priority: .important)
-	}
-
-	private func beginRoll() {
-		enter(
-			.rolling,
-			clip: "roll",
-			purpose: MovementPurpose.unset,
-			transientSeconds: animator.durationSeconds
-		)
-		announce(.hungryRoll, voice: .sad, priority: .important)
-	}
-
-	private func reportMealVisual() {
-		guard state == .chomping, let item = activeMeal else { return }
-		let geometry = profile.geometry
-		var visual = MealConsumptionAnimation.visual(
-			elapsed: stateElapsed,
-			from: PixelPoint(x: geometry.mouthCanvasX, y: geometry.mouthCanvasY),
-			to: PixelPoint(
-				x: geometry.suctionMouthCanvasX,
-				y: geometry.suctionMouthCanvasY
-			)
-		)
-		// The path is authored in canvas units; the presenter draws in screen points.
-		visual.center = screenPoint(canvasX: visual.center.x, canvasY: visual.center.y)
-		mealDelegate?.petController(self, didUpdateMeal: item, visual: visual)
-	}
-
-	/// Turns an interrupted meal back into a queued one rather than losing it.
-	///
-	/// `reason` is only for the log: from the outside, a meal she abandoned and a
-	/// meal she never went for look exactly the same.
-	private func requeueActiveMeal(reason: String) {
-		guard let item = activeMeal else { return }
-		mealQueue.requeueAtFront(item)
-		activeMeal = nil
-		mealDelegate?.petController(self, didFinishMeal: item)
-		DiagnosticsLog.shared.writeEvent(
-			"MealRequeued",
-			[("Name", item.displayName), ("Reason", reason)]
-		)
-	}
-
-	/// Drops every meal, in progress and queued, and takes their icons down.
-	///
-	/// `reason` is for the log; unlike an interrupted meal these are not coming
-	/// back, so they are worth telling apart from one that was merely postponed.
-	private func discardAllMeals(reason: String) {
-		var dropped: [DeletedItem] = []
-		if let item = activeMeal {
-			dropped.append(item)
-			activeMeal = nil
-		}
-		while let item = mealQueue.dequeue() {
-			dropped.append(item)
-		}
-		guard !dropped.isEmpty else { return }
-		for item in dropped {
-			mealDelegate?.petController(self, didFinishMeal: item)
-		}
-		DiagnosticsLog.shared.writeEvent(
-			"MealsDiscarded",
-			[("Reason", reason), ("Count", "\(dropped.count)")]
-		)
-	}
-
-	private func completeActiveMeal() {
-		guard let item = activeMeal else { return }
-		activeMeal = nil
-
-		life.registerMeal(
-			path: item.originalPath,
-			nourishment: Double.random(in: 6...14, using: &random)
-		)
-		persistLifeStateQuietly()
-		mealDelegate?.petController(self, didFinishMeal: item)
-
-		let stuffed = LifeBehaviorPolicy.isComfortablyFull(life)
-		announce(
-			stuffed ? .stuffed : .tastedItem,
-			voice: .affirmative,
-			priority: .normal,
-			itemName: item.displayName
-		)
-
-		enter(
-			.satisfied,
-			clip: stuffed ? "satisfied" : "satisfied_quick",
-			purpose: MovementPurpose.unset,
-			transientSeconds: animator.durationSeconds
-		)
-		DiagnosticsLog.shared.writeEvent(
-			"MealCompleted",
-			[
-				("Name", item.displayName),
-				("Hunger", String(format: "%.1f", life.hunger)),
-				("Fullness", String(format: "%.1f", life.fullness)),
-				("Queued", "\(mealQueue.count)"),
-			]
-		)
-	}
-
-	/// What to do once a meal finishes: carry on down the queue, or settle.
-	private func advanceAfterMeal() {
-		if !mealQueue.isEmpty, beginNextMeal() {
-			announce(.feastContinues, voice: .positive, priority: .normal)
-			return
-		}
-		returnToIdle()
-	}
-
-	private func persistLifeStateQuietly() {
+	func persistLifeStateQuietly() {
 		try? lifeStore.save(life)
 	}
 
-	private func returnToIdle() {
+	func returnToIdle() {
 		enter(.idle, clip: "idle", purpose: MovementPurpose.unset)
 		remainderX = 0
 		wakeForMeal = false
 		resetIdleTimer()
-	}
-
-	// MARK: - Ground movement
-
-	/// Starts an autonomous walk.
-	///
-	/// A walk is a chain of legs, and each leg is decided when the previous one ends
-	/// rather than up front: out to an edge ([`edgeLegChance`]), which is where the
-	/// edge decisions — hop, slide, jump off — live, or a stroll to a point she
-	/// settles at, which is what gives the walk an ending at all.
-	///
-	/// The port used to draw a uniform random point from the middle of the run, which
-	/// on a window a thousand points wide lands within reach of an end a few percent
-	/// of the time, so she only ever paced up and down the middle and the edge
-	/// decisions never ran. The original instead targets the ends
-	/// (`ChooseNextPatrolTarget`), which is what makes its edge behaviour visible.
-	@discardableResult
-	private func beginAutonomousWalk(preferClimb: Bool, strollPurpose: MovementPurpose) -> Bool {
-		self.strollPurpose = strollPurpose
-		guard surfaceProvider.support(at: foot) != nil else {
-			beginFall()
-			return false
-		}
-		if beginNextLeg(preferClimb: preferClimb) { return true }
-		returnToIdle()
-		return false
-	}
-
-	/// Decides the next leg of an autonomous walk.
-	///
-	/// Returns false when she cannot walk from here at all, which is a run too short
-	/// to cross rather than anything wrong with her.
-	@discardableResult
-	private func beginNextLeg(preferClimb: Bool = false) -> Bool {
-		let looksForClimb = preferClimb || Double.random(in: 0..<1, using: &random) < 0.34
-		if looksForClimb, tryBeginClimb() { return true }
-		if rollIsEdgeLeg(), beginPatrolLeg() { return true }
-		return beginStroll(purpose: strollPurpose)
-	}
-
-	private func rollIsEdgeLeg() -> Bool {
-		debugForcedEdgeLeg
-			?? (Double.random(in: 0..<1, using: &random) < Self.edgeLegChance)
-	}
-
-	/// Walks her to the far end of her run, where the edge decisions happen.
-	private func beginPatrolLeg() -> Bool {
-		guard let next = nextPatrolTargetX() else { return false }
-		targetX = next
-		enter(.running, clip: "walk", purpose: .patrol, facing: patrolDirection)
-		remainderX = 0
-		patrolNeedCheckRemaining = LifeBehaviorPolicy.patrolNeedCheckSeconds
-		DiagnosticsLog.shared.writeEvent(
-			"PatrolStarted",
-			[
-				("TargetX", "\(Int(targetX))"),
-				("Support", perchSurface?.key.kind.rawValue ?? "none"),
-			]
-		)
-		return true
-	}
-
-	/// Walks her to a point she then settles at rather than walking on from.
-	///
-	/// This is the original's menu walk (`StartGroundMove`), the only one it has that
-	/// ends somewhere other than an edge.
-	private func beginStroll(purpose: MovementPurpose) -> Bool {
-		guard let next = nextStrollTargetX() else { return false }
-		targetX = next
-		enter(.running, clip: "walk", purpose: purpose, facing: next < foot.x ? -1 : 1)
-		remainderX = 0
-		DiagnosticsLog.shared.writeEvent(
-			"StrollStarted",
-			[
-				("Purpose", purpose.rawValue),
-				("TargetX", "\(Int(targetX))"),
-			]
-		)
-		return true
-	}
-
-	/// The far end she should walk to now, or nil when her run is too short to cross.
-	private func nextPatrolTargetX() -> Double? {
-		guard let run = currentRun() else { return nil }
-		let margin = patrolStopMargin
-		let minimumX = run.start + margin
-		let maximumX = run.end - margin
-		guard maximumX - minimumX >= 42 else { return nil }
-
-		if patrolDirection == 0 {
-			patrolDirection = Double.random(in: 0..<1, using: &random) < 0.5 ? -1 : 1
-		}
-		var next = patrolDirection < 0 ? minimumX : maximumX
-		// Setting out for the end she is already at would be a walk of zero length.
-		if abs(next - foot.x) < 20 {
-			patrolDirection *= -1
-			next = patrolDirection < 0 ? minimumX : maximumX
-		}
-		return next
-	}
-
-	/// A stroll's destination: a drawn distance in a drawn direction, away from where
-	/// she already is.
-	///
-	/// Drawn rather than picked uniformly along the run, because a uniform point lands
-	/// near her about as often as not, and a stroll that goes nowhere is not a walk
-	/// she can be seen to make.
-	private func nextStrollTargetX() -> Double? {
-		guard let run = currentRun() else { return nil }
-		let margin = patrolStopMargin
-		let minimumX = run.start + margin
-		let maximumX = run.end - margin
-		guard maximumX - minimumX >= 42 else { return nil }
-
-		let travel = Double.random(in: 80...241, using: &random)
-		let direction: Double = Double.random(in: 0..<1, using: &random) < 0.5 ? -1 : 1
-		var next = min(max(foot.x + direction * travel, minimumX), maximumX)
-		// Too close to be a walk: head for the far end instead, as the original does
-		// when its own drawn distance lands on top of her.
-		if abs(next - foot.x) < 36 {
-			let toLeft = abs(minimumX - foot.x)
-			let toRight = abs(maximumX - foot.x)
-			next = toLeft > toRight ? minimumX : maximumX
-		}
-		guard abs(next - foot.x) >= 24 else { return nil }
-		return next
-	}
-
-	/// The stretch of the edge she is standing on, inset to exclude anywhere another
-	/// window hides. Nil when she has no support at all.
-	private func currentRun() -> Span? {
-		guard let surface = surfaceProvider.support(at: foot) else { return nil }
-		return perch.flatMap { surface.visibleRun(containingT: $0.t) } ?? surface.span
-	}
-
-	/// How far short of an end of her run she stops.
-	///
-	/// Scaled off her own width like the original, which measures the pet window
-	/// instead. The arrival is not tested against this: reaching the end is whatever
-	/// this walk decides, so the two cannot disagree about where the end is.
-	private var patrolStopMargin: Double {
-		min(max(petSize * 0.20, 24), 72)
-	}
-
-	/// A pressing need stops the walk she is in the middle of.
-	///
-	/// A patrol runs for minutes — she only turns around at an end — so without this
-	/// she would walk straight through being exhausted or starving: nothing else
-	/// looks at her needs while she is walking. Only the urgent end of each need
-	/// counts, which is why falling asleep mid-walk is rare rather than constant.
-	///
-	/// Returns true when she has been handed off to something else.
-	private func tryInterruptPatrolForNeed() -> Bool {
-		guard !quietMode else { return false }
-
-		// A meal outranks every need above, and was already the one thing allowed to
-		// take her off a walk when it arrived.
-		if beginNextMeal() { return true }
-
-		var available: Set<AutonomousAction> = []
-		func add(_ action: AutonomousAction, _ condition: Bool) {
-			guard condition,
-				PetModePolicy.allowsAutonomousAction(
-					action,
-					fastingMode: fastingMode,
-					quietMode: quietMode
-				),
-				actionReadyAt[action, default: 0] <= elapsedSeconds,
-				LifeBehaviorPolicy.isHungerReactionReady(
-					action,
-					now: elapsedSeconds,
-					nextHungerReactionAt: nextHungerReactionAt
-				)
-			else { return }
-			available.insert(action)
-		}
-		add(.sleep, life.sleepiness >= LifeBehaviorPolicy.sleepInterruptionThreshold)
-		add(.askForFood, life.hunger >= LifeBehaviorPolicy.foodAppealInterruptionThreshold)
-		add(.lickIcon, life.hunger >= LifeBehaviorPolicy.lickInterruptionThreshold)
-		add(.roll, life.hunger >= LifeBehaviorPolicy.rollInterruptionThreshold)
-		guard !available.isEmpty else { return false }
-
-		let action = AutonomousBehaviorPlanner.choose(
-			life: life,
-			hasGroundSupport: true,
-			availableActions: available,
-			randomUnit: Double.random(in: 0..<1, using: &random),
-			profile: profile
-		)
-		// Logged because a walk that stops and a walk that simply has not turned
-		// around yet look identical from outside, and "she was hungry" is the whole
-		// content of the difference.
-		DiagnosticsLog.shared.writeEvent(
-			"PatrolInterrupted",
-			[
-				("Action", action.rawValue),
-				("Hunger", String(format: "%.0f", life.hunger)),
-				("Sleepiness", String(format: "%.0f", life.sleepiness)),
-			]
-		)
-
-		switch action {
-		case .sleep:
-			actionReadyAt[.sleep] = elapsedSeconds + 90
-			beginSleep()
-			return true
-		case .askForFood:
-			actionReadyAt[.askForFood] = elapsedSeconds + 55
-			markHungerReaction()
-			beginHungryPlea()
-			return true
-		case .lickIcon:
-			actionReadyAt[.lickIcon] = elapsedSeconds + 55
-			markHungerReaction()
-			if tryBeginIconLick(manual: false) { return true }
-			// No icon she can reach: she rolls on the spot instead, as the original
-			// does rather than resuming the walk.
-			beginRoll()
-			return true
-		case .roll:
-			actionReadyAt[.roll] = elapsedSeconds + 42
-			markHungerReaction()
-			beginRoll()
-			return true
-		default:
-			return false
-		}
-	}
-
-	/// The hunger-driven actions share one cooldown, so she does not run through
-	/// pleading, licking and rolling back to back.
-	private func markHungerReaction() {
-		nextHungerReactionAt =
-			elapsedSeconds + LifeBehaviorPolicy.hungerReactionCooldownSeconds
-	}
-
-	private func updateRunning(_ delta: Double) {
-		// A meal or an icon lick is a free-standing two-dimensional walk.
-		if movementPurpose == .meal || movementPurpose == .iconLick {
-			updateMealRun(delta)
-			return
-		}
-
-		// A patrol lasts as long as it takes to cross the surface, which is minutes
-		// on a wide window. Without this she would walk through being exhausted or
-		// starving, because nothing else asks during a walk.
-		if movementPurpose == .patrol {
-			patrolNeedCheckRemaining -= delta
-			if patrolNeedCheckRemaining <= 0 {
-				patrolNeedCheckRemaining = LifeBehaviorPolicy.patrolNeedCheckSeconds
-				if tryInterruptPatrolForNeed() { return }
-			}
-		}
-
-		guard let surface = perchSurface, let perched = perch,
-			let run = surface.visibleRun(containingT: perched.t)
-		else {
-			beginFall()
-			return
-		}
-
-		// Her feet are already on the ledge: the ride snaps her to it every frame,
-		// so nothing further is needed here for vertical movement.
-		targetX = min(max(targetX, run.start + 20), run.end - 20)
-		let deltaX = targetX - foot.x
-		// No give-up timeout: a walk that reaches for a window's edge can be long, and
-		// bounding it would teleport her the rest of the way instead of finishing it.
-		if abs(deltaX) <= Motion.arrivalTolerance {
-			foot.x += deltaX
-			finishGroundMove()
-			return
-		}
-
-		let speed =
-			(movementPurpose.usesExplorePace ? Motion.exploreSpeed : Motion.walkSpeed)
-			* displayScale * profile.movementSpeedMultiplier
-		let desiredVelocity = (deltaX < 0 ? -1.0 : 1.0) * speed
-		velocity.x += (desiredVelocity - velocity.x) * min(1, delta * Motion.groundResponse)
-
-		var movementX = SubpixelMotion.takeWholePixels(velocity.x * delta, remainder: &remainderX)
-		if Double(abs(movementX)) > abs(deltaX) {
-			movementX = Int(deltaX.rounded())
-		}
-		foot.x += Double(movementX)
-		// Fold her own walking back into the anchor, so the next tick's ride starts
-		// from where she actually is.
-		self.perch?.t = surface.t(atCoordinate: foot.x)
-		facing = deltaX < 0 ? -1 : 1
-	}
-
-	/// States in which the pet is on the ground and should therefore ride whatever
-	/// she is standing on.
-	///
-	/// Excluded on purpose: airborne and user-carried states; the scripted climb;
-	/// the free-standing walks to a meal or an icon, which leave the surface
-	/// behind and would otherwise be mistaken for a lost support; and the eating
-	/// poses, which happen wherever the food was.
-	private var ridesSupport: Bool {
-		if movementPurpose == .meal || movementPurpose == .iconLick { return false }
-		switch state {
-		case .falling, .climbing, .dragging, .pinching,
-			.chomping, .licking, .satisfied, .rolling, .waking:
-			return false
-		default:
-			return true
-		}
-	}
-
-	/// Keeps her attached to her support: follows it, is released by it, or falls
-	/// when it goes away.
-	private func maintainGroundSupport(_ delta: Double) {
-		guard ridesSupport else { return }
-
-		guard let perch else {
-			acquirePerch()
-			return
-		}
-
-		// She has left the edge she was anchored to: a walk to a meal or an icon
-		// moves her feet off the surface without ever going through `beginFall`, so
-		// the ride would otherwise write her back onto it. `lastPerchOffset` is where
-		// the ride last put her, which is what makes this a question about her own
-		// movement — a surface carrying her along reads as no drift at all, however
-		// fast it is dragged.
-		if let lastPerchOffset, abs(foot.y - lastPerchOffset) > Motion.perchDriftTolerance {
-			guard let nearby = surfaceProvider.support(at: foot) else {
-				handlePerchLost(delta: delta, reason: "off-perch")
-				return
-			}
-			DiagnosticsLog.shared.writeEvent(
-				"PerchReanchored",
-				[
-					("From", "\(perch.key.kind.rawValue):\(perch.key.owner)"),
-					("To", "\(nearby.key.kind.rawValue):\(nearby.key.owner)"),
-					("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
-				]
-			)
-			perchUnavailableSeconds = 0
-			isInPerchGrace = false
-			adopt(nearby)
-			// Returned rather than falling through: `perch` is the edge she just left,
-			// and the ride at the end of this function would put her back on it.
-			return
-		}
-
-		// A missing, unreachable, or now-covered spot is a lost perch. The grace
-		// covers a window that briefly vanishes from the window server's list. Each
-		// condition is told apart here because they mean different things when a perch
-		// is lost unexpectedly.
-		guard let surface = currentSurface(for: perch) else {
-			handlePerchLost(delta: delta, reason: "surface-gone")
-			return
-		}
-		guard surface.isReachable else {
-			handlePerchLost(delta: delta, reason: "unreachable")
-			return
-		}
-		guard isPerchSpotVisible(perch) else {
-			// Logged with the graph's own answer, because "covered" is the one perch
-			// failure that cannot be seen from the outside: she is drawn over everything,
-			// so a spot the graph calls covered and a spot nothing covers look identical
-			// on screen. The runs and the windows in front are the only way to tell which
-			// window the graph thinks is over her, and whether the edge it measured is the
-			// one she is actually on.
-			DiagnosticsLog.shared.writeEvent(
-				"PerchCovered",
-				[
-					("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
-					("PerchT", String(format: "%.3f", perch.t)),
-					("GraphTop", String(format: "%.1f", lastPerchOffset ?? -1)),
-					("GraphSpan", Self.describe(surfaceProvider.surfaces, id: perch.key.owner)),
-					("InFront", Self.describeBodies(surfaceProvider, inFrontOf: perch.key.owner)),
-				]
-			)
-			handlePerchLost(delta: delta, reason: "covered")
-			return
-		}
-
-		perchUnavailableSeconds = 0
-		isInPerchGrace = false
-		perchSurface = surface
-
-		// The one explicit release rule: a surface that moves further than
-		// `releaseDisplacement` in a single tick is yanked out from under her.
-		let displacement = lastPerchOffset.map { surface.offset - $0 } ?? 0
-		lastPerchOffset = surface.offset
-
-		if abs(displacement) >= PlatformRidePhysics.releaseDisplacement {
-			let velocityY = displacement / max(delta, 1.0 / 240)
-			let upward = displacement < 0
-			logRide(
-				upward ? .launchUpward : .releaseDownward,
-				displacement: displacement,
-				velocityY: velocityY,
-				surface: surface
-			)
-			releasePerch()
-			// The window moved out from under her rather than her being thrown by
-			// the user, so it is worth following for a moment: a ledge rising faster
-			// than she flies would otherwise overtake her, swallow her, and drop her
-			// past itself to the floor. Captured before `beginFall`, which clears it
-			// for every other reason.
-			let yankedWindowID = surface.key.kind == .windowTop ? surface.key.owner : nil
-			if upward {
-				// Thrown up, inheriting a fraction of the surface's speed.
-				let initial = min(max(velocityY * 0.88, -1150 * displayScale), -300 * displayScale)
-				DiagnosticsLog.shared.writeEvent(
-					"PlatformLaunch",
-					[
-						("PetVelocityY", String(format: "%.0f", initial))
-					]
-				)
-				announce(.platformLaunch, voice: .scream, priority: .critical)
-				beginFall(reason: "PlatformLaunch", initialVelocityY: initial)
-			} else {
-				// Left behind rather than thrown down: she falls from rest and lands
-				// on the ledge as it comes back up.
-				beginFall(reason: "PlatformDownwardRelease")
-			}
-			airborneSupportWindowID = yankedWindowID
-			airborneSupportTop = surface.offset
-			return
-		}
-
-		if abs(displacement) >= 0.5 {
-			logRide(
-				.follow,
-				displacement: displacement,
-				velocityY: displacement / max(delta, 1.0 / 240),
-				surface: surface
-			)
-		}
-
-		// The ledge carries her, whether she is walking, standing or asleep.
-		foot = perch.position(in: surface)
-	}
-
-	private func logRide(
-		_ response: PlatformMotionResponse,
-		displacement: Double,
-		velocityY: Double,
-		surface: Surface
-	) {
-		guard perchLogGate.emits(response) else { return }
-		DiagnosticsLog.shared.writeEvent(
-			"PlatformRide",
-			[
-				("Response", "\(response)"),
-				("DisplacementY", String(format: "%.1f", displacement)),
-				("VelocityY", String(format: "%.0f", velocityY)),
-				("Top", String(format: "%.1f", surface.offset)),
-				("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
-			]
-		)
-	}
-
-	/// The window's top edge as it is right now.
-	///
-	/// The graph lags by up to half a second, which is the difference between
-	/// riding a window and being punched through it, so anything that has to know
-	/// where a window *is* reads it here — the same single-window query throughout.
-	///
-	/// Where it is still leaves open whether it is hers to stand on: a window of a
-	/// desk she has switched away from keeps every one of its edges. See
-	/// ``SurfaceProvider/isOnThisDesktop(_:)``.
-	private func liveSurface(of windowID: UInt32) -> Surface? {
-		if let debugLiveWindowSurfaceOverride { return debugLiveWindowSurfaceOverride(windowID) }
-		return WindowSurfaceProvider.liveWindowSurface(
-			windowID: windowID,
-			monitors: displaySpace.displays,
-			isOnThisDesktop: surfaceProvider.isOnThisDesktop(windowID)
-		)
-	}
-
-	/// The surface a perch points at, read fresh.
-	///
-	/// A window is resolved **by identity** from the window server, never by
-	/// proximity: a dragged window leaves a proximity lookup behind within a frame,
-	/// which would read as losing her support instead of riding it. The live read
-	/// also comes first because the graph lags by up to half a second. A floor never
-	/// moves, so the graph is the truth for it.
-	private func currentSurface(for perch: Perch) -> Surface? {
-		switch perch.key.kind {
-		case .windowTop:
-			// The live read gives the drag its precision; the graph is the authority
-			// on whether the surface still exists at all.
-			return liveSurface(of: perch.key.owner)
-				?? surfaceProvider.surfaces.first { $0.key == perch.key }
-		default:
-			return surfaceProvider.surfaces.first { $0.key == perch.key }
-		}
-	}
-
-	/// Whether the graph says a spot on an edge is clear of anything in front of it.
-	///
-	/// A live read cannot answer this: it reports the whole edge and does not recompute
-	/// occlusion, so it would call every spot clear.
-	private func isSpotVisible(
-		for key: SurfaceKey,
-		atCoordinate x: Double,
-		inset: Double
-	) -> Bool {
-		// Not in the graph yet (a window that just appeared). Nothing says it is
-		// covered, so let her stand until the next rebuild decides.
-		guard let graphSurface = surfaceProvider.surfaces.first(where: { $0.key == key })
-		else { return true }
-		return graphSurface.isVisible(atCoordinate: x, inset: inset)
-	}
-
-	/// The graph's own description of one window's edges: where it is, its span, and the
-	/// parts the graph believes are not covered.
-	private static func describe(_ surfaces: [Surface], id: UInt32) -> String {
-		guard let surface = surfaces.first(where: { $0.key == SurfaceKey(owner: id, kind: .windowTop) })
-		else { return "absent" }
-		let runs = surface.visible
-			.map { "\(Int($0.start))-\(Int($0.end))" }
-			.joined(separator: ",")
-		return
-			"top=\(Int(surface.offset)) span=\(Int(surface.span.start))-\(Int(surface.span.end)) visible=[\(runs)]"
-	}
-
-	/// Which windows the body sample puts in front of `owner`, and where they are.
-	///
-	/// The body sample is what the occlusion *policy* consults, and it runs at 10 Hz
-	/// against the graph's 2 Hz, so the two can disagree about the same moment.
-	private static func describeBodies(_ provider: SurfaceProvider, inFrontOf owner: UInt32) -> String
-	{
-		guard let host = provider.windowBodies[owner] else { return "owner-absent" }
-		let front = provider.windowBodies
-			.filter { $0.key != owner && $0.value.zIndex < host.zIndex }
-			.map {
-				"\($0.key)@\(Int($0.value.bounds.left)),\(Int($0.value.bounds.top)) \(Int($0.value.bounds.width))x\(Int($0.value.bounds.height))"
-			}
-		return front.isEmpty ? "none" : front.joined(separator: " ")
-	}
-
-	/// Whether the spot she is anchored to is not covered by another window.
-	///
-	/// Asked of the **graph**, never of the live read: the live read only reports the
-	/// window's rectangle, so it would call every spot visible and she would happily
-	/// keep standing on an edge another window had just covered.
-	///
-	/// Asked at her **world** position rather than at the perch's `t` mapped onto this
-	/// surface. `t` is taken from whichever surface she landed on, and the live read and
-	/// the graph can disagree about a window's span — a window dragged sideways has a
-	/// different one in each — so mapping it here would ask about a point she is not
-	/// standing on, and answer "covered" for a spot that is clear.
-	private func isPerchSpotVisible(_ perch: Perch) -> Bool {
-		guard let graphSurface = surfaceProvider.surfaces.first(where: { $0.key == perch.key })
-		else {
-			// Not in the graph yet (a window that just appeared). Nothing says it is
-			// covered, so let her stand until the next rebuild decides.
-			return true
-		}
-		return graphSurface.isVisible(atCoordinate: foot.x)
-	}
-
-	/// Picks up a perch for wherever her feet are, or starts a fall.
-	private func acquirePerch() {
-		guard let surface = surfaceProvider.support(at: foot) else {
-			beginFall()
-			return
-		}
-		adopt(surface)
-	}
-
-	/// Anchors her to a surface, working out `t` from her feet.
-	private func adopt(_ surface: Surface) {
-		let perch = Perch.at(foot, on: surface)
-		self.perch = perch
-		perchSurface = surface
-		lastPerchOffset = surface.offset
-		perchLogGate.reset()
-		foot = perch.position(in: surface)
-	}
-
-	private func releasePerch() {
-		perch = nil
-		perchSurface = nil
-		lastPerchOffset = nil
-		perchLogGate.reset()
-	}
-
-	/// Her perch is gone: the surface vanished, became unreachable, or she is over
-	/// a part of it another window now hides. Held briefly while the grace lasts,
-	/// because a dragged window can blink out of the window server's list.
-	/// - Parameter reason: which condition failed. A perch that goes unexpectedly is
-	///   otherwise indistinguishable from one that was covered, vanished, or went out
-	///   of reach, and the three have different causes.
-	private func handlePerchLost(delta: Double, reason: String) {
-		perchUnavailableSeconds += delta
-
-		// The grace is for a dragged window blinking out of the window server's list
-		// for a moment. A floor is a property of the display and cannot blink, so
-		// holding her over one would only postpone a fall that is already due.
-		if perch?.key.kind != .floor,
-			PlatformRidePhysics.shouldPreserveTransientSupport(
-				unavailableSeconds: perchUnavailableSeconds
-			)
-		{
-			// Logged once per grace period rather than every frame.
-			if !isInPerchGrace {
-				isInPerchGrace = true
-				DiagnosticsLog.shared.writeEvent(
-					"PlatformSupportGrace",
-					[
-						("Footnote", "\(Int(foot.x)),\(Int(foot.y))"),
-						("Top", lastPerchOffset.map { String(format: "%.1f", $0) } ?? "none"),
-						("Reason", reason),
-					]
-				)
-			}
-			return
-		}
-
-		releasePerch()
-		beginFall()
-	}
-
-	private func finishGroundMove() {
-		let surface = surfaceProvider.support(at: foot)
-
-		// Climb and descent approaches hand off to their own routines.
-		if movementPurpose == .climbApproach, let pendingClimb {
-			beginClimb(pendingClimb)
-			return
-		}
-		if movementPurpose == .edgeSlideApproach, let surface {
-			beginSlideDown(from: surface)
-			return
-		}
-		if movementPurpose == .edgeJumpApproach {
-			beginJumpDown()
-			return
-		}
-
-		// She arrives at an end of the run, which is the only place an edge action
-		// is decided. With no action to take — the draw said to turn around, or the
-		// wait before another one has not elapsed — the rest of the walk is decided
-		// afresh rather than turning back out of habit.
-		if movementPurpose == .patrol {
-			if let surface, let action = terrainEdgeAction(at: surface) {
-				switch action {
-				case .hop:
-					// Backwards off the desktop floor, forwards off a window — the
-					// original's rule, and the reason the floor hop looks like a start.
-					let direction = surface.key.kind == .floor ? -patrolDirection : patrolDirection
-					beginHop(direction: direction < 0 ? -1 : 1)
-					return
-				case .slideDown:
-					beginSlideDown(from: surface)
-					return
-				case .jumpDown:
-					beginJumpDown()
-					return
-				case .turnAround:
-					break
-				}
-			}
-			patrolDirection *= -1
-			if beginNextLeg() { return }
-			returnToIdle()
-			return
-		}
-
-		enter(.curious, clip: "curious", purpose: MovementPurpose.unset, transientSeconds: 0.9)
-		remainderX = 0
-	}
-
-	/// The edge action she takes on reaching the end of her run, or nil when the draw
-	/// says to turn around or the cooldown is still running.
-	private func terrainEdgeAction(at surface: Surface) -> TerrainEdgeAction? {
-		guard terrainActionCooldown <= 0 else { return nil }
-		let action =
-			debugForcedTerrainEdgeAction
-			?? TerrainBehaviorPlanner.chooseAtEdge(
-				isDesktopFloor: surface.key.kind == .floor,
-				randomUnit: Double.random(in: 0..<1, using: &random)
-			)
-		guard action != .turnAround else { return nil }
-		terrainActionCooldown = Self.terrainActionInterval
-		// Logged because a hop and a turn-around look the same until she leaves the
-		// ground, and what she chose is not otherwise recoverable.
-		DiagnosticsLog.shared.writeEvent(
-			"TerrainEdgeActionChosen",
-			[
-				("Action", "\(action)"),
-				("Support", surface.key.kind.rawValue),
-				("Direction", "\(Int(patrolDirection))"),
-			]
-		)
-		return action
-	}
-
-	// MARK: - Falling
-
-	/// The single way into the airborne state.
-	///
-	/// Everything that leaves the ground must come through here, because this is
-	/// what clears the perch: a perch is resolved *by identity*, so a stale one
-	/// would pull her back to its edge the moment she landed somewhere else.
-	private func beginFall(
-		reason: String = "support-lost",
-		initialVelocityY: Double = 0,
-		initialVelocityX: Double = 0,
-		clip: String? = nil,
-		purpose: MovementPurpose? = nil
-	) {
-		enter(
-			.falling,
-			purpose: purpose,
-			velocity: PixelPoint(x: initialVelocityX, y: initialVelocityY)
-		)
-		fallReason = reason
-		fallStartFootY = foot.y
-		fallRefreshRemaining = 0
-		lastFallRefreshFootY = foot.y
-		fallTickCount = 0
-		fallRefreshCount = 0
-		remainderX = 0
-		remainderY = 0
-		// Only a window that moved out from under her is worth following: a throw by
-		// the user has put her somewhere else on purpose, and a catch-up would pin
-		// her to the window she was dragged off.
-		switch reason {
-		case "PlatformLaunch", "PlatformDownwardRelease":
-			airborneSupportWindowID =
-				perch.flatMap { $0.key.kind == .windowTop ? $0.key.owner : nil }
-			airborneSupportTop = perchSurface?.offset
-		default:
-			airborneSupportWindowID = nil
-			airborneSupportTop = nil
-		}
-		// The catcher is discovered rather than inherited, so it is cleared and picked
-		// afresh: the graph is rebuilt on the first falling frame anyway.
-		catcherWindowID = nil
-		catcherTop = nil
-		caughtLogGate.reset()
-		refreshAirborneCatcher()
-		// She is airborne, so nothing holds her: the perch is dropped so a stale
-		// surface cannot pull her back to its edge when she lands.
-		//
-		// Logged because a fall is the only way she leaves the ground, so when she
-		// ends up somewhere unexpected this is the one record of why. Without it the
-		// log shows a state change to falling and nothing about the cause.
-		let from = perchSurface?.key
-		DiagnosticsLog.shared.writeEvent(
-			"FallStarted",
-			[
-				("Reason", reason),
-				("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
-				("Velocity", String(format: "%.0f,%.0f", initialVelocityX, initialVelocityY)),
-				("From", from.map { "\($0.kind.rawValue):\($0.owner)" } ?? "none"),
-				("State", state.rawValue),
-			]
-		)
-		releasePerch()
-		animator.play(clip ?? (initialVelocityY < 0 ? "toss" : "fall"))
-	}
-
-	private func refreshForFalling(_ delta: Double) {
-		fallRefreshRemaining -= delta
-		let needsTimeRefresh = fallRefreshRemaining <= 0
-		let needsDistanceRefresh =
-			abs(foot.y - lastFallRefreshFootY) >= fallRefreshDistance * displayScale
-		guard needsTimeRefresh || needsDistanceRefresh else { return }
-		surfaceProvider.refresh(displaySpace: displaySpace)
-		fallRefreshRemaining = fallRefreshInterval
-		lastFallRefreshFootY = foot.y
-		fallRefreshCount += 1
-	}
-
-	/// Picks the window she would land on next.
-	///
-	/// Chosen from the **body sample** rather than the graph. The sample runs at 10 Hz
-	/// against the graph's 4, and what matters here is not where a window is — the live
-	/// read answers that — but *which* window it is, and a window dragged at 2000 pt/s
-	/// covers five hundred points between two graph rebuilds. That is enough to choose the
-	/// wrong one, and choosing wrong lets her fall straight through the right one.
-	///
-	/// The one nearest her feet, on either side of them. A window that has just come up
-	/// past them is the one that has just caught her, so it must not be dropped on that
-	/// frame — which is exactly what "the nearest one below" would do, and it would let
-	/// her through on the very frame the catch was due.
-	private func refreshAirborneCatcher() {
-		guard state == .falling else { return }
-		let inset = Motion.landingInset
-		let nearest = surfaceProvider.windowBodies
-			.filter { _, body in
-				body.bounds.left + inset <= foot.x && foot.x <= body.bounds.right - inset
-					&& displaySpace.displays.contains {
-						body.bounds.top >= $0.visibleFrame.top
-							&& body.bounds.top < $0.visibleFrame.bottom
-					}
-			}
-			.min { abs($0.value.bounds.top - foot.y) < abs($1.value.bounds.top - foot.y) }
-
-		// The baseline is kept when it is still the same window, because the speed it
-		// is rising at is measured from two consecutive readings and the sample runs ten
-		// times a second — resetting here would mean never having two.
-		if let nearest, nearest.key != catcherWindowID {
-			catcherWindowID = nearest.key
-			catcherTop = nil
-		} else if nearest == nil {
-			catcherWindowID = nil
-			catcherTop = nil
-		}
-	}
-
-	/// A leap that goes sideways as well as up, so she can cross a gap onto a
-	/// neighbouring surface. `nil` picks a direction at random, which is what the
-	/// original does for a hop she chose herself; a hop at an edge goes the way she
-	/// was already walking.
-	private func beginHop(direction: Int? = nil) {
-		let direction =
-			direction ?? (Double.random(in: 0..<1, using: &random) < 0.5 ? -1 : 1)
-		beginFall(
-			reason: "TerrainHop",
-			initialVelocityY: -Motion.hopVelocityY * displayScale,
-			initialVelocityX: Double(direction) * Motion.hopVelocityX * displayScale,
-			clip: "jump",
-			purpose: .wander
-		)
-		announce(.terrainHop, voice: .positive, priority: .ambient)
-	}
-
-	private func updateFalling(_ delta: Double) {
-		fallTickCount += 1
-		// Every frame, because the choice is made from the body sample and not from the
-		// graph: it is a filter over the windows already sampled for the collision pass.
-		refreshAirborneCatcher()
-		let scale = displayScale
-		velocity.x *= exp(-Motion.horizontalAirDrag * delta)
-		velocity.y = min(
-			Motion.terminalVelocity * scale,
-			velocity.y + Motion.gravity * scale * delta
-		)
-
-		// The toss sheet covers the rising half; the fall sheet the rest.
-		if velocity.y >= 0, animator.currentClip == "toss" {
-			animator.play("fall")
-		}
-
-		var movementX = SubpixelMotion.takeWholePixels(velocity.x * delta, remainder: &remainderX)
-		let movementY = SubpixelMotion.takeWholePixels(velocity.y * delta, remainder: &remainderY)
-		var nextFootX = foot.x + Double(movementX)
-		let nextFootY = foot.y + Double(movementY)
-
-		if let display = displaySpace.display(containing: PixelPoint(x: nextFootX, y: nextFootY)) {
-			let correction = AirborneBoundaryPolicy.resolveHorizontal(
-				proposedFootX: nextFootX,
-				velocityX: velocity.x,
-				monitorLeft: display.frame.left,
-				monitorRight: display.frame.right,
-				margin: Motion.boundaryMargin * display.scale
-			)
-			if correction.corrected {
-				velocity.x = correction.velocityX
-				movementX = Int((correction.nextFootX - foot.x).rounded())
-				nextFootX = foot.x + Double(movementX)
-				remainderX = 0
-			}
-		}
-
-		if resolveAirborneSupport(footX: nextFootX, delta: delta) {
-			// She is back on the edge she was thrown from, so this frame's fall is
-			// discarded rather than applied and then corrected.
-			foot.x = nextFootX
-			applyCeiling()
-			if abs(velocity.x) > 8 { facing = velocity.x < 0 ? -1 : 1 }
-			return
-		}
-
-		if movementY > 0 {
-			let graphLanding = surfaceProvider.landingSurface(
-				footX: nextFootX,
-				fromY: foot.y,
-				toY: nextFootY,
-				inset: Motion.landingInset
-			)
-			.flatMap { isLandingIgnored($0) ? nil : $0 }
-			if let landing = firstLanding(
-				live: catcherLanding(footX: nextFootX, reachedY: nextFootY),
-				graph: graphLanding
-			) {
-				// Logged because the two candidates disagree when the graph is stale, and
-				// which of them landed her is not otherwise recoverable afterwards.
-				DiagnosticsLog.shared.writeEvent(
-					"Landed",
-					[
-						("Surface", "\(landing.surface.key.kind.rawValue):\(landing.surface.key.owner)"),
-						("Top", String(format: "%.1f", landing.surface.offset)),
-						("Source", landing.source),
-						("Footnote", "\(Int(nextFootX)),\(Int(nextFootY))"),
-						("FallStartY", String(format: "%.0f", fallStartFootY)),
-					]
-				)
-				foot.x = nextFootX
-				foot.y = landing.surface.offset
-				land(on: landing.surface)
-				return
-			}
-		}
-
-		foot.x = nextFootX
-		foot.y = nextFootY
-		applyCeiling()
-		if abs(velocity.x) > 8 { facing = velocity.x < 0 ? -1 : 1 }
-	}
-
-	/// The surface she meets first out of the two landing candidates, and which of the
-	/// two found it.
-	///
-	/// The higher of the two is the one she reaches first, so they are compared rather
-	/// than one being preferred.
-	private func firstLanding(
-		live: Surface?,
-		graph: Surface?
-	) -> (surface: Surface, source: String)? {
-		switch (live, graph) {
-		case (let live?, let graph?):
-			return live.offset <= graph.offset ? (live, "live") : (graph, "graph")
-		case (let live?, nil):
-			return (live, "live")
-		case (nil, let graph?):
-			return (graph, "graph")
-		default:
-			return nil
-		}
-	}
-
-	/// Records for a moment that a window she was just thrown clear of must not
-	/// catch her on its own top edge.
-	private func isLandingIgnored(_ surface: Surface) -> Bool {
-		ignoredLandingSeconds > 0 && surface.key.owner == ignoredLandingWindow
-	}
-
-	private func tickCooldowns(_ delta: Double) {
-		sideImpactCooldown = max(0, sideImpactCooldown - delta)
-		terrainActionCooldown = max(0, terrainActionCooldown - delta)
-		ignoredLandingSeconds = max(0, ignoredLandingSeconds - delta)
-		selfReportRemaining -= delta
-		if selfReportRemaining <= 0 {
-			selfReportRemaining = Self.selfReportInterval(using: &random)
-			reportOwnMood()
-		}
-	}
-
-	/// A window rising faster than she can fly must not pass through her.
-	///
-	/// The counterpart of the release rule, and a restoration of the original's
-	/// `resolveAirborneContact`, which went with the rest of the velocity matching.
-	/// Without it the release is one-sided: a window dragged upward faster than she
-	/// is thrown overtakes her from below, swallows her, and she drops past it to
-	/// the floor. She is put back on its edge, and given its speed unless she
-	/// already has a faster one of her own.
-	///
-	/// Two windows can do it: the one she was just thrown clear of, which is armed
-	/// deliberately because the graph cannot be trusted to have caught up with a
-	/// window that has just been yanked, and the one the graph says is nearest her
-	/// feet, which is read live.
-	private func resolveAirborneSupport(footX: Double, delta: Double) -> Bool {
-		if catchUpIfRising(
-			windowID: airborneSupportWindowID,
-			lastTop: &airborneSupportTop,
-			footX: footX,
-			delta: delta
-		) {
-			return true
-		}
-
-		// Skipped when it is the same window, which the deliberate arming has just
-		// looked at.
-		guard catcherWindowID != airborneSupportWindowID else { return false }
-		return catchUpIfRising(
-			windowID: catcherWindowID,
-			lastTop: &catcherTop,
-			footX: footX,
-			delta: delta
-		)
-	}
-
-	/// Reads one candidate window live and, if it has risen to her feet while still
-	/// rising, puts her back on its edge.
-	///
-	/// A **state**, not a crossing: "its top is at or above my feet, and it is still
-	/// coming up". A window can cross her between two samples, so asking whether it
-	/// crossed during this frame only answers yes when a sample happened to fall
-	/// inside the window's path — which is how a fast window came to swallow her.
-	///
-	/// - Parameter lastTop: the previous reading, updated in place. The first reading
-	///   of a window only establishes the baseline its speed is measured from, and
-	///   nothing can be caught from a single reading.
-	private func catchUpIfRising(
-		windowID: UInt32?,
-		lastTop: inout Double?,
-		footX: Double,
-		delta: Double
-	) -> Bool {
-		guard let windowID, let live = liveSurface(of: windowID), live.isReachable else {
-			return false
-		}
-		let previousTop = lastTop
-		lastTop = live.offset
-		guard let previousTop else { return false }
-
-		let scale = displayScale
-		let wallVelocity = (live.offset - previousTop) / max(delta, 1.0 / 240)
-
-		// It has come up to her feet, she is over it, and it is still rising fast
-		// enough to be doing it. Without the span check a window rising beside her
-		// would lift her onto an edge she is not above; without the landing check a
-		// window that has just swept her sideways would take her straight back.
-		guard live.offset <= foot.y, live.span.contains(footX),
-			wallVelocity <= -Motion.airborneCatchUpSpeed * scale, !isLandingIgnored(live)
-		else { return false }
-
-		// Logged because this is the one path that puts her *upward* while she is
-		// falling, and it fires too rarely to be reproduced on demand: without a
-		// record, "she was lifted onto a window" and "she fell through one" look the
-		// same in the log afterwards.
-		if caughtLogGate.emits(windowID) {
-			DiagnosticsLog.shared.writeEvent(
-				"AirborneCaught",
-				[
-					("Window", "\(windowID)"),
-					("Source", windowID == airborneSupportWindowID ? "yanked" : "discovered"),
-					("Top", String(format: "%.0f", live.offset)),
-					("Foot", "\(Int(foot.x)),\(Int(foot.y))"),
-					("WallVelocityY", String(format: "%.0f", wallVelocity)),
-				]
-			)
-		}
-
-		foot.y = live.offset
-		velocity.y = min(
-			velocity.y,
-			min(max(wallVelocity * 0.88, -1150 * scale), -300 * scale)
-		)
-		remainderY = 0
-		return true
-	}
-
-	/// Whether she has come down onto the window the graph says is nearest her feet.
-	///
-	/// Read live, so a graph a third of a second old cannot put her through a window
-	/// that has since moved under her. That is the other half of the same failure: the
-	/// landing test asks where the graph *thinks* the edge is, so a window that moved
-	/// is judged against a position it no longer has.
-	private func catcherLanding(footX: Double, reachedY: Double) -> Surface? {
-		guard let windowID = catcherWindowID, let live = liveSurface(of: windowID),
-			live.isReachable, live.offset > fallStartFootY, live.offset <= reachedY + 1,
-			live.span.contains(footX), !isLandingIgnored(live),
-			// Where the edge *is* comes from the live read, but what covers it can only
-			// come from the graph. Landing her on a covered spot is worse than not landing
-			// at all: the perch is rejected on the very next frame and she drops again from
-			// a standstill, which reads as landing, pausing, and falling.
-			isSpotVisible(for: live.key, atCoordinate: footX, inset: Motion.landingInset)
-		else { return nil }
-		return live
-	}
-
-	/// She must not fly out of the top of the screen.
-	///
-	/// A fast upward drag can throw her further than the sky above her: at the
-	/// launch ceiling she rises about 400 pt, which from a high window is off the
-	/// display entirely. Bouncing off that ceiling reads better than vanishing.
-	private func applyCeiling() {
-		guard velocity.y < 0, let display = displaySpace.display(containing: foot) else { return }
-		let ceiling = display.visibleFrame.top
-		guard foot.y <= ceiling else { return }
-		foot.y = ceiling
-		velocity.y = 0
-		remainderY = 0
-	}
-
-	private func land(on surface: Surface?) {
-		let fallDistance = max(0, foot.y - fallStartFootY)
-		let impactSpeed = max(0, velocity.y)
-		// What the fall cost, and the rate the graph was actually rebuilt at during it:
-		// the two triggers trade against each other, so neither constant alone says what
-		// rate was achieved.
-		if fallTickCount > 0 {
-			DiagnosticsLog.shared.writeEvent(
-				"FallProfile",
-				[
-					("Ticks", "\(fallTickCount)"),
-					("Refreshes", "\(fallRefreshCount)"),
-					(
-						"RefreshHz",
-						String(format: "%.1f", Double(fallRefreshCount) * 60 / Double(fallTickCount))
-					),
-					("Distance", String(format: "%.0f", fallDistance)),
-				]
-			)
-		}
-		// She is down, so no window is following her any more.
-		airborneSupportWindowID = nil
-		airborneSupportTop = nil
-		catcherWindowID = nil
-		catcherTop = nil
-		caughtLogGate.reset()
-		let shouldReact = LandingVoicePolicy.shouldReact(
-			fallDistancePixels: fallDistance,
-			downwardImpactSpeed: impactSpeed,
-			reason: fallReason,
-			displayScale: displayScale
-		)
-
-		// Adopt what she landed on straight away, so the first frame back on a
-		// moving window is already anchored to it rather than to nothing.
-		if let surface {
-			adopt(surface)
-		} else {
-			releasePerch()
-		}
-
-		enter(.landing, clip: "land", transientSeconds: animator.durationSeconds)
-		remainderX = 0
-		remainderY = 0
-		if shouldReact {
-			announce(.hardLanding, voice: .landing, priority: .important)
-		}
-	}
-
-	// MARK: - Climbing
-
-	/// Returns true when the pet has committed to a climb.
-	private func tryBeginClimb() -> Bool {
-		guard !quietMode, let support = surfaceProvider.support(at: foot),
-			let plan = WindowClimbPlanner.choose(
-				surfaces: surfaceProvider.surfaces,
-				currentSupport: support,
-				footX: foot.x,
-				scale: displayScale,
-				randomUnit: Double.random(in: 0..<1, using: &random)
-			)
-		else { return false }
-
-		pendingClimb = plan
-		enter(.running, clip: "walk", purpose: .climbApproach, velocity: nil)
-		targetX = plan.approachX
-		// A taller wall is worth a more cautious line.
-		let cautious = plan.height > 400 * displayScale
-		announce(cautious ? .carefulClimb : .confidentClimb, voice: .positive, priority: .normal)
-		return true
-	}
-
-	private func beginClimb(_ plan: WindowClimbPlan) {
-		pendingClimb = nil
-		activeClimb = plan
-		climbStart = foot
-		climbProgress = 0
-
-		// She leaps up to the window's lower corner first — a window floating
-		// above the floor has no wall beside her until she reaches its bottom.
-		climbWallStartY = min(climbStart.y, plan.targetBottom)
-		let hopDistance = max(0, climbStart.y - climbWallStartY)
-		let hopSeconds = hopDistance > 1 ? min(0.9, max(0.28, hopDistance / 900)) : 0
-		let ascentSeconds = WindowClimbPlanner.climbDuration(
-			height: max(0, climbWallStartY - plan.targetTop),
-			scale: displayScale,
-			speedMultiplier: profile.movementSpeedMultiplier
-		)
-		climbDuration = hopSeconds + ascentSeconds
-		climbHopFraction = climbDuration > 0 ? hopSeconds / climbDuration : 0
-
-		// The original succeeds most of the time, less often on a very tall wall,
-		// and can slip part way up.
-		let successChance = plan.height > 700 * displayScale ? 0.58 : 0.74
-		climbWillSucceed = Double.random(in: 0..<1, using: &random) < successChance
-		climbSlipAt = 0.56 + Double.random(in: 0..<0.20, using: &random)
-
-		enter(
-			.climbing,
-			clip: hopSeconds > 0 ? "jump" : "climb",
-			purpose: MovementPurpose.unset,
-			facing: plan.side == .left ? 1 : -1
-		)
-		remainderX = 0
-		remainderY = 0
-		DiagnosticsLog.shared.writeEvent(
-			"ClimbBegin",
-			[
-				("Target", "\(plan.targetSurfaceID)"),
-				("Side", "\(plan.side)"),
-				("Start", "\(Int(climbStart.x)),\(Int(climbStart.y))"),
-				("WallStartY", "\(Int(climbWallStartY))"),
-				("LandingX", "\(Int(plan.landingX))"),
-				("TargetTop", "\(Int(plan.targetTop))"),
-				("Surface", Self.describe(surfaceID: plan.targetSurfaceID, in: surfaceProvider.surfaces)),
-			]
-		)
-	}
-
-	private func updateClimbing(_ delta: Double) {
-		// The window she is climbing can be moved or closed mid-climb.
-		guard let plan = activeClimb,
-			surfaceProvider.surfaces.contains(where: { $0.key.owner == plan.targetSurfaceID })
-		else {
-			activeClimb = nil
-			beginFall(reason: "ClimbSlip")
-			return
-		}
-
-		climbProgress = min(1, climbProgress + delta / max(0.1, climbDuration))
-		if !climbWillSucceed, climbProgress >= climbSlipAt {
-			activeClimb = nil
-			announce(.climbSlip, voice: .aggrieved, priority: .important)
-			beginFall(reason: "ClimbSlip")
-			return
-		}
-
-		if climbProgress < climbHopFraction {
-			// Rising to the wall's lower corner, close beside it.
-			let t = climbHopFraction > 0 ? climbProgress / climbHopFraction : 1
-			foot = PixelPoint(
-				x: plan.approachX,
-				y: climbStart.y + (climbWallStartY - climbStart.y) * t.smoothstep()
-			)
-		} else {
-			if animator.currentClip != "climb" { animator.play("climb") }
-			let span = max(0.0001, 1 - climbHopFraction)
-			let t = (climbProgress - climbHopFraction) / span
-			// y follows the wall; x stays against it and only steps inward on top,
-			// so she is never seen climbing thin air beside the window.
-			let easedY = t.smoothstep()
-			let easedX = t * t
-			foot = PixelPoint(
-				x: plan.approachX + (plan.landingX - plan.approachX) * easedX,
-				y: climbWallStartY + (plan.targetTop - climbWallStartY) * easedY
-			)
-		}
-
-		if climbProgress >= 1 {
-			activeClimb = nil
-			foot = PixelPoint(x: plan.landingX, y: plan.targetTop)
-			transientDuration = animator.durationSeconds
-			fallStartFootY = foot.y
-			fallReason = "ClimbSuccess"
-			land(on: surfaceProvider.surfaces.first { $0.key.owner == plan.targetSurfaceID })
-			announce(.climbSuccess, voice: .affirmative, priority: .normal)
-		}
-	}
-
-	// MARK: - Descending
-
-	/// A controlled descent: faster than walking, slower than a fall, and she
-	/// stays against the wall.
-	private func beginSlideDown(from surface: Surface) {
-		guard let target = surfaceProvider.surfaceBelow(footX: foot.x, currentTop: surface.offset)
-		else {
-			beginFall(reason: "EdgeSlide", clip: "slide")
-			return
-		}
-		beginFall(
-			reason: "EdgeSlide",
-			initialVelocityY: target.offset > foot.y ? 260 : 120,
-			clip: "slide"
-		)
-		announce(.edgeSlide, voice: .calm, priority: .ambient)
-	}
-
-	/// A hop off the edge, arcing outwards so she clears the window she was on.
-	/// Like ``beginHop`` it carries her sideways, which is what lets her reach a
-	/// lower window rather than dropping straight down the side she left.
-	private func beginJumpDown() {
-		let direction = facing < 0 ? -1.0 : 1.0
-		beginFall(
-			reason: "EdgeJump",
-			initialVelocityY: -Motion.jumpDownVelocityY * displayScale,
-			initialVelocityX: direction * Motion.jumpDownVelocityX * displayScale,
-			clip: "jump"
-		)
-		facing = direction
-		announce(.terrainJumpDown, voice: .scream, priority: .ambient)
-	}
-
-	// MARK: - Sleep
-
-	private func beginSleep() {
-		wakeForMeal = false
-		enter(.sleeping, clip: "sleep_enter")
-		sleepRemaining = min(60, max(LifeBehaviorPolicy.minimumNapSeconds, life.sleepiness / 36 * 60))
-		announce(.sleep, voice: .calm, priority: .important)
-	}
-
-	private var sleepRemaining: Double = 0
-	/// Whether the wake-up in progress should end in a meal.
-	private var wakeForMeal = false
-
-	/// Starts the get-up animation. A wake already running just records the reason.
-	private func beginWake(forMeal: Bool) {
-		let starting = state != .waking
-		wakeForMeal = wakeForMeal || forMeal
-		guard starting else { return }
-		enter(
-			.waking,
-			clip: "sleep_exit",
-			purpose: MovementPurpose.unset,
-			transientSeconds: animator.durationSeconds
-		)
-		if forMeal {
-			announce(.wakeForFood, voice: .question, priority: .normal)
-		}
-	}
-
-	private func updateSleeping(_ delta: Double) {
-		if animator.currentClip == "sleep_enter", animator.isCompleted {
-			animator.play("sleep")
-		}
-		sleepRemaining -= delta
-		if sleepRemaining <= 0, life.sleepiness <= 10 {
-			beginWake(forMeal: false)
-		}
-	}
-
-	/// Ends a wake-up, whichever way it ended. Woken for a meal, she goes for it;
-	/// woken on her own, she simply says so. Both entry points must agree, so the
-	/// decision lives here rather than at each of them.
-	private func finishWaking() {
-		let wokenForMeal = wakeForMeal
-		wakeForMeal = false
-		if wokenForMeal, beginNextMeal() { return }
-		announce(.wakeNormally, voice: .calm)
-		returnToIdle()
-	}
-
-	// MARK: - Cheek pinch
-
-	/// The cheek anchors in the view's own point space.
-	public var cheekGeometryInView: CheekPinchGeometry {
-		let geometry = CheekPinchGeometry.geometry(for: profile)
-		let scale = canvasScale
-		return CheekPinchGeometry(
-			leftX: geometry.leftX * scale,
-			rightX: geometry.rightX * scale,
-			cheekY: geometry.cheekY * scale,
-			hitRadiusX: geometry.hitRadiusX * scale,
-			hitRadiusY: geometry.hitRadiusY * scale,
-			mouthX: geometry.mouthX * scale,
-			mouthY: geometry.mouthY * scale
-		)
-	}
-
-	public var isPinching: Bool { cheek.isActive }
-
-	/// The pinch overlay's current appearance, or `nil` when no cheek is pulled.
-	public var cheekPinchState: CheekPinchState? {
-		guard cheek.isActive else { return nil }
-		return CheekPinchState(geometry: CheekPinchGeometry.geometry(for: profile), dynamics: cheek)
-	}
-
-	/// How far the body leans, in degrees: a cheek being pulled, or being flung
-	/// across the inside of a window.
-	public var bodyLeanDegrees: Double {
-		if cheek.isActive {
-			// The offset is authored, but the lean is read off the screen, so it
-			// has to be mirrored with her — as upstream does with its ScaleX.
-			let pull = -cheek.x / CheekPinchDynamics.maximumHorizontal * 3.5 * facing
-			return min(max(pull, -3.5), 3.5)
-		}
-		guard enclosure != nil else { return 0 }
-		return min(max(velocity.x / (1200 * displayScale) * 10, -10), 10)
-	}
-
-	/// A point in the pet's own square, mirrored back into the authored space the
-	/// cheek rig, the renderer and the sprite all live in. She is drawn mirrored
-	/// when she faces left, so without this a pinch is taken from the cheek on the
-	/// other side of her face and drawn on the wrong side of it.
-	private func authoredPoint(_ viewPoint: CGPoint) -> CGPoint {
-		guard facing < 0 else { return viewPoint }
-		return CGPoint(x: CGFloat(petSize) - viewPoint.x, y: viewPoint.y)
-	}
-
-	/// The cheek under a point in the view's own point space, if any.
-	public func cheekHitTest(viewPoint: CGPoint) -> CheekSide? {
-		guard CheekPinchInteractionPolicy.canStart(from: state) || state == .pinching else {
-			return nil
-		}
-		let point = authoredPoint(viewPoint)
-		return cheekGeometryInView.hitTest(x: Double(point.x), y: Double(point.y))
-	}
-
-	public func beginPinch(side: CheekSide, at viewPoint: CGPoint) {
-		guard !cheek.isActive, CheekPinchInteractionPolicy.canStart(from: state) else { return }
-		cheek.begin(side: side)
-		// The rig's anchors are authored against the idle pose, so the cel under the
-		// overlay has to be that pose. An interrupted clip — a landing bounce, a fall —
-		// draws her face elsewhere, and both the pulled cheek and the mouth the overlay
-		// covers for her would land somewhere she is not.
-		animator.play("idle")
-		pinchOrigin = authoredPoint(viewPoint)
-		enter(.pinching, purpose: MovementPurpose.unset)
-		remainderX = 0
-		remainderY = 0
-		announce(.pickedUp, voice: .aggrieved, priority: .normal)
-		notifyCheekPinch()
-	}
-
-	public func updatePinch(to viewPoint: CGPoint) {
-		guard cheek.isActive else { return }
-		let point = authoredPoint(viewPoint)
-		let scale = max(0.0001, canvasScale)
-		cheek.drag(
-			x: Double(point.x - pinchOrigin.x) / scale,
-			y: Double(point.y - pinchOrigin.y) / scale
-		)
-	}
-
-	public func endPinch() {
-		guard cheek.isActive else { return }
-		cheek.release()
-	}
-
-	private func updatePinchFrame(_ delta: Double) {
-		guard cheek.isActive else { return }
-		cheek.tick(delta)
-		if !cheek.isActive {
-			// The spring settled and reset itself.
-			if state == .pinching { returnToIdle() }
-			notifyCheekPinch()
-			return
-		}
-		notifyCheekPinch()
-	}
-
-	/// Tells the presenter how the overlay looks now, or that it is gone.
-	private func notifyCheekPinch() {
-		delegate?.petController(self, didUpdateCheekPinch: cheekPinchState)
 	}
 
 	// MARK: - Test seams
@@ -3233,109 +1040,6 @@ public final class PetController: SpriteAnimatorDelegate {
 		land(on: surface)
 	}
 
-	// MARK: - Dragging
-
-	public func canBeginDrag() -> Bool { DragInteractionPolicy.canStart(from: state) }
-
-	public var isBeingDragged: Bool { isDragging }
-
-	public func beginDrag(at cursor: PixelPoint) {
-		guard canBeginDrag() else { return }
-		// Picked up: whatever box was holding her no longer does, and no window is
-		// following her.
-		surrenderEnclosure(reason: "PickedUp")
-		airborneSupportWindowID = nil
-		airborneSupportTop = nil
-		// Being picked up interrupts a meal; it is re-queued so she finishes it
-		// after landing.
-		if movementPurpose == .meal {
-			requeueActiveMeal(reason: "PickedUp")
-		}
-		isDragging = true
-		enter(.dragging, clip: "drag")
-		remainderX = 0
-		remainderY = 0
-		dragOffset = PixelPoint(x: foot.x - cursor.x, y: foot.y - cursor.y)
-		dragTracker.reset(point: cursor, atSeconds: CFAbsoluteTimeGetCurrent())
-		announce(.pickedUp, voice: .question, priority: .normal)
-	}
-
-	/// Exposed for tests: the offset between the foot and the grab point.
-	var dragOffsetForTesting: PixelPoint { dragOffset }
-
-	private static func describe(surfaceID: UInt32, in surfaces: [Surface]) -> String {
-		guard let surface = surfaces.first(where: { $0.key.owner == surfaceID }) else {
-			return "missing"
-		}
-		let bottom = surface.ownerBounds?.bottom ?? surface.offset
-		return "L\(Int(surface.span.start)) R\(Int(surface.span.end)) B\(Int(bottom))"
-	}
-
-	public func updateDrag(to cursor: PixelPoint) {
-		guard isDragging else { return }
-		var next = PixelPoint(x: cursor.x + dragOffset.x, y: cursor.y + dragOffset.y)
-		// Dragging her below the floor leaves her with nothing to land on, because
-		// the floor is above her: on release she would fall straight out of the
-		// screen. She is put on the floor instead.
-		if let floor = floorOffset(near: next), next.y > floor {
-			next.y = floor
-		}
-		foot = next
-		dragTracker.add(point: cursor, atSeconds: CFAbsoluteTimeGetCurrent())
-	}
-
-	/// The bottom of the work area of the display nearest a point: where that
-	/// display's floor is, and the lowest place the pet may be.
-	private func floorOffset(near point: PixelPoint) -> Double? {
-		displaySpace.display(containing: point)?.visibleFrame.bottom
-	}
-
-	public func endDrag(at cursor: PixelPoint) {
-		guard isDragging else { return }
-		isDragging = false
-		let release =
-			debugReleaseMotionOverride
-			?? dragTracker.release(
-				point: cursor,
-				atSeconds: CFAbsoluteTimeGetCurrent(),
-				scale: displayScale
-			)
-		// Whether the window under her is somewhere she can land, or somewhere that
-		// swallows her, is read from the terrain graph — so it is asked fresh here
-		// rather than trusting a map up to half a second old. The original forced
-		// its map at exactly this point, for the same reason.
-		surfaceProvider.refresh(displaySpace: displaySpace)
-		// Through `beginFall`, so the window she was riding stops being tracked —
-		// otherwise it would pull her back to its top once she landed.
-		//
-		// Let go wholly inside a window and it takes her in instead. `beginFall`
-		// stays the only other way into the air, so the two cannot both apply.
-		if !tryBeginWindowEnclosure(velocityX: release.velocityX, velocityY: release.velocityY) {
-			beginFall(
-				reason: release.hasInertia ? "DragThrow" : "released",
-				initialVelocityY: release.velocityY,
-				initialVelocityX: release.velocityX,
-				clip: release.hasInertia && release.velocityY < 0 ? "toss" : "fall",
-				purpose: MovementPurpose.unset
-			)
-		}
-		// A weak release is a drop, not a throw; only a real flick earns the
-		// louder reaction.
-		if release.hasInertia, release.speed > 700 * displayScale {
-			announce(.dragThrow, voice: .scream, priority: .important)
-		} else {
-			announce(.released, voice: .aggrieved, priority: .normal)
-		}
-		// A deletion that arrived while she was being held has to be honoured now
-		// that she is somewhere she can leave from.
-		if WindowEnclosureBehaviorPolicy.shouldEscapeForMeal(
-			isEnclosed: enclosure != nil,
-			pendingMeals: mealQueue.count
-		) {
-			_ = beginNextMeal()
-		}
-	}
-
 	// MARK: - External commands
 
 	public func bringHome() {
@@ -3358,7 +1062,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		announce(.startup, voice: .neutral, priority: .normal)
 	}
 
-	private func announce(
+	func announce(
 		_ cue: DialogueCue,
 		voice: VoiceCue,
 		priority: VoicePriority = .normal,
