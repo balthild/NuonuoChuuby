@@ -97,6 +97,24 @@
 | `CGSSetWindowTags` + `CGSTagTransparent`（私有） | 窗口 | 无变化 |
 | `CGSSetMouseEventEnableFlags(cid, wid, false)`（私有） | 窗口 | 无变化，**且调用本身在本机是空操作** |
 | `CGSSetEventMask`（私有，连接级） | 连接 | 无变化（投递计数相同） |
+| `CGSSetWindowClipShape`（私有） | 窗口 | 无变化，**且不影响绘制**（见下） |
+
+### `CGSSetWindowClipShape`：既不裁绘制，也不裁事件（2026-11-03）
+
+探针 `_ignored/clip-probe/clipshape.swift`。窗口内容是一个**填满整窗的单色不透明方块**，只给它设一个
+clip shape = **左半边**（窗口坐标）—— 这样绘制与事件各自只有一个可变量。
+
+- **绘制**：右半边照常绘制，**没有被裁掉**。
+- **事件**：点击右半边（本应被裁掉的位置）**仍被该窗口接收**，`mouseDown` 计数照增，穿透没有发生。
+- **鼠标移动投递**：在窗口上的 `mouseMoved` 投递率与改动前相同。
+
+调用用的是**带连接 id 的三参数形式** `CGSSetWindowClipShape(cid, wid, region)`（同一个 region 类型在
+`CGSCopyWindowClipShape` 上是有效的），返回 `kCGErrorSuccess`（0）。头文件写的是两参数形式
+`CGSSetWindowClipShape(wid, shape)` —— **两参数形式本次未测**，所以「无效」覆盖的是三参数形式。
+
+**回读不是 set 的可靠见证**：启动时连续三次 set 后立刻 `CGSCopyWindowClipShape`，读回的是**空
+region**（`empty=true`、`bounds=(0,0,0,0)`）；而后来某次 set 之后回读却拿到了**刚传入的矩形**
+（`(0,240,80,80)`）。最可能是回读追不上写入的提交（推论）—— 但无论读回什么，绘制与事件都不看它。
 
 ### 关于那个 StackOverflow 答案
 
