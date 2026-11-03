@@ -922,6 +922,25 @@ public final class PetController: SpriteAnimatorDelegate {
 		}
 		velocity = PixelPoint(x: step.velocityX, y: step.velocityY)
 
+		// A window top that has come under her since she was let go is where she
+		// lands, rather than something the box carries her past on the way down to its
+		// floor. Entry asks the same question, but only once, at the moment of release
+		// — and a throw can carry her up over a window that was not under her then, so
+		// the box swallowed a descent that should have ended on that edge.
+		//
+		// She is handed back to the open desktop rather than landed here, so which
+		// surface she meets and where it is are read exactly as they are for any other
+		// fall: live, and again on every frame.
+		if velocity.y > 0, landingInsideTheBox(footX: foot.x, box: box) != nil {
+			surrenderEnclosure(reason: "EnclosureLanding")
+			beginFall(
+				reason: "EnclosureLanding",
+				initialVelocityY: velocity.y,
+				initialVelocityX: velocity.x
+			)
+			return false
+		}
+
 		let movementX = SubpixelMotion.takeWholePixels(step.offsetX, remainder: &remainderX)
 		let movementY = SubpixelMotion.takeWholePixels(step.offsetY, remainder: &remainderY)
 		// A wall absorbs whatever subpixel drift was in flight, so a bounce does
@@ -1064,15 +1083,13 @@ public final class PetController: SpriteAnimatorDelegate {
 		// her — dropped above a small window while inside a large one, she went into
 		// the large one and came to rest on its floor instead of on the small
 		// window's top edge.
-		let floor = fitted.value.bounds.bottom - inset
-		guard
-			surfaceProvider.landingSurface(
-				footX: foot.x,
-				fromY: foot.y,
-				toY: floor,
-				inset: Motion.landingInset
-			) == nil
-		else { return false }
+		//
+		// Asked here about the moment of release only. The descent inside the box asks
+		// the same question again, because a throw carries her up over windows that were
+		// not under her then; see ``updateWindowEnclosure(_:)``.
+		guard landingInsideTheBox(footX: foot.x, box: fitted.value.bounds) == nil else {
+			return false
+		}
 
 		enclosure = Enclosure(
 			windowID: fitted.key,
@@ -1105,6 +1122,25 @@ public final class PetController: SpriteAnimatorDelegate {
 			]
 		)
 		return true
+	}
+
+	/// A standable surface between her feet and the box's floor: something inside the
+	/// box she would come down on, rather than fall past to its floor.
+	///
+	/// **One question, asked at both ends of a box's life.** Entry refuses a box that
+	/// has one, so she is not swallowed while a ledge is under her; the descent inside
+	/// the box leaves for that same ledge. Sharing the helper is what keeps the two from
+	/// disagreeing about which surfaces count and how far down the box reaches.
+	///
+	/// The floor is the window's own bottom edge, not one pulled in with the walls
+	/// (``WindowEnclosurePhysics/walls(of:inset:)``) — the feet rest on the edge itself.
+	private func landingInsideTheBox(footX: Double, box: PixelRect) -> Surface? {
+		surfaceProvider.landingSurface(
+			footX: footX,
+			fromY: foot.y,
+			toY: box.bottom - WindowEnclosurePhysics.wallInset * displayScale,
+			inset: Motion.landingInset
+		)
 	}
 
 	/// Leaves the box without deciding what happens next.
@@ -2516,11 +2552,11 @@ public final class PetController: SpriteAnimatorDelegate {
 		graph: Surface?
 	) -> (surface: Surface, source: String)? {
 		switch (live, graph) {
-		case let (live?, graph?):
+		case (let live?, let graph?):
 			return live.offset <= graph.offset ? (live, "live") : (graph, "graph")
-		case let (live?, nil):
+		case (let live?, nil):
 			return (live, "live")
-		case let (nil, graph?):
+		case (nil, let graph?):
 			return (graph, "graph")
 		default:
 			return nil
@@ -3080,6 +3116,14 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// Stands in for the per-frame live window query the enclosure makes.
 	var debugLiveWindowBoundsOverride: ((UInt32) -> PixelRect?)?
 
+	/// Stands in for the release velocity the drag tracker computes.
+	///
+	/// The tracker measures between real timestamps, so a drag a test scripts is always
+	/// a drop — and the release velocity is what decides whether the window under her
+	/// takes her in. Set this before ``endDrag(at:)`` to release her at a speed of the
+	/// test's choosing.
+	var debugReleaseMotionOverride: DragReleaseMotion?
+
 	/// Meals still waiting their turn, not counting the one she is eating.
 	var debugQueuedMealCount: Int { mealQueue.count }
 
@@ -3265,11 +3309,13 @@ public final class PetController: SpriteAnimatorDelegate {
 	public func endDrag(at cursor: PixelPoint) {
 		guard isDragging else { return }
 		isDragging = false
-		let release = dragTracker.release(
-			point: cursor,
-			atSeconds: CFAbsoluteTimeGetCurrent(),
-			scale: displayScale
-		)
+		let release =
+			debugReleaseMotionOverride
+			?? dragTracker.release(
+				point: cursor,
+				atSeconds: CFAbsoluteTimeGetCurrent(),
+				scale: displayScale
+			)
 		// Whether the window under her is somewhere she can land, or somewhere that
 		// swallows her, is read from the terrain graph — so it is asked fresh here
 		// rather than trusting a map up to half a second old. The original forced
