@@ -1102,10 +1102,11 @@ public final class PetController: SpriteAnimatorDelegate {
 		)
 		airborneSupportWindowID = nil
 		airborneSupportTop = nil
-		movementPurpose = .none
-		state = .falling
-		stateElapsed = 0
-		velocity = PixelPoint(x: velocityX, y: velocityY)
+		enter(
+			.falling,
+			purpose: MovementPurpose.none,
+			velocity: PixelPoint(x: velocityX, y: velocityY)
+		)
 		remainderX = 0
 		remainderY = 0
 		ignoredLandingWindow = nil
@@ -1244,6 +1245,43 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	// MARK: - State dispatch
 
+	/// The single way she leaves one state for another.
+	///
+	/// Every transition used to be written out by hand in its own order — set the
+	/// state, restart the clock, set or clear the velocity, pick the clip — and the
+	/// copies had drifted apart.
+	///
+	/// What this deliberately does **not** own is the fractional pixel in flight
+	/// (`remainderX` / `remainderY`). Whether it is worth carrying across a transition
+	/// depends on whether the motion is continuous through it, which is a per-call
+	/// judgement — the enclosure, for one, absorbs it in the wall that was hit. Callers
+	/// still clear it where they mean to.
+	///
+	/// - Parameters:
+	///   - velocity: the velocity to enter with; `.zero` to come to rest, `nil` to
+	///     leave whatever she already had.
+	///   - purpose: the purpose to enter with. **Spell `MovementPurpose.none` out in
+	///     full when that is the case you mean**: a bare `.none` in this position is
+	///     `Optional.none` — "leave the purpose alone" — and it compiles silently.
+	///   - transientSeconds: how long a one-shot state (`landing`, `curious`,
+	///     `satisfied`, `rolling`) lasts before it falls back to idle.
+	private func enter(
+		_ next: PetState,
+		clip: String? = nil,
+		purpose: MovementPurpose? = nil,
+		velocity newVelocity: PixelPoint? = .zero,
+		facing newFacing: Double? = nil,
+		transientSeconds: Double? = nil
+	) {
+		state = next
+		stateElapsed = 0
+		if let newVelocity { velocity = newVelocity }
+		if let purpose { movementPurpose = purpose }
+		if let newFacing { facing = newFacing }
+		if let transientSeconds { transientDuration = transientSeconds }
+		if let clip { animator.play(clip) }
+	}
+
 	/// One frame of whichever behaviour the current state owns. Inside a window
 	/// this is skipped entirely: the walls decide everything.
 	private func updateState(_ delta: Double) {
@@ -1359,13 +1397,9 @@ public final class PetController: SpriteAnimatorDelegate {
 		releaseEnclosureForMeal(target: item.anchor)
 		activeMeal = item
 		targetPoint = item.anchor
-		state = .running
-		movementPurpose = .meal
-		stateElapsed = 0
-		velocity = .zero
+		enter(.running, clip: "run", purpose: .meal)
 		remainderX = 0
 		remainderY = 0
-		animator.play("run")
 		mealDelegate?.petController(self, didBeginMeal: item)
 		DiagnosticsLog.shared.writeEvent(
 			"MealRunStarted",
@@ -1414,13 +1448,9 @@ public final class PetController: SpriteAnimatorDelegate {
 		else { return false }
 
 		targetPoint = target
-		state = .running
-		movementPurpose = .iconLick
-		stateElapsed = 0
-		velocity = .zero
+		enter(.running, clip: "run", purpose: .iconLick)
 		remainderX = 0
 		remainderY = 0
-		animator.play("run")
 		announce(
 			manual ? .manualIconLick : .curiousIconLick,
 			voice: manual ? .aggrieved : .question,
@@ -1466,13 +1496,9 @@ public final class PetController: SpriteAnimatorDelegate {
 	}
 
 	private func beginChomp() {
-		state = .chomping
-		stateElapsed = 0
-		velocity = .zero
+		enter(.chomping, clip: "chomp", facing: 1)
 		remainderX = 0
 		remainderY = 0
-		facing = 1
-		animator.play("chomp")
 		if let item = activeMeal, !item.exactAnchor {
 			announce(.suction, voice: .positive, priority: .normal)
 		} else if !mealQueue.isEmpty {
@@ -1482,31 +1508,23 @@ public final class PetController: SpriteAnimatorDelegate {
 	}
 
 	private func beginLickAnimation() {
-		state = .licking
-		stateElapsed = 0
-		velocity = .zero
+		enter(.licking, clip: "lick")
 		remainderX = 0
 		remainderY = 0
-		animator.play("lick")
 	}
 
 	private func beginHungryPlea() {
-		state = .rolling
-		movementPurpose = .none
-		stateElapsed = 0
-		transientDuration = 1.6
-		velocity = .zero
-		animator.play("hungry")
+		enter(.rolling, clip: "hungry", purpose: MovementPurpose.none, transientSeconds: 1.6)
 		announce(.hungryRoll, voice: .sad, priority: .important)
 	}
 
 	private func beginRoll() {
-		state = .rolling
-		movementPurpose = .none
-		stateElapsed = 0
-		transientDuration = animator.durationSeconds
-		velocity = .zero
-		animator.play("roll")
+		enter(
+			.rolling,
+			clip: "roll",
+			purpose: MovementPurpose.none,
+			transientSeconds: animator.durationSeconds
+		)
 		announce(.hungryRoll, voice: .sad, priority: .important)
 	}
 
@@ -1583,12 +1601,12 @@ public final class PetController: SpriteAnimatorDelegate {
 			itemName: item.displayName
 		)
 
-		state = .satisfied
-		movementPurpose = .none
-		stateElapsed = 0
-		transientDuration = animator.durationSeconds
-		velocity = .zero
-		animator.play(stuffed ? "satisfied" : "satisfied_quick")
+		enter(
+			.satisfied,
+			clip: stuffed ? "satisfied" : "satisfied_quick",
+			purpose: MovementPurpose.none,
+			transientSeconds: animator.durationSeconds
+		)
 		DiagnosticsLog.shared.writeEvent(
 			"MealCompleted",
 			[
@@ -1614,13 +1632,9 @@ public final class PetController: SpriteAnimatorDelegate {
 	}
 
 	private func returnToIdle() {
-		state = .idle
-		movementPurpose = .none
-		stateElapsed = 0
-		velocity = .zero
+		enter(.idle, clip: "idle", purpose: MovementPurpose.none)
 		remainderX = 0
 		wakeForMeal = false
-		animator.play("idle")
 		resetIdleTimer()
 	}
 
@@ -1671,14 +1685,9 @@ public final class PetController: SpriteAnimatorDelegate {
 	private func beginPatrolLeg() -> Bool {
 		guard let next = nextPatrolTargetX() else { return false }
 		targetX = next
-		movementPurpose = .patrol
-		state = .running
-		stateElapsed = 0
-		velocity = .zero
+		enter(.running, clip: "walk", purpose: .patrol, facing: patrolDirection)
 		remainderX = 0
 		patrolNeedCheckRemaining = LifeBehaviorPolicy.patrolNeedCheckSeconds
-		facing = patrolDirection
-		animator.play("walk")
 		DiagnosticsLog.shared.writeEvent(
 			"PatrolStarted",
 			[
@@ -1696,13 +1705,8 @@ public final class PetController: SpriteAnimatorDelegate {
 	private func beginStroll(purpose: MovementPurpose) -> Bool {
 		guard let next = nextStrollTargetX() else { return false }
 		targetX = next
-		movementPurpose = purpose
-		state = .running
-		stateElapsed = 0
-		velocity = .zero
+		enter(.running, clip: "walk", purpose: purpose, facing: next < foot.x ? -1 : 1)
 		remainderX = 0
-		facing = next < foot.x ? -1 : 1
-		animator.play("walk")
 		DiagnosticsLog.shared.writeEvent(
 			"StrollStarted",
 			[
@@ -2297,13 +2301,8 @@ public final class PetController: SpriteAnimatorDelegate {
 			return
 		}
 
-		state = .curious
-		movementPurpose = .none
-		stateElapsed = 0
-		transientDuration = 0.9
-		velocity = .zero
+		enter(.curious, clip: "curious", purpose: MovementPurpose.none, transientSeconds: 0.9)
 		remainderX = 0
-		animator.play("curious")
 	}
 
 	/// The edge action she takes on reaching the end of her run, or nil when the draw
@@ -2345,18 +2344,19 @@ public final class PetController: SpriteAnimatorDelegate {
 		clip: String? = nil,
 		purpose: MovementPurpose? = nil
 	) {
-		state = .falling
-		stateElapsed = 0
+		enter(
+			.falling,
+			purpose: purpose,
+			velocity: PixelPoint(x: initialVelocityX, y: initialVelocityY)
+		)
 		fallReason = reason
 		fallStartFootY = foot.y
 		fallRefreshRemaining = 0
 		lastFallRefreshFootY = foot.y
 		fallTickCount = 0
 		fallRefreshCount = 0
-		velocity = PixelPoint(x: initialVelocityX, y: initialVelocityY)
 		remainderX = 0
 		remainderY = 0
-		if let purpose { movementPurpose = purpose }
 		// Only a window that moved out from under her is worth following: a throw by
 		// the user has put her somewhere else on purpose, and a catch-up would pin
 		// her to the window she was dragged off.
@@ -2753,13 +2753,9 @@ public final class PetController: SpriteAnimatorDelegate {
 			releasePerch()
 		}
 
-		state = .landing
-		stateElapsed = 0
-		transientDuration = animator.durationSeconds
-		velocity = .zero
+		enter(.landing, clip: "land", transientSeconds: animator.durationSeconds)
 		remainderX = 0
 		remainderY = 0
-		animator.play("land")
 		if shouldReact {
 			announce(.hardLanding, voice: .landing, priority: .important)
 		}
@@ -2780,11 +2776,8 @@ public final class PetController: SpriteAnimatorDelegate {
 		else { return false }
 
 		pendingClimb = plan
-		movementPurpose = .climbApproach
-		state = .running
-		stateElapsed = 0
+		enter(.running, clip: "walk", purpose: .climbApproach, velocity: nil)
 		targetX = plan.approachX
-		animator.play("walk")
 		// A taller wall is worth a more cautious line.
 		let cautious = plan.height > 400 * displayScale
 		announce(cautious ? .carefulClimb : .confidentClimb, voice: .positive, priority: .normal)
@@ -2816,15 +2809,14 @@ public final class PetController: SpriteAnimatorDelegate {
 		climbWillSucceed = Double.random(in: 0..<1, using: &random) < successChance
 		climbSlipAt = 0.56 + Double.random(in: 0..<0.20, using: &random)
 
-		state = .climbing
-		movementPurpose = .none
-		stateElapsed = 0
-		velocity = .zero
+		enter(
+			.climbing,
+			clip: hopSeconds > 0 ? "jump" : "climb",
+			purpose: MovementPurpose.none,
+			facing: plan.side == .left ? 1 : -1
+		)
 		remainderX = 0
 		remainderY = 0
-		// The wall is on the side she approached from.
-		facing = plan.side == .left ? 1 : -1
-		animator.play(hopSeconds > 0 ? "jump" : "climb")
 		DiagnosticsLog.shared.writeEvent(
 			"ClimbBegin",
 			[
@@ -2926,11 +2918,8 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	private func beginSleep() {
 		wakeForMeal = false
-		state = .sleeping
-		stateElapsed = 0
-		velocity = .zero
+		enter(.sleeping, clip: "sleep_enter")
 		sleepRemaining = min(60, max(LifeBehaviorPolicy.minimumNapSeconds, life.sleepiness / 36 * 60))
-		animator.play("sleep_enter")
 		announce(.sleep, voice: .calm, priority: .important)
 	}
 
@@ -2943,12 +2932,12 @@ public final class PetController: SpriteAnimatorDelegate {
 		let starting = state != .waking
 		wakeForMeal = wakeForMeal || forMeal
 		guard starting else { return }
-		state = .waking
-		movementPurpose = .none
-		stateElapsed = 0
-		transientDuration = animator.durationSeconds
-		velocity = .zero
-		animator.play("sleep_exit")
+		enter(
+			.waking,
+			clip: "sleep_exit",
+			purpose: MovementPurpose.none,
+			transientSeconds: animator.durationSeconds
+		)
 		if forMeal {
 			announce(.wakeForFood, voice: .question, priority: .normal)
 		}
@@ -3040,10 +3029,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		// covers for her would land somewhere she is not.
 		animator.play("idle")
 		pinchOrigin = authoredPoint(viewPoint)
-		state = .pinching
-		movementPurpose = .none
-		stateElapsed = 0
-		velocity = .zero
+		enter(.pinching, purpose: MovementPurpose.none)
 		remainderX = 0
 		remainderY = 0
 		announce(.pickedUp, voice: .aggrieved, priority: .normal)
@@ -3167,10 +3153,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// otherwise only pick by weight.
 	func debugBeginWalk(toX x: Double) {
 		targetX = x
-		movementPurpose = .wander
-		state = .running
-		stateElapsed = 0
-		animator.play("walk")
+		enter(.running, clip: "walk", purpose: .wander, velocity: nil)
 	}
 
 	/// Starts a patrol leg, which the autonomy planner would otherwise only pick by
@@ -3269,14 +3252,11 @@ public final class PetController: SpriteAnimatorDelegate {
 			requeueActiveMeal(reason: "PickedUp")
 		}
 		isDragging = true
-		state = .dragging
-		stateElapsed = 0
-		velocity = .zero
+		enter(.dragging, clip: "drag")
 		remainderX = 0
 		remainderY = 0
 		dragOffset = PixelPoint(x: foot.x - cursor.x, y: foot.y - cursor.y)
 		dragTracker.reset(point: cursor, atSeconds: CFAbsoluteTimeGetCurrent())
-		animator.play("drag")
 		announce(.pickedUp, voice: .question, priority: .normal)
 	}
 
