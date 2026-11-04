@@ -2,11 +2,11 @@ import Foundation
 import ImageIO
 import Testing
 
-@testable import Pet
 @testable import PetBehaviour
 @testable import PetDesktop
 @testable import PetFoundation
 @testable import PetMedia
+@testable import PetSimulation
 
 /// The cheek rig is authored in the sprite's own space, but she is drawn mirrored
 /// when she faces left. A pinch taken from the pointer therefore has to be mirrored

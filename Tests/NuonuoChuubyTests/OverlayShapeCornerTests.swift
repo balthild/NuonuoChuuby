@@ -1,8 +1,8 @@
 import Foundation
 import Testing
 
-@testable import Pet
 @testable import PetPresentation
+@testable import PetSimulation
 
 /// The three dots that hold the overlay's shape at full size.
 ///

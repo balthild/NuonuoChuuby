@@ -38,7 +38,7 @@ make rerun                  # 构建、打包、签名并启动
 | `Sources/PetDesktop/` | 读取桌面（窗口/显示器/地形图）与绘制几何 |
 | `Sources/PetMedia/` | 美术与语音的加载、播放 |
 | `Sources/PetBehaviour/` | 她的状态、需求，以及吃东西/说话这些事 |
-| `Sources/Pet/` | 仿真：她的位置、状态机、支撑 |
+| `Sources/PetSimulation/` | 仿真：她的位置、状态机、支撑 |
 | `Sources/PetPresentation/` | 把她画出来：overlay 与 panel 两个渲染器 |
 | `Sources/PetApp/` | 菜单栏与全部接线 |
 | `Sources/PetMedia/Asset/AssetManifest.swift` | 生成的素材清单（不提交，每次构建重生成） |

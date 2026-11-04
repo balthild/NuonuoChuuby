@@ -1,8 +1,8 @@
 import AppKit
-import Pet
 import PetBehaviour
 import PetDesktop
 import PetFoundation
+import PetSimulation
 
 /// Puts the pet on screen in a small window that goes to where she is, instead of a
 /// full-display window that never moves.

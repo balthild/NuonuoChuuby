@@ -1,8 +1,8 @@
 import AppKit
-import Pet
 import PetBehaviour
 import PetDesktop
 import PetFoundation
+import PetSimulation
 
 /// A full-display, fully transparent panel.
 final class OverlayPetPanel: PetChromePanel {

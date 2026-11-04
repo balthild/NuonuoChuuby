@@ -2,11 +2,11 @@ import Foundation
 import ImageIO
 import Testing
 
-@testable import Pet
 @testable import PetBehaviour
 @testable import PetDesktop
 @testable import PetFoundation
 @testable import PetMedia
+@testable import PetSimulation
 
 /// A fullscreen app in front of everything, and the display going away.
 ///

@@ -1,11 +1,11 @@
 import Foundation
 import Testing
 
-@testable import Pet
 @testable import PetBehaviour
 @testable import PetDesktop
 @testable import PetFoundation
 @testable import PetMedia
+@testable import PetSimulation
 
 /// Drives the ride frame by frame against a scripted surface graph.
 ///

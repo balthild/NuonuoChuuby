@@ -1,10 +1,10 @@
 import AppKit
-import Pet
 import PetBehaviour
 import PetDesktop
 import PetFoundation
 import PetMedia
 import PetPresentation
+import PetSimulation
 
 /// Application bootstrap: resolve assets and settings, build the pet, and wire
 /// the menu bar.

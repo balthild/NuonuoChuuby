@@ -23,23 +23,23 @@ let package = Package(
 			name: "PetBehaviour",
 			dependencies: ["PetFoundation", "PetDesktop", "PetMedia"]
 		),
-		// The pet herself: her brain, her body and her overlay.
+		// Her simulation: where she is, what she is doing, what holds her up.
 		.target(
-			name: "Pet",
+			name: "PetSimulation",
 			dependencies: ["PetFoundation", "PetDesktop", "PetMedia", "PetBehaviour"]
 		),
 		// Putting her on screen: the overlay and the panel, and everything they draw with.
 		.target(
 			name: "PetPresentation",
 			dependencies: [
-				"PetFoundation", "PetDesktop", "PetBehaviour", "Pet",
+				"PetFoundation", "PetDesktop", "PetBehaviour", "PetSimulation",
 			]
 		),
 		// The app shell: the menu bar, and everything wired together.
 		.target(
 			name: "PetApp",
 			dependencies: [
-				"PetFoundation", "PetDesktop", "PetMedia", "PetBehaviour", "Pet",
+				"PetFoundation", "PetDesktop", "PetMedia", "PetBehaviour", "PetSimulation",
 				"PetPresentation",
 			]
 		),
@@ -51,7 +51,7 @@ let package = Package(
 		.testTarget(
 			name: "NuonuoChuubyTests",
 			dependencies: [
-				"PetFoundation", "PetDesktop", "PetMedia", "PetBehaviour", "Pet",
+				"PetFoundation", "PetDesktop", "PetMedia", "PetBehaviour", "PetSimulation",
 				"PetPresentation", "PetApp",
 			]
 		),

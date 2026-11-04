@@ -1,6 +1,6 @@
 import AppKit
-import Pet
 import PetFoundation
+import PetSimulation
 import QuartzCore
 
 /// The pulled cheek drawn as vector sublayers of the pet's layer, instead of

@@ -1,8 +1,8 @@
 import AppKit
 import Testing
 
-@testable import Pet
 @testable import PetPresentation
+@testable import PetSimulation
 
 @Suite("Overlay pet panel")
 @MainActor

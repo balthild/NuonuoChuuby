@@ -1,11 +1,11 @@
 import Foundation
 import Testing
 
-@testable import Pet
 @testable import PetBehaviour
 @testable import PetDesktop
 @testable import PetFoundation
 @testable import PetMedia
+@testable import PetSimulation
 
 /// A window dragged faster than she can fall.
 ///

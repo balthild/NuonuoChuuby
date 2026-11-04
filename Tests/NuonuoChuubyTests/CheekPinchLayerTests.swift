@@ -2,9 +2,9 @@ import CoreGraphics
 import QuartzCore
 import Testing
 
-@testable import Pet
 @testable import PetFoundation
 @testable import PetPresentation
+@testable import PetSimulation
 
 /// The vector shapes the pinch overlay is built from, in the pet's own points.
 ///

@@ -1,11 +1,11 @@
 import Foundation
 import Testing
 
-@testable import Pet
 @testable import PetBehaviour
 @testable import PetDesktop
 @testable import PetFoundation
 @testable import PetMedia
+@testable import PetSimulation
 
 /// The two walks that leave the surface behind: to a meal, and to an icon.
 ///

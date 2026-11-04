@@ -1,10 +1,10 @@
 import Foundation
 import Testing
 
-@testable import Pet
 @testable import PetBehaviour
 @testable import PetDesktop
 @testable import PetMedia
+@testable import PetSimulation
 
 /// Walking along a surface she is already standing on.
 ///

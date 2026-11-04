@@ -2,11 +2,11 @@ import Foundation
 import ImageIO
 import Testing
 
-@testable import Pet
 @testable import PetBehaviour
 @testable import PetDesktop
 @testable import PetFoundation
 @testable import PetMedia
+@testable import PetSimulation
 
 /// Exercises the real controller with the seeded assets. This is the layer where
 /// the "pet stands still until you let go" bug lived, so the drag path is

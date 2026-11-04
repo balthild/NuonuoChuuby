@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
-import Pet
 import PetFoundation
+import PetSimulation
 
 /// The shapes the cheek-pinch overlay draws, in the pet's own point space
 /// (top-left origin, Y down) — the space the sprite is drawn in.

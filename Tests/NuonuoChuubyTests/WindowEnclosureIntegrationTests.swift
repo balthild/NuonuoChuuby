@@ -1,11 +1,11 @@
 import Foundation
 import Testing
 
-@testable import Pet
 @testable import PetBehaviour
 @testable import PetDesktop
 @testable import PetFoundation
 @testable import PetMedia
+@testable import PetSimulation
 
 /// The enclosure and the side collision, driven frame by frame against a scripted
 /// desktop.
