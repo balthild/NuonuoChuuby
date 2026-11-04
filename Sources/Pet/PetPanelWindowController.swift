@@ -121,14 +121,47 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 	}
 	private var placement: Placement = .appKit
 
+	/// The bubble, when this mode draws it inside her own window.
+	///
+	/// A separate bubble window would be a rectangle under the pointer in a place she is
+	/// not, and — worse for the hybrid — a window moving once per grid crossed, which
+	/// while she is being dragged is a window move every few frames. Inside her window it
+	/// is a layer, and following her costs nothing at all.
+	private var bubble: OverlaySpeechBubbleController?
+
+	/// The bubble layer drawn inside her window, above her sprite.
+	private let bubbleLayer = CALayer()
+
+	/// The plain panel's bubble: a window of its own, because her window is exactly her
+	/// size there and there is nowhere inside it to put anything else. Built only when
+	/// that mode asks for it.
+	private lazy var windowBubble = PetPanelSpeechBubble()
+
+	/// The window's rectangle the bubble converts its global position against.
+	///
+	/// Held rather than read from `panel.frame`, which in the panel mode is the stale
+	/// frame the private move never updates.
+	private var bubbleWindowFrame: PixelRect = .zero
+
+	/// Whether a placement pass is running, so a reserve change it causes is folded into
+	/// the same pass rather than recursing.
+	private var isPlacing = false
+	/// Set when the reserve changed during a pass, so the pass is repeated once with it.
+	private var needsAnotherPass = false
+
 	public var menuProvider: ((NSEvent) -> NSMenu?)?
 	public var onPlacementChanged: ((PixelRect) -> Void)?
 	public var onSuspensionChanged: ((Bool) -> Void)?
 
-	/// The bubble is a window here, not a layer of the overlay, so it has to be told
-	/// where the display is — a window is placed in the window server's own space.
-	public private(set) lazy var speechBubble: any SpeechBubblePresenting =
-		PetPanelSpeechBubble()
+	/// The bubble is a window of its own in the plain panel — her window is exactly her
+	/// size there, so there is nowhere inside it to put anything else. The hybrid's
+	/// window has slack, so its bubble is a layer of it instead.
+	public private(set) lazy var speechBubble: any SpeechBubblePresenting = {
+		switch mode {
+		case .panel: windowBubble
+		case .hybrid: bubble!
+		}
+	}()
 
 	public init(controller: PetController, displaySpace: DisplaySpace, mode: Mode = .panel) {
 		self.controller = controller
@@ -170,6 +203,20 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 
 		panel.contentView = root
 		wireGestures()
+
+		if mode == .hybrid {
+			// Her window's bubble: a layer above her, in the slack the window leaves.
+			let bubble = OverlaySpeechBubbleController(host: self)
+			bubble.onExtentChanged = { [weak self] in self?.bubbleExtentChanged() }
+			bubbleLayer.anchorPoint = .zero
+			bubbleLayer.contentsGravity = .resize
+			bubbleLayer.minificationFilter = .linear
+			bubbleLayer.magnificationFilter = .linear
+			bubbleLayer.isOpaque = false
+			bubbleLayer.isHidden = true
+			root.layer?.addSublayer(bubbleLayer)
+			self.bubble = bubble
+		}
 
 		controller.delegate = self
 		applyPlacement()
@@ -214,10 +261,34 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 	}
 
 	/// How far she may move inside the window before the window itself has to go
-	/// somewhere else. Zero for the panel, whose window is exactly her size and so gives
-	/// her no slack at all.
+	/// somewhere else.
+	///
+	/// Zero for the panel, whose window is exactly her size and so gives her no slack at
+	/// all; one pet for the hybrid.
 	private var grid: Double {
 		mode == .hybrid ? controller.petSize : 0
+	}
+
+	/// The room the showing bubble needs around her.
+	///
+	/// The bubble is centred on her, so both sides need the same; and it goes above her
+	/// head or below her feet, so only one of those needs anything. Reserving the whole
+	/// bubble height rather than the part that actually pokes out is deliberate: the
+	/// layout tucks the bubble slightly into her panel, and the difference is a couple of
+	/// points.
+	private struct Reserve {
+		var horizontal: Double = 0
+		var above: Double = 0
+		var below: Double = 0
+	}
+
+	private func reserve(petSize: Double) -> Reserve {
+		guard let extent = bubble?.currentExtent else { return Reserve() }
+		return Reserve(
+			horizontal: max(0, (Double(extent.size.width) - petSize) / 2),
+			above: extent.tail == .down ? Double(extent.size.height) : 0,
+			below: extent.tail == .up ? Double(extent.size.height) : 0
+		)
 	}
 
 	/// Where her window goes, and where she sits inside it.
@@ -227,30 +298,68 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 	/// position and the window's own rectangle never changes. The grid is zero for the
 	/// panel, which degenerates to "the window is exactly where she is".
 	///
+	/// The grid is **shifted** by the reserve rather than widened: the window's origin is
+	/// still a whole number of grid steps, which is what keeps the window still while she
+	/// walks inside the slack. Widening the grid instead would put her offset anywhere in
+	/// `[0, grid)` and let the bubble hang out of the window.
+	///
 	/// `floor` rather than a rounded division so the remainder is always in `[0, grid)`,
 	/// which is what keeps her inside the slack; it also puts her window at a negative
 	/// multiple of the grid when she hangs past the left or top edge, which is fine.
-	private func placement(for petFrame: PixelRect) -> (window: PixelRect, layer: CGPoint) {
-		let side = mode.windowSide(petSize: controller.petSize)
-		let grid = self.grid
-		guard grid > 0 else {
+	private func placement(
+		for petFrame: PixelRect
+	) -> (
+		window: PixelRect, size: NSSize, layer: CGPoint
+	) {
+		let petSize = controller.petSize
+		let reserve = self.reserve(petSize: petSize)
+		guard mode == .hybrid else {
 			return (
-				PixelRect(x: petFrame.x, y: petFrame.y, width: side, height: side),
+				PixelRect(x: petFrame.x, y: petFrame.y, width: petSize, height: petSize),
+				NSSize(width: petSize, height: petSize),
 				.zero
 			)
 		}
+
+		let grid = petSize
 		let x = (petFrame.x / grid).rounded(.down) * grid
 		let y = (petFrame.y / grid).rounded(.down) * grid
 		return (
-			PixelRect(x: x, y: y, width: side, height: side),
-			CGPoint(x: petFrame.x - x, y: petFrame.y - y)
+			PixelRect(
+				x: x - reserve.horizontal,
+				y: y - reserve.above,
+				width: petSize * 2 + reserve.horizontal * 2,
+				height: petSize * 2 + reserve.above + reserve.below
+			),
+			NSSize(
+				width: petSize * 2 + reserve.horizontal * 2,
+				height: petSize * 2 + reserve.above + reserve.below
+			),
+			CGPoint(
+				x: petFrame.x - x + reserve.horizontal,
+				y: petFrame.y - y + reserve.above
+			)
 		)
 	}
 
 	/// Puts the window, and her inside it, where the controller says she is.
 	private func applyPlacement() {
+		isPlacing = true
+		defer {
+			isPlacing = false
+			// The bubble's own extent can change *during* a pass — the tail flips when
+			// her head crosses the menu bar — and the window then has the wrong size for
+			// the bubble it is about to draw. One more pass with the new reserve settles
+			// it, and it cannot oscillate: the reserve is a function of where she is, not
+			// of the window.
+			if needsAnotherPass {
+				needsAnotherPass = false
+				applyPlacement()
+			}
+		}
+
 		let petFrame = controller.petFrame
-		let (windowOrigin, layerPosition) = placement(for: petFrame)
+		let (windowOrigin, windowSize, layerPosition) = placement(for: petFrame)
 		let target = DisplaySpace.toAppKit(
 			windowOrigin,
 			primaryHeight: displaySpace.primaryHeight
@@ -261,11 +370,14 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 		let origin = PixelPoint(x: windowOrigin.x, y: windowOrigin.y)
 		let movedWindow = origin != lastWindowOrigin
 		lastWindowOrigin = origin
+		// Where the bubble's host converts a global point into window-local ones. Held
+		// rather than read from `panel`, whose frame is stale in the panel mode.
+		bubbleWindowFrame = windowOrigin
 
-		if panel.frame.size != target.size {
-			// She was resized (a menu action), or the window does not have this mode's size
-			// yet. A reshape cannot go through the private call — it moves a window, it does
-			// not resize one — so this rare one goes to AppKit, which also reasserts the
+		if panel.frame.size != windowSize {
+			// She was resized (a menu action), the mode changed, or the bubble's reserve
+			// changed. A reshape cannot go through the private call — it moves a window,
+			// it does not resize one — so this goes to AppKit, which also reasserts the
 			// frame it believes in. It is also the one route that can place a window the
 			// private call is not moving yet.
 			panel.setFrame(target, display: true)
@@ -316,6 +428,17 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 			FrameInterpolation.animate(update)
 		}
 		onPlacementChanged?(petFrame)
+	}
+
+	/// The bubble's window changed the room it has to leave her, so the next pass has to
+	/// size the window for it.
+	private func bubbleExtentChanged() {
+		guard bubble != nil else { return }
+		if isPlacing {
+			needsAnotherPass = true
+		} else {
+			applyPlacement()
+		}
 	}
 
 	/// Places the window through the private call, where it is the chosen route and the
@@ -491,5 +614,26 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 			show()
 		}
 		onSuspensionChanged?(suspended)
+	}
+}
+
+/// The hybrid's bubble is a layer of her window, so this is where it is told which layer
+/// to draw into and where that window currently is.
+///
+/// The frame handed over is the window's own rectangle, not a display's: the bubble's
+/// global top-left is turned into window-local coordinates against it, which is what the
+/// root layer's flipped space expects. It is the window the *last* placement put her in,
+/// which is what the bubble is being positioned for.
+@MainActor
+extension PetPanelWindowController: SpeechBubbleLayerHosting {
+	public func speechBubbleLayer(at point: PixelPoint) -> SpeechBubbleLayerTarget? {
+		// No bubble layer means the plain panel, whose bubble is a window of its own.
+		guard bubble != nil else { return nil }
+		return SpeechBubbleLayerTarget(
+			layer: bubbleLayer,
+			displayFrame: bubbleWindowFrame,
+			scale: hostingScale,
+			isDark: panel.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+		)
 	}
 }

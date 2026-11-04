@@ -31,6 +31,10 @@ final class PetPanelSpeechBubble: SpeechBubblePresenting {
 	private var visible = false
 	private var text = ""
 
+	/// The placement of the line on screen now, so a reposition that changes nothing can
+	/// be dropped before it costs a window move.
+	private var lastPlacement: SpeechBubblePlacement?
+
 	/// What the cached bitmap was made from. Anything else that changes the picture has
 	/// to be added here, or the bubble keeps a stale one.
 	private var raster: Raster?
@@ -75,6 +79,9 @@ final class PetPanelSpeechBubble: SpeechBubblePresenting {
 		guard !text.isEmpty else { return }
 		visible = true
 		apply(text: text, placement: placement, displaySpace: displaySpace)
+		// Only here: a reposition has nothing to bring forward, and this is a window
+		// server call.
+		panel.orderFrontRegardless()
 
 		hideWorkItem?.cancel()
 		let work = DispatchWorkItem { [weak self] in self?.hide() }
@@ -87,6 +94,10 @@ final class PetPanelSpeechBubble: SpeechBubblePresenting {
 
 	public func reposition(to placement: SpeechBubblePlacement, displaySpace: DisplaySpace) {
 		guard visible else { return }
+		// She is often still while she talks, and this is called on every placement
+		// change: with nothing moved and nothing to redraw there is no work to do, and a
+		// window move is the most expensive thing this class can do.
+		guard placement != lastPlacement else { return }
 		// A window move cannot be interpolated the way the overlay's layer move can, so
 		// the bubble steps to the new position instead of gliding with her.
 		apply(text: text, placement: placement, displaySpace: displaySpace)
@@ -96,6 +107,7 @@ final class PetPanelSpeechBubble: SpeechBubblePresenting {
 		hideWorkItem?.cancel()
 		hideWorkItem = nil
 		visible = false
+		lastPlacement = nil
 		panel.orderOut(nil)
 	}
 
@@ -144,7 +156,7 @@ final class PetPanelSpeechBubble: SpeechBubblePresenting {
 		} else {
 			PetPanelMover.move(windowID: UInt32(panel.windowNumber), to: placement.topLeft)
 		}
-		panel.orderFrontRegardless()
+		lastPlacement = placement
 	}
 
 	/// The bubble's top-left in AppKit's bottom-left space.

@@ -66,6 +66,22 @@ public final class OverlaySpeechBubbleController: SpeechBubblePresenting {
 		self.host = host
 	}
 
+	/// The room the showing bubble occupies, or `nil` when nothing is showing.
+	///
+	/// A renderer that draws the bubble **inside the pet's own window** has to know how
+	/// much room to leave before it places that window: the bubble is as wide as its line
+	/// and sits above her head or below her feet, so the window's size and her offset in
+	/// it both depend on this.
+	public private(set) var currentExtent: (size: NSSize, tail: SpeechBubbleTail)?
+
+	/// Called when ``currentExtent`` changes — a line appearing, going away, or moving
+	/// from above her head to below her feet.
+	///
+	/// The renderer that reserves room needs to reshape its window then, and it has to
+	/// happen before the frame is drawn: sizing the window on the *next* tick would show
+	/// the bubble clipped for one frame.
+	public var onExtentChanged: (() -> Void)?
+
 	public var isVisible: Bool { visible }
 
 	public var currentText: String { text }
@@ -121,6 +137,7 @@ public final class OverlaySpeechBubbleController: SpeechBubblePresenting {
 		hideWorkItem = nil
 		visible = false
 		currentLayer?.isHidden = true
+		setExtent(nil)
 	}
 
 	private func apply(text: String, placement: SpeechBubblePlacement) {
@@ -161,5 +178,14 @@ public final class OverlaySpeechBubbleController: SpeechBubblePresenting {
 		layer.bounds = CGRect(origin: .zero, size: size)
 		let local = OverlayPetGeometry.localTopLeft(placement.topLeft, in: target.displayFrame)
 		layer.position = CGPoint(x: local.x, y: local.y)
+		setExtent((size, placement.tail))
+	}
+
+	private func setExtent(_ extent: (size: NSSize, tail: SpeechBubbleTail)?) {
+		let unchanged =
+			currentExtent?.size == extent?.size && currentExtent?.tail == extent?.tail
+		currentExtent = extent
+		guard !unchanged else { return }
+		onExtentChanged?()
 	}
 }

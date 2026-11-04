@@ -18,6 +18,23 @@ struct SpeechBubbleDrawingTests {
 		#expect(body.height == measured.height + SpeechBubbleDrawing.verticalPadding * 2)
 	}
 
+	@Test("A file name longer than the line cap is truncated, not grown")
+	func longTextStopsAtTheLineCap() {
+		// The only unbounded line is the one carrying a file name, so this is what the
+		// cap is for: a renderer that reserves room for the bubble inside the pet's own
+		// window needs the room to have a bound.
+		let text = String(repeating: "很长很长的一段文件名", count: 12)
+		let measured = SpeechBubbleDrawing.measuredTextSize(text)
+		let cap = SpeechBubbleDrawing.lineHeight * CGFloat(SpeechBubbleDrawing.maximumLines)
+
+		#expect(measured.height <= cap)
+		#expect(measured.width <= SpeechBubbleDrawing.maximumTextWidth)
+
+		// A short line is untouched: the cap must not shrink the lines that fit.
+		let short = "今天吃什么？"
+		#expect(SpeechBubbleDrawing.measuredTextSize(short).height <= SpeechBubbleDrawing.lineHeight)
+	}
+
 	/// Only the edge the tail hangs off has to grow, which is why the layout can
 	/// size the body before it knows which way the tail will point.
 	@Test("Only the tail's own edge grows the box")

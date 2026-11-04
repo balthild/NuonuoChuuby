@@ -14,20 +14,48 @@ public enum SpeechBubbleDrawing {
 	public static let maximumTextWidth: CGFloat = 240
 	public static let cornerRadius: CGFloat = 9
 
+	/// How many lines a bubble may grow to before the text is truncated.
+	///
+	/// The lines are short by design, so this only ever bites on the cue that puts a file
+	/// name in the sentence — and a file name has no length limit. A taller bubble is not
+	/// just uglier: a renderer that reserves room for it inside the pet's own window
+	/// needs the room to have a bound.
+	public static let maximumLines: Int = 3
+
+	/// One line's height at this font, so the line cap is expressible as a height.
+	public static var lineHeight: CGFloat {
+		ceil(textFont.ascender - textFont.descender + textFont.leading)
+	}
+
+	private static let textFont = NSFont.systemFont(ofSize: 13)
+
 	public static func textAttributes() -> [NSAttributedString.Key: Any] {
 		[
-			.font: NSFont.systemFont(ofSize: 13),
+			.font: textFont,
 			.foregroundColor: NSColor.labelColor,
+			.paragraphStyle: paragraphStyle,
 		]
+	}
+
+	/// Truncates rather than growing past the line cap, so the measured height and the
+	/// drawn height agree — the drawing is clipped to the same box the measurement used.
+	private static var paragraphStyle: NSParagraphStyle {
+		let style = NSMutableParagraphStyle()
+		style.lineBreakMode = .byTruncatingTail
+		return style
 	}
 
 	// MARK: - Metrics
 
+	/// The box text is measured and drawn in: the width cap, and the line cap as a height.
+	private static var textBox: NSSize {
+		NSSize(width: maximumTextWidth, height: lineHeight * CGFloat(maximumLines))
+	}
+
 	public static func measuredTextSize(_ text: String) -> NSSize {
 		if let cached = measuredTextCache[text] { return cached }
-		let constraint = NSSize(width: maximumTextWidth, height: .greatestFiniteMagnitude)
 		let bounding = (text as NSString).boundingRect(
-			with: constraint,
+			with: textBox,
 			options: [.usesLineFragmentOrigin],
 			attributes: textAttributes()
 		)
@@ -159,8 +187,8 @@ public enum SpeechBubbleDrawing {
 		let inset = NSRect(
 			x: bubbleRect.minX + horizontalPadding,
 			y: bubbleRect.minY + verticalPadding,
-			width: max(0, bubbleRect.width - horizontalPadding * 2),
-			height: max(0, bubbleRect.height - verticalPadding * 2)
+			width: textBox.width,
+			height: min(textBox.height, max(0, bubbleRect.height - verticalPadding * 2))
 		)
 		(text as NSString).draw(
 			with: inset,
