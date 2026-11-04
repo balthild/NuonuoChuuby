@@ -158,20 +158,21 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		// of that same window — so it is built before the speech coordinator, which
 		// needs the bubble it chose.
 		//
-		// `--pet-panel` is the small-window renderer, kept for the mouse-move comparison:
-		// a window a pet wide is handed the pointer's move stream only over her, where the
-		// overlay is handed it wherever the pointer is.
+		// The small window is the default: it is handed the pointer's move stream only
+		// while the pointer is over her, where the full-display overlay is handed it
+		// wherever the pointer is. `--pet-overlay` selects the overlay, which is kept
+		// because it is the simpler window model and the reference for the comparison.
 		let presenterKind: String
 		let petWindow: any PetPresenting
-		if CommandLine.arguments.contains("--pet-panel") {
-			presenterKind = "panel"
-			petWindow = PetPanelWindowController(
+		if CommandLine.arguments.contains("--pet-overlay") {
+			presenterKind = "overlay"
+			petWindow = OverlayPetWindowController(
 				controller: controller,
 				displaySpace: displaySpace
 			)
 		} else {
-			presenterKind = "overlay"
-			petWindow = OverlayPetWindowController(
+			presenterKind = "panel"
+			petWindow = PetPanelWindowController(
 				controller: controller,
 				displaySpace: displaySpace
 			)
