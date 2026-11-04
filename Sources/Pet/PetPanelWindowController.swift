@@ -41,9 +41,23 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 
 	/// Where the window really is, in AppKit's coordinate space.
 	///
-	/// Not `panel.frame`: after the first private move those two disagree and never
+	/// Not `panel.frame`: once the private move is in use those two disagree and never
 	/// meet again, and it is this one the window server is actually using.
 	private var appKitOrigin: NSPoint = .zero
+
+	/// Which call is putting the window where it belongs.
+	///
+	/// Starts on AppKit, because the private call cannot be trusted until the window has
+	/// a device: a window that has never been ordered on screen takes `CGSMoveWindow`,
+	/// returns success, and stays where it was made. That is not hypothetical — it left
+	/// her drawn in the bottom-left corner of the display and impossible to click, since
+	/// a move that did not happen still recorded a new origin and skewed the hit test.
+	/// The switch happens once the private move has been **read back** and confirmed.
+	private enum Placement {
+		case appKit
+		case privateMove
+	}
+	private var placement: Placement = .appKit
 
 	public var menuProvider: ((NSEvent) -> NSMenu?)?
 	public var onPlacementChanged: ((PixelRect) -> Void)?
@@ -147,24 +161,60 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 		if panel.frame.size != target.size {
 			// She was resized (a menu action). A reshape cannot go through the private
 			// call — it moves a window, it does not resize one — so this rare one goes
-			// to AppKit, which also reasserts the frame it believes in.
+			// to AppKit, which also reasserts the frame it believes in. It is also the
+			// one route that can place a window the private call is not moving yet.
 			panel.setFrame(target, display: true)
-		}
-		appKitOrigin = target.origin
-
-		let moved = PetPanelMover.move(
-			windowID: UInt32(panel.windowNumber),
-			to: PixelPoint(x: petFrame.x, y: petFrame.y)
-		)
-		if !moved {
-			// No private call, or the window has no device yet. AppKit's move keeps
-			// its own frame correct, so the correction collapses to nothing.
+			appKitOrigin = panel.frame.origin
+		} else if move(to: petFrame) {
+			appKitOrigin = target.origin
+			// The move could not be made through the private call yet — the window has no
+			// device, or the call is unavailable. AppKit is authoritative, so its own frame
+			// stays the truth and the correction collapses to nothing.
+		} else {
 			panel.setFrameOrigin(target.origin)
 			appKitOrigin = panel.frame.origin
 		}
 
 		updatePetLayer()
 		onPlacementChanged?(petFrame)
+	}
+
+	/// Places the window through the private call, where it is the chosen route and the
+	/// window is known to take it.
+	///
+	/// The first attempt is verified rather than trusted: it is the one made on a window
+	/// that may have just been ordered on screen and has no device yet. Once it is
+	/// confirmed the window is really moved, the steady state stops paying for the read —
+	/// a window that is being composited and answers the call is not going to ignore it.
+	private func move(to petFrame: PixelRect) -> Bool {
+		switch placement {
+		case .appKit:
+			guard panel.isVisible else { return false }
+			let windowID = UInt32(panel.windowNumber)
+			guard
+				PetPanelMover.move(
+					windowID: windowID,
+					to: PixelPoint(x: petFrame.x, y: petFrame.y)
+				),
+				let actual = PetPanelMover.bounds(of: windowID),
+				// The read is already in the pet's space, so it compares directly.
+				abs(actual.x - petFrame.x) <= 1,
+				abs(actual.y - petFrame.y) <= 1
+			else { return false }
+			placement = .privateMove
+			return true
+
+		case .privateMove:
+			let moved = PetPanelMover.move(
+				windowID: UInt32(panel.windowNumber),
+				to: PixelPoint(x: petFrame.x, y: petFrame.y)
+			)
+			if !moved {
+				// The window was taken away under us. AppKit is authoritative again.
+				placement = .appKit
+			}
+			return moved
+		}
 	}
 
 	private func updatePetLayer() {
