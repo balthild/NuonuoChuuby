@@ -1,4 +1,5 @@
 import Foundation
+import PetFoundation
 
 /// The four long-term needs that drive 糯糯's autonomy. All are 0…100.
 ///

@@ -91,8 +91,8 @@ ms。所以「她脚下的窗口」是实时的，「世界上有哪些边」是
 | `PetMedia` | `Asset` `Sprite` `Voice` | 美术与语音的加载、播放 |
 | `PetBehaviour` | `Settings` `Life` `Meal` `Dialogue` | 她的状态、需求，以及吃东西/说话这些事 |
 | `PetSimulation` | `Cheek` | 仿真：她的位置、状态机、支撑 |
-| `PetPresentation` | `Cheek` | 把她放到屏幕上：overlay 与 panel 两个渲染器及它们画图用的一切 |
-| `PetApp` | `App` `System` | 菜单栏与全部接线 |
+| `PetPresentation` | `Cheek` | 把她放到屏幕上：overlay 与 panel 两个渲染器，及它们画图用的一切 |
+| `PetApp` | `App` `System` | 菜单栏、素材设置窗，与全部接线 |
 
 - **`PetSimulation` 与 `PetPresentation` 的分界是「仿真 vs 画出来」**（2026-11 拆开）。之前两者同在
   一个 `Pet` 模块里，于是那个模块既拥有 `PetController` 又拥有两个窗口控制器；拆开后 `PetSimulation`
@@ -101,10 +101,21 @@ ms。所以「她脚下的窗口」是实时的，「世界上有哪些边」是
   界是 `PetPresentation` → `PetSimulation`（渲染器持有 `PetController`、实现
   `PetControllerDelegate`）。_注意典型陷阱：`CheekPinchDynamics`（弹簧）留在 `PetSimulation`，
   `CheekPinchLayer`/`CheekPinchShapes`（绘制）在 `PetPresentation`。_
-- **`PetSimulation` 里连 `import AppKit` 都是多余的**（实测移除后 0 错误、测试全绿）：它只用
-  `CGImage`/`CGPoint`/`CGRect`（CoreGraphics）、`CFAbsoluteTime`（CoreFoundation）与
-  `Timer`/`RunLoop`（Foundation）。**这一条能直接把新类型归位**：需要 AppKit 的就是 presentation，不
-  需要的就是仿真。
+- **归位的判据是「框架类型有没有越界」，不是「这概念属于哪一层」。** 分两步：
+  1. **需要 AppKit 的就是 presentation，不需要的就是仿真**（实测：`PetSimulation` 里连 `import
+     AppKit` 都是多余的，移除后 0 错误、测试全绿——它只用 `CGImage`/`CGPoint`/`CGRect`、
+     `CFAbsoluteTime`、`Timer`/`RunLoop`）。
+  2. **纯数值运算与单位换算不算跨层。** 2026-11 曾想把 `PetSizePolicy` 的 `fromPercent`/`toPercent`
+     从 `PetFoundation` 搬到菜单栏旁边，理由只是「它的唯一调用者是滑块」——这是错的：它只是 `Double`
+     算术，没有任何 UI 类型越界，而且 `StatusItemController` 本来就因 `Double.clamp` 而 import
+     `PetFoundation`，搬了也不能断掉那条模块边。**已回退。** （对照：`AssetSetupWindow` 是真正
+     `NSPanel` 落在资源模块里，`GhostIconPresenting` 的签名携带 `NSImage`/`CATransform3D`——那两个才
+     是真问题。）
+- 同一把尺子又查出三个文件放错了（2026-11）：`AssetSetupWindow`（`NSPanel`）从 `PetMedia` 到
+  `PetApp`；`GhostIconPresenting` 与 `ShellIconProvider` 从 `PetBehaviour` 到 `PetPresentation` ——后
+  两个使 `PetBehaviour` 的绘制符号归零。`GhostIconPresenting` 的两个实现
+  （`OverlayGhostIcon`、`PetPanelGhostIcon`）都在 `PetPresentation`，声明却在 `PetBehaviour`，而
+  `PetBehaviour` 自己从来没引用过它。
 - **模块名不带后缀会让人误以为它在统摄其余的 `PetX`** —— 这正是 `Pet` 改名 `PetSimulation` 的原因。
   七个模块现在都是「`Pet` 前缀 + 它负责的那一层」，没有一个读起来像父模块。
 - **模块边界是这次重构唯一的强制手段。** 2026-11 的重构先把 15 个目录之间**已经存在**的循环依赖解开
@@ -120,8 +131,9 @@ ms。所以「她脚下的窗口」是实时的，「世界上有哪些边」是
 - 新增类型时先看它依赖什么再决定模块与目录：跨子系统共用的「无行为」类型进 `Vocabulary`；**会画东西
   的东西（CALayer / NSWindow / 光栅化）进 `PetPresentation`，纯几何与缓动留在
   `PetDesktop`/`PetSimulation`**。
-- 依赖方向合法但概念上倒置的两条仍待修正：`Life → Settings`（成因是 `@Fallback` 属性包装器）与
-  `System → Physics`（菜单栏 UI 直接用 `PetSizePolicy`）。
+- 依赖方向合法但概念上倒置的只剩一条：`System → Physics`（菜单栏 `StatusItemController` 直接用
+  `PetSizePolicy` 与 `Double.clamp`）。原有的 `Life → Settings` 已随 `@Fallback` 下沉到
+  `PetFoundation/Common/` 而消失。
 
 - `Sources/NuonuoChuuby/` —— 可执行文件，只有 `main.swift`（NSApplication 启动）。
 - `Tests/NuonuoChuubyTests/` —— swift-testing。**测试数量以 `make test` 实际输出为准。**
@@ -150,9 +162,10 @@ ms。所以「她脚下的窗口」是实时的，「世界上有哪些边」是
 所以这两个 struct 的**每个字段**都包在 `@Fallback<...Default.X>` 里：缺 key、非可选字段上的 `null`、
 值类型不符，都只影响那一个字段，其余照常读出。
 
-- 实现：`Sources/PetBehaviour/Settings/Fallback.swift`（与 CalendarShouter 的
-  `Settings/Fallback.swift` 是同一份）。行为由 `SettingsStoreTests.swift` 与
-  `PetLifeStateStoreTests` 钉住。
+- 实现：`Sources/PetFoundation/Common/Fallback.swift`（与 CalendarShouter 的
+  `Settings/Fallback.swift` 是同一份；它是纯 `Codable` 逻辑，不依赖本项目的任何类型，所以归档在
+  `PetFoundation` 而非 `Settings/`）。行为由 `SettingsStoreTests.swift` 与 `PetLifeStateStoreTests`
+  钉住。
 - 字段的默认值**不在字段上**，而在 `PetSettingsDefault` / `PetLifeStateDefault` 里的同名 provider ——
   `FallbackProvider` 协议只带一个 `Value` 类型，没有地方放值，所以每个字段都要有自己的 provider 类
   型。

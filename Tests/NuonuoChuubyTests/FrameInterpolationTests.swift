@@ -2,9 +2,7 @@ import AppKit
 import QuartzCore
 import Testing
 
-@testable import PetDesktop
 @testable import PetPresentation
-@testable import PetSimulation
 
 @Suite("Frame interpolation")
 @MainActor

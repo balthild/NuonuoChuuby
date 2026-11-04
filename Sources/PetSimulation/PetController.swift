@@ -387,7 +387,8 @@ public final class PetController: SpriteAnimatorDelegate {
 		self.animator = animator
 
 		let home =
-			displaySpace.displays.first?.visibleFrame ?? PixelRect(x: 0, y: 0, width: 1440, height: 900)
+			displaySpace.displays.first?.visibleFrame
+			?? PixelRect(x: 0, y: 0, width: 1440, height: 900)
 		self.foot = PixelPoint(x: home.centerX, y: home.bottom)
 		self.idleRemaining = Double.random(in: 0.5...1.6, using: &random)
 		self.selfReportRemaining = Self.selfReportInterval(using: &random)

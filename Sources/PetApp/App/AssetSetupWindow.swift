@@ -3,15 +3,15 @@ import AppKit
 /// Shows the first-launch download: progress while it runs, and a retry when it
 /// fails.
 @MainActor
-public final class AssetSetupWindowController {
+final class AssetSetupWindowController {
 	private let panel: NSPanel
 	private let statusLabel: NSTextField
 	private let progressBar: NSProgressIndicator
 	private let retryButton: NSButton
 
-	public var onRetry: (() -> Void)?
+	var onRetry: (() -> Void)?
 
-	public init() {
+	init() {
 		panel = NSPanel(
 			contentRect: NSRect(x: 0, y: 0, width: 360, height: 132),
 			styleMask: [.titled],
@@ -59,19 +59,19 @@ public final class AssetSetupWindowController {
 		onRetry?()
 	}
 
-	public func show() {
+	func show() {
 		NSApp.setActivationPolicy(.regular)
 		panel.center()
 		panel.makeKeyAndOrderFront(nil)
 		NSApp.activate(ignoringOtherApps: true)
 	}
 
-	public func close() {
+	func close() {
 		panel.orderOut(nil)
 		NSApp.setActivationPolicy(.accessory)
 	}
 
-	public func showProgress(completed: Int, total: Int) {
+	func showProgress(completed: Int, total: Int) {
 		retryButton.isHidden = true
 		progressBar.isHidden = false
 		progressBar.isIndeterminate = total == 0
@@ -84,7 +84,7 @@ public final class AssetSetupWindowController {
 		}
 	}
 
-	public func showFailure(_ message: String) {
+	func showFailure(_ message: String) {
 		progressBar.isHidden = true
 		retryButton.isHidden = false
 		statusLabel.stringValue = message
@@ -92,7 +92,7 @@ public final class AssetSetupWindowController {
 
 	/// Waits for the user to retry, so the caller can loop without blocking a run
 	/// loop turn.
-	public func waitForRetry() async {
+	func waitForRetry() async {
 		retryRequested = false
 		while !retryRequested {
 			try? await Task.sleep(nanoseconds: 100_000_000)

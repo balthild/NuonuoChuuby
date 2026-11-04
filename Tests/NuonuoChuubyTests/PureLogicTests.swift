@@ -2,7 +2,6 @@ import Foundation
 import Testing
 
 @testable import PetBehaviour
-@testable import PetDesktop
 @testable import PetFoundation
 
 @Suite("Sprite geometry")

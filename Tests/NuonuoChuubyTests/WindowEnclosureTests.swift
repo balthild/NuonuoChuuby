@@ -2,7 +2,6 @@ import Foundation
 import Testing
 
 @testable import PetFoundation
-@testable import PetSimulation
 
 /// The pet as a free body inside a window rectangle, ported from the original's
 /// `WindowEnclosurePhysics.Resolve`. The numbers are the original's, so these
