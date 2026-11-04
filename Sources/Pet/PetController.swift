@@ -1,4 +1,5 @@
-import AppKit
+import CoreGraphics
+import Foundation
 import PetBehaviour
 import PetDesktop
 import PetFoundation
