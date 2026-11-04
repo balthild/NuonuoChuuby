@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Testing
 
@@ -30,6 +31,17 @@ struct WindowEnclosureIntegrationTests {
 		var platform: MockPlatform
 		var space: DisplaySpace
 		var directory: URL
+	}
+
+	/// Counts the placement reports, which is how a presenter that has to move a window
+	/// next to her learns that it should stop, or start again.
+	private final class PlacementSpy: PetControllerDelegate {
+		var placements = 0
+
+		func petController(_ controller: PetController, didProduceFrame image: CGImage) {}
+		func petControllerDidChangePlacement(_ controller: PetController) { placements += 1 }
+		func petControllerDidRequestMenu(_ controller: PetController) {}
+		func petController(_ controller: PetController, didChangeSuspension suspended: Bool) {}
 	}
 
 	private static func window(bounds: PixelRect) -> PlatformWindow {
@@ -152,6 +164,41 @@ struct WindowEnclosureIntegrationTests {
 		advance(rig, seconds: 5)
 		#expect(rig.controller.state == .idle, "she had not settled")
 		#expect(!rig.controller.isMovingInsideEnclosure, "settled on the box's floor")
+	}
+
+	/// The overlay surface is lowered by a placement pass, and a pass only runs when the
+	/// controller reports that something changed. The frame the box state ends is exactly
+	/// the frame she *stops* moving — a settle leaves her feet where the last frame put
+	/// them — so a report that only looked at her position never fired, and the presenter
+	/// had no way to know it should start following her with a window again.
+	///
+	/// The heights are ones whose landing leaves a sub-pixel remainder, so the settle
+	/// frame moves her by nothing at all: the case the position test missed.
+	@Test("Settling in a box is reported even when she does not move that frame")
+	func settlingIsReported() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+		let spy = PlacementSpy()
+		rig.controller.delegate = spy
+
+		for height in [100.0, 120, 140] {
+			drop(rig, at: PixelPoint(x: 900, y: Self.box.bottom - height))
+			#expect(rig.controller.debugState.enclosureWindowID == Self.windowID)
+
+			var settled = false
+			for _ in 0..<600 {
+				let before = spy.placements
+				rig.controller.debugStep(delta: Self.frame)
+				guard !rig.controller.isMovingInsideEnclosure else { continue }
+				#expect(
+					spy.placements > before,
+					"settling \(Int(height)) pt above the floor went unreported"
+				)
+				settled = true
+				break
+			}
+			#expect(settled, "she never settled \(Int(height)) pt above the floor")
+		}
 	}
 
 	@Test("Settled on a box's floor, her feet are on it — not below the window")

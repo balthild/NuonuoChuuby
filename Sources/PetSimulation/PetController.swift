@@ -324,6 +324,7 @@ public final class PetController: SpriteAnimatorDelegate {
 	private var heartbeatRemaining: Double = 10
 	private var lastNotifiedFoot: PixelPoint?
 	private var lastNotifiedSize: Double?
+	private var lastNotifiedMovingFast: Bool?
 	private var dragRefreshRemaining: Double = 0
 	private static let dragSurfaceRefreshInterval: Double = 2
 	var fallRefreshRemaining: Double = 0
@@ -572,10 +573,22 @@ public final class PetController: SpriteAnimatorDelegate {
 	/// Her window follows the simulation, so every place that moves the foot or
 	/// changes the size must go through here — a drag updates the foot *between*
 	/// ticks, where a change made during `step()` would never be noticed.
-	private func notifyPlacementIfChanged() {
-		guard lastNotifiedFoot != foot || lastNotifiedSize != petSize else { return }
+	///
+	/// ``isMovingFast`` is compared as well, even though it is not part of where she is.
+	/// A renderer that stops following her with a window has to be told when it may start
+	/// again, and the frame that state ends is exactly the frame she *stops* moving: a
+	/// settle leaves her feet on the floor where the previous frame already put them, so
+	/// a test on her position alone never fires, and the renderer holds the state until
+	/// something else happens to move her.
+	func notifyPlacementIfChanged() {
+		let movingFast = isMovingFast
+		guard
+			lastNotifiedFoot != foot || lastNotifiedSize != petSize
+				|| lastNotifiedMovingFast != movingFast
+		else { return }
 		lastNotifiedFoot = foot
 		lastNotifiedSize = petSize
+		lastNotifiedMovingFast = movingFast
 		delegate?.petControllerDidChangePlacement(self)
 	}
 

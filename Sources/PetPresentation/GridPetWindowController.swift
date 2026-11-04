@@ -380,9 +380,8 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 
 	/// Whether she is drawn in the overlay instead of her own window.
 	///
-	/// True in the two states where she moves fast enough that keeping a window next to her
-	/// would mean moving that window every few frames — ``PetController/isBeingDragged``
-	/// and ``PetController/isMovingInsideEnclosure``.
+	/// True while ``PetController/isMovingFast`` holds, which is the two states where
+	/// keeping a window next to her would mean moving that window every few frames.
 	///
 	/// Never set directly: see ``syncOverlaySurface()``, which is the only writer. The two
 	/// used to be driven by the up and down gestures separately, and the conditions did
@@ -408,22 +407,20 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 
 	// MARK: - The overlay surface
 
-	/// Whether she should be drawn in the overlay rather than in her own window.
-	///
-	/// The two states are the same situation: she is being moved fast. A drag puts her
-	/// wherever the pointer goes at pointer speed, and a window's box throws her around at
-	/// up to `maximumVelocityX`/`maximumVelocityY` — both far above her own walking pace.
-	/// In either one the grid window would move every few frames, so it stops moving at all.
-	private var wantsOverlaySurface: Bool {
-		controller.isBeingDragged || controller.isMovingInsideEnclosure
-	}
-
 	/// Raises or lowers the full-display window she is drawn into, to match whether she is
 	/// in one of the states that wants it.
 	///
-	/// The controller is the one truth here, and this is the only place that acts on it,
-	/// so the surface cannot outlive the state or lag behind it — including a release the
-	/// process never saw. It is called from ``applyPlacement()``, which runs every frame.
+	/// The controller is the one truth here — ``PetController/isMovingFast``, which this
+	/// reads rather than working out again — and this is the only place that acts on it,
+	/// so the surface cannot outlive the state or lag behind it, including a release the
+	/// process never saw.
+	///
+	/// It runs from a placement pass, and a pass is not guaranteed on every frame: the
+	/// controller reports one when her position, her size, or that state changes. Losing
+	/// the state is the case that needs saying out loud — it is the frame she *stops*
+	/// moving, so nothing about her position changes with it, and a report that looked only
+	/// at her position would leave this reading `false` with the surface still up for so
+	/// long as she stood still. See ``PetController/notifyPlacementIfChanged()``.
 	///
 	/// Why the surface exists at all: in both states she moves on every frame, far faster
 	/// than she ever walks, so keeping the small window next to her would mean moving it
@@ -440,7 +437,7 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 	/// delivers the rest of a drag to the window that took the button down, wherever the
 	/// pointer goes, so it does not have to follow her — and not following it is the point.
 	private func syncOverlaySurface() {
-		let wanted = wantsOverlaySurface
+		let wanted = controller.isMovingFast
 		guard wanted != usesOverlaySurface else { return }
 		usesOverlaySurface = wanted
 

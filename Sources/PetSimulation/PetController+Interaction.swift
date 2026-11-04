@@ -107,9 +107,7 @@ extension PetController {
 		delegate?.petController(self, didUpdateCheekPinch: cheekPinchState)
 	}
 
-	// MARK: - Test seams
-
-	public func canBeginDrag() -> Bool { DragInteractionPolicy.canStart(from: state) }
+	// MARK: - How she is being moved
 
 	public var isBeingDragged: Bool { isDragging }
 
@@ -127,6 +125,16 @@ extension PetController {
 		guard let enclosure else { return false }
 		return !enclosure.isResting
 	}
+
+	/// Whether something other than her own walking is moving her, and moving her far
+	/// faster than she ever walks — a hand on her, or a window's box throwing her around.
+	///
+	/// A renderer that keeps a window next to her stops moving that window entirely while
+	/// this holds, and draws her in a full-display surface instead; see
+	/// `GridPetWindowController`. It is one property rather than the two conditions written
+	/// out wherever they are needed, so the renderer and the placement report cannot
+	/// disagree about when the state changed.
+	public var isMovingFast: Bool { isBeingDragged || isMovingInsideEnclosure }
 
 	public func beginDrag(at cursor: PixelPoint) {
 		guard canBeginDrag() else { return }
@@ -147,10 +155,8 @@ extension PetController {
 		dragOffset = PixelPoint(x: foot.x - cursor.x, y: foot.y - cursor.y)
 		dragTracker.reset(point: cursor, atSeconds: CFAbsoluteTimeGetCurrent())
 		announce(.pickedUp, voice: .question, priority: .normal)
+		notifyPlacementIfChanged()
 	}
-
-	/// Exposed for tests: the offset between the foot and the grab point.
-	var dragOffsetForTesting: PixelPoint { dragOffset }
 
 	public func updateDrag(to cursor: PixelPoint) {
 		guard isDragging else { return }
@@ -215,7 +221,13 @@ extension PetController {
 		) {
 			_ = beginNextMeal()
 		}
+		notifyPlacementIfChanged()
 	}
 
-	// MARK: - External commands
+	// MARK: - Test seams
+
+	public func canBeginDrag() -> Bool { DragInteractionPolicy.canStart(from: state) }
+
+	/// Exposed for tests: the offset between the foot and the grab point.
+	var dragOffsetForTesting: PixelPoint { dragOffset }
 }
