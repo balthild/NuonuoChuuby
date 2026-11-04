@@ -9,15 +9,21 @@ import QuartzCore
 ///
 /// One window covering the union of every display, so a drag or a bounce that crosses
 /// from one to another needs nothing to change. It is never moved, never resized once
-/// shown, and takes no input: it exists so that those frames cost one layer position each
-/// instead of a window move.
+/// shown, and it draws nothing but her and her bubble.
+///
+/// It **does** take input, and only over her: the root hit-tests her body ellipse and
+/// answers nil everywhere else, so a click on the rest of the display goes to whatever is
+/// behind, exactly as the overlay renderer does it. It has to, because this window can be
+/// up while the pointer is free — inside a box she is drawn here for as long as the walls
+/// are throwing her around — and a window that ignored the mouse would leave her visible
+/// in it and impossible to click.
 ///
 /// It is deliberately a flat window with two layers rather than a second presenter — the
 /// only thing it has to draw is her and her bubble, and both are already layers.
 @MainActor
 final class PetOverlaySurface {
 	let panel: PetChromePanel
-	let root: PetLayerHostView
+	let root: OverlayPetRootView
 	let pet = CALayer()
 	let bubble = CALayer()
 
@@ -28,10 +34,11 @@ final class PetOverlaySurface {
 	private(set) var frame: PixelRect = .zero
 
 	init() {
-		panel = PetChromePanel(contentRect: .zero, ignoresMouseEvents: true)
-		panel.title = "pet drag surface"
-		root = PetLayerHostView(frame: .zero)
+		panel = PetChromePanel(contentRect: .zero)
+		panel.title = "pet overlay surface"
+		root = OverlayPetRootView(frame: .zero)
 		root.wantsLayer = true
+		root.layerContentsRedrawPolicy = .never
 		// The layers are positioned in the simulation's top-left space, like every other
 		// root that holds her.
 		root.layer?.isGeometryFlipped = true
@@ -70,17 +77,31 @@ final class PetOverlaySurface {
 		panel.orderOut(nil)
 	}
 
-	/// Puts her where she is, in the window's own coordinates.
-	func place(petFrame: PixelRect, size: Double, transform: CATransform3D, scale: CGFloat) {
-		pet.bounds = CGRect(x: 0, y: 0, width: size, height: size)
+	/// Puts her where she is, in the window's own coordinates, and tells the root where to
+	/// hit-test her.
+	func place(
+		petFrame: PixelRect,
+		size: Double,
+		transform: CATransform3D,
+		scale: CGFloat,
+		bodyEllipse: CGRect
+	) {
+		let local = CGRect(
+			x: petFrame.x - frame.x,
+			y: petFrame.y - frame.y,
+			width: size,
+			height: size
+		)
+		pet.bounds = CGRect(origin: .zero, size: local.size)
 		// The pivot is her bottom centre, as everywhere else: the lean rotates on the
 		// ground rather than sliding her sideways.
-		pet.position = CGPoint(
-			x: petFrame.x - frame.x + size / 2,
-			y: petFrame.y - frame.y + size
-		)
+		pet.position = CGPoint(x: local.midX, y: local.maxY)
 		pet.contentsScale = scale
 		pet.transform = transform
+		// So a click on her works while this window is up, which it can be with the pointer
+		// free — see the type's own note.
+		root.petRect = local
+		root.bodyEllipse = bodyEllipse
 	}
 
 	/// The bounding box of every display, which is what the one window has to cover. It

@@ -9,8 +9,9 @@ import AppKit
 /// panel's bottom and the panel has to be allowed off the top edge.
 class PetChromePanel: NSPanel {
 	/// - Parameter ignoresMouseEvents: whether clicks should pass through to whatever is
-	///   behind. True for the windows that only display something (the bubble, the ghost
-	///   icons); false for the ones the pet is hit-tested in.
+	///   behind. True only for a window that is nothing but a picture — the ghost icons.
+	///   Everything she can be drawn in is hit-tested instead, so a click on her works
+	///   wherever she happens to be.
 	init(contentRect: NSRect, ignoresMouseEvents: Bool = false) {
 		super.init(
 			contentRect: contentRect,

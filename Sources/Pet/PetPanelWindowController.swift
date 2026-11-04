@@ -136,7 +136,7 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 		pet.addSublayer(pinch.container)
 
 		panel.contentView = root
-		wireGestures()
+		wireGestures(root)
 
 		// Her window's bubble: a layer above her, in the slack the window leaves.
 		bubbleLayer.anchorPoint = .zero
@@ -301,7 +301,8 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 					petFrame: petFrame,
 					size: controller.petSize,
 					transform: Self.transform(for: controller),
-					scale: hostingScale
+					scale: hostingScale,
+					bodyEllipse: controller.bodyEllipseInView
 				)
 			}
 			onPlacementChanged?(petFrame)
@@ -421,7 +422,11 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 			pet.isHidden = false
 			return
 		}
-		if overlaySurface == nil { overlaySurface = PetOverlaySurface() }
+		if overlaySurface == nil {
+			let surface = PetOverlaySurface()
+			wireGestures(surface.root)
+			overlaySurface = surface
+		}
 		guard let surface = overlaySurface else { return }
 		surface.show(covering: displaySpace)
 		// She appears in the new window at the position she had in the old one, so the
@@ -482,12 +487,17 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 	/// and the pinch take.
 	///
 	/// Each handler ends by asking for a placement pass, because that is what reconciles
-	/// the drag surface with what the controller actually has. Nothing here decides that
+	/// the overlay surface with what the controller actually has. Nothing here decides that
 	/// for itself, and deliberately so: deciding it from the gesture — a press starts a
 	/// drag, a release ends one — is what let the two drift apart, since a press can be
 	/// refused by the drag policy and a release can arrive while a pinch is still
 	/// settling.
-	private func wireGestures() {
+	///
+	/// Wired for **both** the roots she can be drawn in, out of the same closure: whichever
+	/// window she is in, a press on her is the same gesture. Wiring the overlay's root here
+	/// rather than there is also what keeps her clickable in it, which matters because that
+	/// window is up with the pointer free whenever a box is throwing her around.
+	private func wireGestures(_ root: OverlayPetRootView) {
 		root.onMouseDown = { [weak self] _, petLocal in
 			guard let self else { return }
 			if let side = self.controller.cheekHitTest(viewPoint: petLocal) {
@@ -515,9 +525,9 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 			self.controller.endDrag(at: self.globalCursor)
 			self.applyPlacement()
 		}
-		root.onRightMouseDown = { [weak self] event in
-			guard let self, let menu = self.menuProvider?(event) else { return }
-			NSMenu.popUpContextMenu(menu, with: event, for: self.root)
+		root.onRightMouseDown = { [weak self, weak root] event in
+			guard let self, let root, let menu = self.menuProvider?(event) else { return }
+			NSMenu.popUpContextMenu(menu, with: event, for: root)
 		}
 	}
 
