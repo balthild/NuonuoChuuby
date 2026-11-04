@@ -35,7 +35,7 @@ public protocol GhostIconLayerHosting: AnyObject {
 /// server for every meal; a sublayer is composited with the pet she is walking
 /// towards, inside a window that never moves.
 @MainActor
-public final class OverlayGhostIcon {
+public final class OverlayGhostIcon: GhostIconPresenting {
 	/// Everything the icon never animates. `opacity` is deliberately absent, so the
 	/// fade-out is the one implicit animation it does get.
 	private static let noActions: [String: CAAction] = [
@@ -45,8 +45,6 @@ public final class OverlayGhostIcon {
 		"contentsScale": NSNull(),
 		"hidden": NSNull(),
 	]
-
-	private static let fadeDuration: CFTimeInterval = 0.25
 
 	private let host: any GhostIconLayerHosting
 	private let layer = CALayer()
@@ -99,7 +97,7 @@ public final class OverlayGhostIcon {
 		center = visual.center
 		FrameInterpolation.withoutAnimation {
 			layer.opacity = Float(visual.opacity)
-			layer.transform = Self.animationTransform(visual)
+			layer.transform = GhostIconStyle.animationTransform(visual)
 			attach()
 		}
 	}
@@ -108,7 +106,7 @@ public final class OverlayGhostIcon {
 		isDismissed = true
 		let layer = self.layer
 		CATransaction.begin()
-		CATransaction.setAnimationDuration(Self.fadeDuration)
+		CATransaction.setAnimationDuration(GhostIconStyle.fadeDuration)
 		CATransaction.setCompletionBlock {
 			layer.removeFromSuperlayer()
 			layer.opacity = 1
@@ -119,19 +117,6 @@ public final class OverlayGhostIcon {
 
 	public func hide() {
 		layer.isHidden = true
-	}
-
-	/// The original's own transform order: scale first, then turn.
-	private static func animationTransform(_ visual: MealConsumptionVisual) -> CATransform3D {
-		let scale = CATransform3DMakeScale(CGFloat(visual.scaleX), CGFloat(visual.scaleY), 1)
-		guard visual.rotationDegrees != 0 else { return scale }
-		let rotate = CATransform3DMakeRotation(
-			CGFloat(visual.rotationDegrees) * .pi / 180,
-			0,
-			0,
-			1
-		)
-		return CATransform3DConcat(rotate, scale)
 	}
 
 	private func attach() {

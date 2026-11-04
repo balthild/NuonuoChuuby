@@ -12,12 +12,12 @@ import PetFoundation
 @MainActor
 public protocol PetPresenting: AnyObject {
 	var menuProvider: ((NSEvent) -> NSMenu?)? { get set }
-	var speechBubble: OverlaySpeechBubbleController { get }
+	var speechBubble: any SpeechBubblePresenting { get }
 	var onPlacementChanged: ((PixelRect) -> Void)? { get set }
 	var onSuspensionChanged: ((Bool) -> Void)? { get set }
 
 	func show()
 	func hide()
 	func updateDisplaySpace(_ space: DisplaySpace)
-	func makeGhostIcon() -> OverlayGhostIcon
+	func makeGhostIcon() -> any GhostIconPresenting
 }

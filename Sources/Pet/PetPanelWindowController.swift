@@ -22,26 +22,13 @@ import PetFoundation
 /// reaches the compositor as `contents` and no CoreGraphics resampling happens per
 /// frame — the same reason the overlay draws her that way.
 ///
-/// Deliberately not rendered in this mode: the head bubble and the ghost icons. Both
-/// are layers of the overlay, and hosting either in a window of its own would put
-/// that window's rectangle back under the pointer, which is exactly what is being
-/// measured. Their hosts answer `nil`, so the dialogue and the meal logic keep running
-/// unchanged.
+/// The head bubble and the ghost icons each get a window of their own
+/// (``PetPanelSpeechBubble``, ``PetPanelGhostIcon``): a bubble is as wide as its line
+/// and a ghost stands where a file used to be, so neither fits inside her square. Both
+/// are click-through and ordered out when idle, so a rectangle of theirs is under the
+/// pointer only while one of them is actually on screen.
 @MainActor
 public final class PetPanelWindowController: NSObject, PetControllerDelegate, PetPresenting {
-	/// A host that draws the head bubble nowhere.
-	///
-	/// Kept as an object rather than making the bubble optional so that
-	/// `PetSpeechCoordinator` needs no second shape: it is handed the controller it
-	/// always is, and the lines it draws simply land nowhere.
-	private final class SilentBubbleHost: SpeechBubbleLayerHosting {
-		func speechBubbleLayer(at point: PixelPoint) -> SpeechBubbleLayerTarget? { nil }
-	}
-
-	private final class SilentGhostHost: GhostIconLayerHosting {
-		func ghostIconLayerTarget(at point: PixelPoint) -> GhostIconLayerTarget? { nil }
-	}
-
 	private let controller: PetController
 	private var displaySpace: DisplaySpace
 	private let panel: PetChromePanel
@@ -58,13 +45,14 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 	/// meet again, and it is this one the window server is actually using.
 	private var appKitOrigin: NSPoint = .zero
 
-	private let bubbleHost = SilentBubbleHost()
-	private let ghostHost = SilentGhostHost()
-
 	public var menuProvider: ((NSEvent) -> NSMenu?)?
 	public var onPlacementChanged: ((PixelRect) -> Void)?
 	public var onSuspensionChanged: ((Bool) -> Void)?
-	public lazy var speechBubble = OverlaySpeechBubbleController(host: bubbleHost)
+
+	/// The bubble is a window here, not a layer of the overlay, so it has to be told
+	/// where the display is — a window is placed in the window server's own space.
+	public private(set) lazy var speechBubble: any SpeechBubblePresenting =
+		PetPanelSpeechBubble()
 
 	public init(controller: PetController, displaySpace: DisplaySpace) {
 		self.controller = controller
@@ -125,8 +113,8 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 		applyPlacement()
 	}
 
-	public func makeGhostIcon() -> OverlayGhostIcon {
-		OverlayGhostIcon(host: ghostHost)
+	public func makeGhostIcon() -> any GhostIconPresenting {
+		PetPanelGhostIcon(displaySpace: displaySpace)
 	}
 
 	// MARK: - Placement

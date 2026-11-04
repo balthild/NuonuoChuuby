@@ -192,7 +192,9 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 	public var menuProvider: ((NSEvent) -> NSMenu?)?
 	/// The bubble is a layer of these overlays, above her, rather than a window of
 	/// its own — which is what makes following her free for the bubble too.
-	public lazy var speechBubble = OverlaySpeechBubbleController(host: self)
+	public lazy var speechBubble: any SpeechBubblePresenting = OverlaySpeechBubbleController(
+		host: self
+	)
 	public var onPlacementChanged: ((PixelRect) -> Void)?
 	public var onSuspensionChanged: ((Bool) -> Void)?
 
@@ -225,7 +227,7 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 		applyPlacement(animated: false)
 	}
 
-	public func makeGhostIcon() -> OverlayGhostIcon {
+	public func makeGhostIcon() -> any GhostIconPresenting {
 		ghostIcons.removeAll { $0.isDismissed }
 		let ghost = OverlayGhostIcon(host: self)
 		ghostIcons.append(ghost)

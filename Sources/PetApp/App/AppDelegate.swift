@@ -26,7 +26,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 	/// The fake icons standing in for the desktop icons being eaten, kept together
 	/// with the item they stand for: a suspension takes them away and has to be able
 	/// to put them back when the meal resumes.
-	private var ghostIcons: [Int: (item: DeletedItem, icon: OverlayGhostIcon)] = [:]
+	private var ghostIcons: [Int: (item: DeletedItem, icon: any GhostIconPresenting)] = [:]
 	private var assetSetup: AssetSetupWindowController?
 
 	public func applicationDidFinishLaunching(_ notification: Notification) {
@@ -157,6 +157,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		// a panel every frame. It also owns the head bubble and the ghost icons — layers
 		// of that same window — so it is built before the speech coordinator, which
 		// needs the bubble it chose.
+		//
+		// `--pet-panel` is the other renderer, kept for the mouse-move comparison: a
+		// window the size of the pet is handed the pointer's move stream only over her,
+		// where the overlay is handed it wherever the pointer is.
 		let usesPetPanel = CommandLine.arguments.contains("--pet-panel")
 		let petWindow: any PetPresenting =
 			usesPetPanel
@@ -377,7 +381,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 	}
 
 	private func showGhostIcon(
-		_ ghost: OverlayGhostIcon,
+		_ ghost: any GhostIconPresenting,
 		for item: DeletedItem,
 		petSize: Double
 	) {

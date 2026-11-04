@@ -8,13 +8,17 @@ import AppKit
 /// visible frame, which is wrong for her, because her foot anchor sits near the
 /// panel's bottom and the panel has to be allowed off the top edge.
 class PetChromePanel: NSPanel {
-	init(contentRect: NSRect) {
+	/// - Parameter ignoresMouseEvents: whether clicks should pass through to whatever is
+	///   behind. True for the windows that only display something (the bubble, the ghost
+	///   icons); false for the ones the pet is hit-tested in.
+	init(contentRect: NSRect, ignoresMouseEvents: Bool = false) {
 		super.init(
 			contentRect: contentRect,
 			styleMask: [.borderless, .nonactivatingPanel],
 			backing: .buffered,
 			defer: false
 		)
+		if ignoresMouseEvents { self.ignoresMouseEvents = true }
 		isFloatingPanel = true
 		becomesKeyOnlyIfNeeded = true
 		level = PetPanelLevel.pet

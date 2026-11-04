@@ -8,7 +8,7 @@ import PetMedia
 @MainActor
 public final class PetSpeechCoordinator {
 	private let voice: VoicePlaybackService
-	private let bubble: OverlaySpeechBubbleController
+	private let bubble: any SpeechBubblePresenting
 	private var selector: PetDialogueSelector
 	private let displaySpace: DisplaySpace
 
@@ -24,7 +24,7 @@ public final class PetSpeechCoordinator {
 
 	public init(
 		voice: VoicePlaybackService,
-		bubble: OverlaySpeechBubbleController,
+		bubble: any SpeechBubblePresenting,
 		displaySpace: DisplaySpace,
 		character: PetCharacterProfile = .nuonuo
 	) {
