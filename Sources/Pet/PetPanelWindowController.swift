@@ -162,6 +162,13 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 	}
 
 	public func hide() {
+		// A suspension can land mid-drag, and the drag surface would otherwise outlive the
+		// window it belongs to.
+		if isDraggingPet {
+			isDraggingPet = false
+			pet.isHidden = false
+		}
+		dragSurfaceStorage?.hide()
 		panel.orderOut(nil)
 	}
 
@@ -273,6 +280,28 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 		}
 
 		let petFrame = controller.petFrame
+
+		if isDraggingPet, let surface = dragSurfaceStorage {
+			// She is drawn in the drag surface, at her global position. The small window
+			// stays exactly where it is — all it is doing now is holding the mouse
+			// capture — and is not even redrawn, so this frame costs one layer's position.
+			//
+			// Inside `FrameInterpolation`, deliberately: her layer has no implicit
+			// `position` action, so outside a transaction that position would fall back to
+			// Core Animation's default quarter-second easing and she would trail the
+			// cursor by a fifth of a second for the whole drag.
+			FrameInterpolation.animate {
+				surface.place(
+					petFrame: petFrame,
+					size: controller.petSize,
+					transform: Self.transform(for: controller),
+					scale: hostingScale
+				)
+			}
+			onPlacementChanged?(petFrame)
+			return
+		}
+
 		let (windowOrigin, windowSize, layerPosition) = placement(for: petFrame)
 		let target = DisplaySpace.toAppKit(
 			windowOrigin,
@@ -315,6 +344,12 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 		onPlacementChanged?(petFrame)
 	}
 
+	/// Whether she is being dragged with the pointer right now.
+	private var isDraggingPet = false
+
+	/// The full-display window she is drawn into while a drag lasts, built on demand.
+	private var dragSurfaceStorage: PetDragSurface?
+
 	/// The bubble changed the room it needs, so the next pass has to size the window
 	/// for it.
 	private func bubbleExtentChanged() {
@@ -323,6 +358,55 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 		} else {
 			applyPlacement()
 		}
+	}
+
+	// MARK: - The drag surface
+
+	/// Starts drawing her in a full-display window, for as long as the pointer has her.
+	///
+	/// A drag moves her on every frame, and in the small window that means moving the
+	/// window — once per pet of travel, which at drag speed is every few frames. Moving a
+	/// window is the most expensive thing this renderer does, and the grid only makes it
+	/// rarer; this makes it never happen at all. A full-display window that is never moved
+	/// costs one layer position per frame, which is the cheapest thing there is.
+	///
+	/// The trade is the window's size: it is under the pointer everywhere, which is what
+	/// the small window exists to avoid. It is worth taking only here, because during a
+	/// drag the pointer is on her anyway — for once, the overlay's weakness and the drag
+	/// coincide.
+	///
+	/// The small window stays up and keeps the mouse capture. AppKit delivers the rest of
+	/// a drag to the window that took the button down, wherever the pointer goes, so it
+	/// does not have to follow her — and not following it is the point.
+	private func beginDragSurface() {
+		guard !isDraggingPet else { return }
+		isDraggingPet = true
+		if dragSurfaceStorage == nil { dragSurfaceStorage = PetDragSurface() }
+		guard let surface = dragSurfaceStorage else { return }
+		surface.show(covering: displaySpace)
+		// She appears in the new window at the position she had in the old one, so the
+		// handover is invisible.
+		surface.pet.contents = pet.contents
+		surface.pet.transform = pet.transform
+		pet.isHidden = true
+		bubbleLayer.isHidden = true
+		applyPlacement()
+	}
+
+	private func endDragSurface() {
+		guard isDraggingPet else { return }
+		isDraggingPet = false
+		dragSurfaceStorage?.hide()
+		pet.isHidden = false
+		// The small window has not moved since the drag began, so this pass finds it a
+		// whole drag away from her and jumps it there — in one frame, with her layer
+		// compensating, which is what `movedWindow` is for.
+		applyPlacement()
+	}
+
+	/// Her lean and mirror, the one place they are worked out.
+	private static func transform(for controller: PetController) -> CATransform3D {
+		PetLayerTransform.make(lean: controller.bodyLeanDegrees, facing: controller.facing)
 	}
 
 	private func updatePetLayer(layerPosition: CGPoint) {
@@ -338,10 +422,7 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 		// ground rather than sliding her sideways.
 		pet.position = CGPoint(x: layerPosition.x + side / 2, y: layerPosition.y + side)
 		pet.contentsScale = hostingScale
-		pet.transform = PetLayerTransform.make(
-			lean: controller.bodyLeanDegrees,
-			facing: controller.facing
-		)
+		pet.transform = Self.transform(for: controller)
 		// The hit test's two rectangles: her square inside the window, and her body
 		// ellipse within that square.
 		root.petRect = CGRect(x: layerPosition.x, y: layerPosition.y, width: side, height: side)
@@ -379,6 +460,7 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 				self.controller.beginPinch(side: side, at: petLocal)
 			} else {
 				self.controller.beginDrag(at: self.globalCursor)
+				self.beginDragSurface()
 			}
 		}
 		root.onMouseDragged = { [weak self] _, petLocal in
@@ -395,6 +477,7 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 				self.controller.endPinch()
 			} else {
 				self.controller.endDrag(at: self.globalCursor)
+				self.endDragSurface()
 			}
 		}
 		root.onRightMouseDown = { [weak self] event in
@@ -407,11 +490,13 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 
 	public func petController(_ controller: PetController, didProduceFrame image: CGImage) {
 		baseFrame = image
+		let transform = Self.transform(for: controller)
 		pet.contents = image
-		pet.transform = PetLayerTransform.make(
-			lean: controller.bodyLeanDegrees,
-			facing: controller.facing
-		)
+		pet.transform = transform
+		// Both, so whichever window is showing has this frame without anything having to
+		// copy it across at the handover.
+		dragSurfaceStorage?.pet.contents = image
+		dragSurfaceStorage?.pet.transform = transform
 	}
 
 	public func petController(
@@ -420,10 +505,7 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 	) {
 		// The lean follows the pull, and a pinch can hold one sprite frame for many
 		// ticks — so it has to be re-applied here, not only with a new frame.
-		pet.transform = PetLayerTransform.make(
-			lean: controller.bodyLeanDegrees,
-			facing: controller.facing
-		)
+		pet.transform = Self.transform(for: controller)
 		guard let pinchState else {
 			pinch.clear()
 			return
@@ -460,6 +542,17 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 @MainActor
 extension PetPanelWindowController: SpeechBubbleLayerHosting {
 	public func speechBubbleLayer(at point: PixelPoint) -> SpeechBubbleLayerTarget? {
+		// While she is dragged the bubble rides in the drag surface with her, in the same
+		// window, so it follows for the same reason she does: one layer's position and no
+		// window move. Its own window never moves, so nothing has to land instantly.
+		if isDraggingPet, let surface = dragSurfaceStorage {
+			return SpeechBubbleLayerTarget(
+				layer: surface.bubble,
+				displayFrame: surface.frame,
+				scale: hostingScale,
+				isDark: panel.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+			)
+		}
 		return SpeechBubbleLayerTarget(
 			layer: bubbleLayer,
 			displayFrame: bubbleWindowFrame,

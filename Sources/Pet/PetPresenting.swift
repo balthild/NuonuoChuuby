@@ -5,10 +5,9 @@ import PetFoundation
 
 /// What the app shell needs from whatever puts the pet on screen.
 ///
-/// Two renderers implement it: the full-display overlay, which is the one that ships,
-/// and the small moving panel that `--pet-panel` selects for the mouse-move
-/// comparison. The seam is this narrow on purpose — it is the part the experiment has
-/// to hold constant, not an invitation to a third renderer.
+/// Two renderers implement it: the small grid-moved window, which is the default, and
+/// the full-display overlay that `--pet-overlay` selects. The seam is this narrow on
+/// purpose — it is what let the two be compared, not an invitation to a third renderer.
 @MainActor
 public protocol PetPresenting: AnyObject {
 	var menuProvider: ((NSEvent) -> NSMenu?)? { get set }
