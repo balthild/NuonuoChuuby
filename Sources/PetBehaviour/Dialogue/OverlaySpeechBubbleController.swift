@@ -15,11 +15,27 @@ public struct SpeechBubbleLayerTarget {
 	/// the cached raster is only valid for one appearance.
 	public let isDark: Bool
 
-	public init(layer: CALayer, displayFrame: PixelRect, scale: CGFloat, isDark: Bool) {
+	/// Whether the window this layer is in was moved in this same frame.
+	///
+	/// The bubble is drawn at an offset inside that window, so a window move shifts its
+	/// local position by the opposite amount just to keep it still on screen. That shift
+	/// has to land in the frame that made it: the window move is not animatable, and an
+	/// interpolated compensation would be seen sliding a whole window's worth back. The
+	/// overlay's window never moves, so it leaves this false and glides as usual.
+	public let landsInstantly: Bool
+
+	public init(
+		layer: CALayer,
+		displayFrame: PixelRect,
+		scale: CGFloat,
+		isDark: Bool,
+		landsInstantly: Bool = false
+	) {
 		self.layer = layer
 		self.displayFrame = displayFrame
 		self.scale = scale
 		self.isDark = isDark
+		self.landsInstantly = landsInstantly
 	}
 }
 
@@ -116,7 +132,8 @@ public final class OverlaySpeechBubbleController: SpeechBubblePresenting {
 		visible = true
 		// It arrives where it belongs. Gliding in from wherever it was last seen
 		// would look like the bubble was thrown at her.
-		FrameInterpolation.withoutAnimation { apply(text: text, placement: placement) }
+		guard let target = host.speechBubbleLayer(at: placement.topLeft) else { return }
+		FrameInterpolation.withoutAnimation { apply(text: text, placement: placement, target: target) }
 
 		hideWorkItem?.cancel()
 		let work = DispatchWorkItem { [weak self] in self?.hide() }
@@ -126,10 +143,16 @@ public final class OverlaySpeechBubbleController: SpeechBubblePresenting {
 
 	public func reposition(to placement: SpeechBubblePlacement, displaySpace: DisplaySpace) {
 		guard visible else { return }
+		guard let target = host.speechBubbleLayer(at: placement.topLeft) else { return }
 		// Following her, so it takes the same short glide she does — see
-		// `FrameInterpolation`. Landing instantly here would leave its tail behind her
-		// head every frame she moved.
-		FrameInterpolation.animate { apply(text: text, placement: placement) }
+		// `FrameInterpolation` — unless the window it is drawn inside moved this frame,
+		// in which case its own compensating shift has to land with it.
+		let move = { self.apply(text: self.text, placement: placement, target: target) }
+		if target.landsInstantly {
+			FrameInterpolation.withoutAnimation(move)
+		} else {
+			FrameInterpolation.animate(move)
+		}
 	}
 
 	public func hide() {
@@ -140,8 +163,11 @@ public final class OverlaySpeechBubbleController: SpeechBubblePresenting {
 		setExtent(nil)
 	}
 
-	private func apply(text: String, placement: SpeechBubblePlacement) {
-		guard let target = host.speechBubbleLayer(at: placement.topLeft) else { return }
+	private func apply(
+		text: String,
+		placement: SpeechBubblePlacement,
+		target: SpeechBubbleLayerTarget
+	) {
 		let previousLayer = currentLayer
 		let layer = target.layer
 

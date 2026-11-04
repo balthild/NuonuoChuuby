@@ -143,6 +143,14 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 	/// frame the private move never updates.
 	private var bubbleWindowFrame: PixelRect = .zero
 
+	/// Whether the placement being applied right now moved the window.
+	///
+	/// The bubble is drawn at an offset inside this window, so a window move shifts its
+	/// local position by the opposite amount to keep it still on screen; that shift has
+	/// to land in the same frame, or she is seen with the bubble a whole pet away while it
+	/// glides back. Only true in the hybrid, and only on a grid crossing.
+	private var windowMovedThisFrame = false
+
 	/// Whether a placement pass is running, so a reserve change it causes is folded into
 	/// the same pass rather than recursing.
 	private var isPlacing = false
@@ -370,6 +378,7 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 		let origin = PixelPoint(x: windowOrigin.x, y: windowOrigin.y)
 		let movedWindow = origin != lastWindowOrigin
 		lastWindowOrigin = origin
+		windowMovedThisFrame = movedWindow
 		// Where the bubble's host converts a global point into window-local ones. Held
 		// rather than read from `panel`, whose frame is stale in the panel mode.
 		bubbleWindowFrame = windowOrigin
@@ -633,7 +642,8 @@ extension PetPanelWindowController: SpeechBubbleLayerHosting {
 			layer: bubbleLayer,
 			displayFrame: bubbleWindowFrame,
 			scale: hostingScale,
-			isDark: panel.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+			isDark: panel.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua,
+			landsInstantly: windowMovedThisFrame
 		)
 	}
 }
