@@ -4,35 +4,9 @@ import PetDesktop
 import PetFoundation
 
 /// A full-display, fully transparent panel.
-final class OverlayPetPanel: NSPanel {
+final class OverlayPetPanel: PetChromePanel {
 	init(displayFrame: NSRect) {
-		super.init(
-			contentRect: displayFrame,
-			styleMask: [.borderless, .nonactivatingPanel],
-			backing: .buffered,
-			defer: false
-		)
-		isFloatingPanel = true
-		becomesKeyOnlyIfNeeded = true
-		level = PetPanelLevel.pet
-		collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-		isOpaque = false
-		backgroundColor = .clear
-		hasShadow = false
-		isMovable = false
-		isMovableByWindowBackground = false
-		hidesOnDeactivate = false
-		animationBehavior = .none
-		isReleasedWhenClosed = false
-	}
-
-	override var canBecomeKey: Bool { true }
-	override var canBecomeMain: Bool { false }
-
-	/// The overlay covers the whole display, menu bar strip included, so AppKit's
-	/// default constraint must not pull it back into the visible frame.
-	override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
-		frameRect
+		super.init(contentRect: displayFrame)
 	}
 }
 
@@ -50,6 +24,15 @@ final class OverlayPetRootView: NSView {
 	var onMouseUp: ((NSEvent) -> Void)?
 	var onRightMouseDown: ((NSEvent) -> Void)?
 
+	/// A shift applied to an incoming point before it is used, or `nil` for the overlay,
+	/// whose window never moves.
+	///
+	/// The panel renderer needs it: `CGSMoveWindow` moves the window server's copy of
+	/// the window and leaves AppKit's cached frame at the position the window was
+	/// created, so AppKit's idea of where the pointer is inside the window is off by
+	/// however far the window has travelled. See ``PetPanelWindowController``.
+	var pointCorrection: ((NSPoint) -> NSPoint)?
+
 	override var isFlipped: Bool { true }
 
 	override func draw(_ dirtyRect: NSRect) {}
@@ -57,7 +40,7 @@ final class OverlayPetRootView: NSView {
 	/// Only her body belongs to her. Everywhere else the overlay must not take the
 	/// click, so the window server routes it to whatever is behind.
 	override func hitTest(_ point: NSPoint) -> NSView? {
-		let local = convert(point, from: superview)
+		let local = convert(pointCorrection?(point) ?? point, from: superview)
 		guard bounds.contains(local), petRect.contains(local) else { return nil }
 		return Self.ellipseContains(bodyEllipse, petLocal(fromRoot: local)) ? self : nil
 	}
@@ -77,7 +60,8 @@ final class OverlayPetRootView: NSView {
 	}
 
 	private func petLocal(_ event: NSEvent) -> CGPoint {
-		petLocal(fromRoot: convert(event.locationInWindow, from: nil))
+		let location = pointCorrection?(event.locationInWindow) ?? event.locationInWindow
+		return petLocal(fromRoot: convert(location, from: nil))
 	}
 
 	override func mouseDown(with event: NSEvent) { onMouseDown?(event, petLocal(event)) }
@@ -98,7 +82,7 @@ final class OverlayPetRootView: NSView {
 /// ~28% of main-thread CPU, more than the window move this overlay removes. A
 /// sublayer with `contents` set is only composited, so moving her is free.
 @MainActor
-public final class OverlayPetWindowController: NSObject, PetControllerDelegate {
+public final class OverlayPetWindowController: NSObject, PetControllerDelegate, PetPresenting {
 	/// What the pet's layer must never animate.
 	///
 	/// `position` is deliberately absent: it rides `FrameInterpolation`, so the render
@@ -382,15 +366,6 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate {
 		return PixelPoint(x: Double(location.x), y: displaySpace.primaryHeight - Double(location.y))
 	}
 
-	/// Mirroring is applied after the lean: the lean is a rotation about her foot, and
-	/// mirroring that afterwards is what puts a pulled cheek's lean on the same side of
-	/// the screen as the pointer.
-	private func petTransform(lean: Double, facing: Double) -> CATransform3D {
-		let rotate = CATransform3DMakeRotation(CGFloat(lean) * .pi / 180, 0, 0, 1)
-		guard facing < 0 else { return rotate }
-		return CATransform3DConcat(CATransform3DMakeScale(-1, 1, 1), rotate)
-	}
-
 	/// - Parameter animated: whether her position should glide to the new one rather
 	///   than land in this frame. False for the first placement on a layer, which has
 	///   never been anywhere yet and would otherwise fly in from the origin.
@@ -403,7 +378,10 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate {
 			)
 		else { return }
 		hostingIndex = index
-		let transform = petTransform(lean: controller.bodyLeanDegrees, facing: controller.facing)
+		let transform = PetLayerTransform.make(
+			lean: controller.bodyLeanDegrees,
+			facing: controller.facing
+		)
 
 		// The bubble is moved by the callback at the end, and has to be in the same
 		// transaction: it sits on her head, so anything that delayed one and not the
@@ -447,7 +425,7 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate {
 		baseFrame = image
 		let overlay = overlays[hostingIndex]
 		overlay.pet.contents = image
-		overlay.pet.transform = petTransform(
+		overlay.pet.transform = PetLayerTransform.make(
 			lean: controller.bodyLeanDegrees,
 			facing: controller.facing
 		)
@@ -461,7 +439,7 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate {
 		let overlay = overlays[hostingIndex]
 		// The lean follows the pull, and a pinch can hold one sprite frame for many
 		// ticks — so it has to be re-applied here, not only with a new frame.
-		overlay.pet.transform = petTransform(
+		overlay.pet.transform = PetLayerTransform.make(
 			lean: controller.bodyLeanDegrees,
 			facing: controller.facing
 		)

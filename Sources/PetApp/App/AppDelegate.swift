@@ -15,11 +15,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 	private var displaySpace: DisplaySpace?
 	private var surfaceProvider: SurfaceProvider?
 	private var controller: PetController?
-	private var petWindow: OverlayPetWindowController?
+	private var petWindow: (any PetPresenting)?
 	private var speech: PetSpeechCoordinator?
 	private var voice: VoicePlaybackService?
 	private var statusItem: StatusItemController?
 	private var mouseMonitor: MouseMonitor?
+	private var mouseMoveCounter: MouseMoveCounter?
 	private var desktopIcons: DesktopIconIndex?
 	private var deletionWatcher: FileDeletionWatcher?
 	/// The fake icons standing in for the desktop icons being eaten, kept together
@@ -51,6 +52,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 			"ProcessStarted",
 			[("Bundle", AppEnvironment.bundleIdentifier)]
 		)
+
+		// The measurement's own instrument: the count of `.mouseMoved` events this
+		// process is handed is the quantity the overlay-versus-panel comparison is
+		// about, and without it a CPU reading cannot distinguish a renderer that
+		// receives nothing from one that is merely idle.
+		if CommandLine.arguments.contains("--mouse-move-count") {
+			let counter = MouseMoveCounter()
+			counter.start()
+			mouseMoveCounter = counter
+		}
 
 		Task { @MainActor in
 			guard let locator = await resolveAssets(environment: environment) else {
@@ -146,10 +157,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		// a panel every frame. It also owns the head bubble and the ghost icons — layers
 		// of that same window — so it is built before the speech coordinator, which
 		// needs the bubble it chose.
-		let petWindow = OverlayPetWindowController(
-			controller: controller,
-			displaySpace: displaySpace
-		)
+		let usesPetPanel = CommandLine.arguments.contains("--pet-panel")
+		let petWindow: any PetPresenting =
+			usesPetPanel
+			? PetPanelWindowController(controller: controller, displaySpace: displaySpace)
+			: OverlayPetWindowController(controller: controller, displaySpace: displaySpace)
 		petWindow.menuProvider = { [weak self] _ in
 			// The status item owns the menu; borrow it for a right-click on the pet.
 			self?.statusItem?.popUpMenu(atScreenPoint: NSEvent.mouseLocation)
@@ -178,7 +190,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		// from the launch command.
 		DiagnosticsLog.shared.writeEvent(
 			"PetPresenter",
-			[("Displays", "\(displaySpace.displays.count)")]
+			[
+				("Kind", usesPetPanel ? "panel" : "overlay"),
+				("Displays", "\(displaySpace.displays.count)"),
+			]
 		)
 
 		// Read at the moment a deletion is detected, when the icon's element is
