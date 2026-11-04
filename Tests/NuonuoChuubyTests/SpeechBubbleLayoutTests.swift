@@ -48,10 +48,14 @@ struct SpeechBubbleLayoutTests {
 		#expect(placement.tail == .down)
 	}
 
-	@Test("A pet at the left edge does not push the bubble off screen")
-	func leftEdgeClamp() {
-		let placement = place(petX: -60, petY: 500)
-		#expect(placement.topLeft.x >= workArea.left)
+	@Test("A pet at the left edge lets the bubble run off the display")
+	func leftEdgeOverflows() {
+		// Deliberate: it stays centred on her rather than being pushed inward, and the
+		// line loses a character or two to the screen edge.
+		let placement = place(petX: -60, petY: 500, bodyWidth: 200)
+		#expect(placement.topLeft.x < workArea.left)
+		// Still centred on her: half her panel, less half the bubble.
+		#expect(abs(placement.topLeft.x - (-60 + 110 - 100)) < 0.001)
 	}
 
 	@Test("A Dock on the left does not hold the bubble away from her")
@@ -81,39 +85,16 @@ struct SpeechBubbleLayoutTests {
 		#expect(placement.topLeft.x < docked.visibleFrame.left)
 	}
 
-	@Test("A pet at the right edge does not push the bubble off screen")
-	func rightEdgeClamp() {
-		let placement = place(petX: 1380, petY: 500)
-		#expect(placement.topLeft.x + 70 <= workArea.right)
-	}
-
-	@Test("No room above moves the bubble to the right of the pet, tail left")
-	func fallsBackToTheRightSide() {
-		// The pet's own top is just above the work area, so the bubble cannot sit
-		// above it, but it is not far enough off the screen to go underneath her.
-		let placement = place(petX: 600, petY: 10)
-		// Tucked into her upper fifth, which here is still well below the menu bar.
-		#expect(placement.topLeft.y == 10 + 220 / 5)
-		#expect(placement.topLeft.x == 600 + 220 + 6)
-		// The tail is on the bubble's left edge, so it points back at the pet.
-		#expect(placement.tail == .left)
-	}
-
-	@Test("With no room on the right the bubble moves to the pet's left, tail right")
-	func fallsBackToTheLeftSide() {
-		// The pet's right edge is too close to the display's edge for the bubble
-		// to fit beside it.
-		let placement = place(petX: 1280, petY: 10, petSize: 160)
-		#expect(placement.tail == .right)
-		// The tail's tip stops one gap short of the pet's left edge.
-		#expect(placement.topLeft.x + 70 + tailHeight == 1280 - 6)
+	@Test("A pet at the right edge lets the bubble run off the display")
+	func rightEdgeOverflows() {
+		let placement = place(petX: 1380, petY: 500, bodyWidth: 200)
+		#expect(placement.topLeft.x + 200 > workArea.right)
 	}
 
 	@Test("Her head off the screen moves the bubble underneath her, tail up")
 	func belowWhenHerHeadIsOffScreen() {
-		// 125 points of her 220 point panel are above the work area, past the 110
-		// that `belowPlacementOverflow` allows. A side bubble would have to sit at
-		// the top of the area, level with her feet.
+		// 125 points of her panel are above the work area, so the bubble cannot sit
+		// above her head — there is nowhere there to put it.
 		let placement = place(petX: 600, petY: -100)
 		#expect(placement.tail == .up)
 		// The tail's tip starts at her feet and the body is centred on her.
@@ -121,28 +102,29 @@ struct SpeechBubbleLayoutTests {
 		#expect(abs(placement.topLeft.x - (710 - 35)) < 0.001)
 	}
 
-	@Test("A little of her above the screen still gets a side bubble")
-	func sideWhileHerHeadIsNearlyOnScreen() {
-		// 15 points above the work area is under the threshold, so the bubble stays
-		// beside her rather than diving under her feet.
+	@Test("A bubble with no room above goes under her feet, never beside her")
+	func neverBesideHer() {
+		// Her panel's top is above the work area, so the bubble does not fit above her —
+		// and beside her is not an option at any position.
 		let placement = place(petX: 600, petY: 10)
-		#expect(placement.tail == .left)
+		#expect(placement.tail == .up)
+		#expect(placement.topLeft.y == 10 + 220)
+		#expect(abs(placement.topLeft.x - (710 - 35)) < 0.001)
 	}
 
-	@Test("With no room on either side the tail points down and stays on screen")
-	func fallbackStaysOnScreen() {
-		// A pet filling most of the width leaves no side room.
+	@Test("A bubble wider than the room beside her still goes above her")
+	func wideBubbleStillGoesAbove() {
+		// The old layout would have moved this one to a side, or dropped its tail; both
+		// needed horizontal room, which is what the position no longer depends on.
 		let placement = SpeechBubbleLayout.place(
-			petFrame: PixelRect(x: 0, y: 25, width: 1440, height: 220),
-			contentWidth: 70,
+			petFrame: PixelRect(x: 0, y: 500, width: 220, height: 220),
+			contentWidth: 400,
 			contentHeight: 34,
 			tailHeight: tailHeight,
 			area: workArea
 		)
 		#expect(placement.tail == .down)
-		#expect(placement.topLeft.x >= workArea.left)
-		#expect(placement.topLeft.x + 70 <= workArea.right)
-		#expect(placement.topLeft.y >= workArea.top)
+		#expect(abs(placement.topLeft.x - (110 - 200)) < 0.001)
 	}
 
 	@Test("A bubble taller than the work area still lands on screen")
