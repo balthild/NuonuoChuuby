@@ -1,4 +1,5 @@
 import AppKit
+import Pet
 import PetFoundation
 import QuartzCore
 

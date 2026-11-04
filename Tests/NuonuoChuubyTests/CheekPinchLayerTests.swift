@@ -4,6 +4,7 @@ import Testing
 
 @testable import Pet
 @testable import PetFoundation
+@testable import PetPresentation
 
 /// The vector shapes the pinch overlay is built from, in the pet's own points.
 ///

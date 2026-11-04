@@ -1,4 +1,5 @@
 import CoreGraphics
+import PetDesktop
 import PetFoundation
 
 /// Geometry for drawing the pet inside a full-display overlay.

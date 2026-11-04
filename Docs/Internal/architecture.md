@@ -87,23 +87,31 @@ ms。所以「她脚下的窗口」是实时的，「世界上有哪些边」是
 | 模块 | 内部子目录 | 内容 |
 | - | - | - |
 | `PetFoundation` | `Common` `Vocabulary` `Physics` | 纯类型与策略，不依赖任何其它模块 |
-| `PetDesktop` | `Platform` `Presentation` `World` | 读取桌面（窗口/显示器/地形图）与绘制几何 |
+| `PetDesktop` | `Platform` `World` | 读取桌面（窗口/显示器/地形图） |
 | `PetMedia` | `Asset` `Sprite` `Voice` | 美术与语音的加载、播放 |
 | `PetBehaviour` | `Settings` `Life` `Meal` `Dialogue` | 她的状态、需求，以及吃东西/说话这些事 |
-| `Pet` | `Cheek` | 她本人：大脑、身体与 overlay |
+| `Pet` | `Cheek` | 仿真：她的位置、状态机、支撑 |
+| `PetPresentation` | `Cheek` | 把她放到屏幕上：overlay 与 panel 两个渲染器及它们画图用的一切 |
 | `PetApp` | `App` `System` | 菜单栏与全部接线 |
 
+- **`Pet` 与 `PetPresentation` 的分界是「仿真 vs 画出来」**（2026-11 拆开）。之前两者同在一个 `Pet`
+  模块里，于是那个模块既拥有 `PetController` 又拥有两个窗口控制器；拆开后 `Pet` 里**没有任何绘制符
+  号**（`CALayer`/`NSImage`/`NSWindow`/`CATransaction` 一律不出现），而 `PetPresentation` 里没有任何
+  仿真状态。证据与动机：`PetController` 侧对渲染类型**零引用**，唯一的跨界是 `PetPresentation` →
+  `Pet`（渲染器持有 `PetController`、实现 `PetControllerDelegate`）。_注意典型陷
+  阱：`CheekPinchDynamics`（弹簧）留在 `Pet`，`CheekPinchLayer`/`CheekPinchShapes`（绘制）在
+  `PetPresentation`。_
 - **模块边界是这次重构唯一的强制手段。** 2026-11 的重构先把 15 个目录之间**已经存在**的循环依赖解开
   （当时 14 个目录构成单一强连通分量），再按上表的层次切分 —— 因为 SwiftPM 的模块不允许成环。破环本
-  身（`Presentation`/`Vocabulary` 的抽出、`DisplaySpace`/`DiagnosticsLog` 的下沉等）与模块切分是两件
-  独立的事：前者修的是真实的归档错误，后者只是让它不再长回来。
+  身（`Vocabulary` 的抽出、`DisplaySpace`/`DiagnosticsLog` 的下沉等）与模块切分是两件独立的事：前者
+  修的是真实的归档错误，后者只是让它不再长回来。
 - **跨模块使用符号要 `public`**（本仓库不对 API 稳定性作保证，所以这不是负担）。更重要的副作用是
   `internal` 重新变成「模块内可见」—— 这正是 `PetController` 内部能拆成多个文件、而不向全 app 暴露的
   原因。
 - **改一个文件只重编它所在的模块。** 实测：改 `Pet` 模块 2.5 s；改底层而接口未变时下游会被整体跳过
   （llbuild 按输出签名判断）。拆分前任何一处改动都要重编整个 Core，9 s。
-- 新增类型时先看它依赖什么再决定目录：跨子系统共用的「无行为」类型进 `Vocabulary`，被多个渲染方共用
-  的几何进 `Presentation`。
+- 新增类型时先看它依赖什么再决定模块与目录：跨子系统共用的「无行为」类型进 `Vocabulary`；**会画东西
+  的东西（CALayer / NSWindow / 光栅化）进 `PetPresentation`，纯几何与缓动留在 `PetDesktop`/`Pet`**。
 - 依赖方向合法但概念上倒置的两条仍待修正：`Life → Settings`（成因是 `@Fallback` 属性包装器）与
   `System → Physics`（菜单栏 UI 直接用 `PetSizePolicy`）。
 

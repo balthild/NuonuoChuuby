@@ -4,6 +4,7 @@ import Testing
 
 @testable import PetBehaviour
 @testable import PetFoundation
+@testable import PetPresentation
 
 /// The fake icon drawn as a layer of the pet's overlay. It is placed in global
 /// top-left coordinates but lives in one display's own space, so the display's

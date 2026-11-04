@@ -2,6 +2,7 @@ import AppKit
 import Testing
 
 @testable import PetBehaviour
+@testable import PetPresentation
 
 /// These pin the geometry the two bubble renderers share. The window renderer
 /// draws it into an `NSView` and the overlay renderer into a `CGImage`, so a

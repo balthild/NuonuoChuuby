@@ -1,4 +1,5 @@
 import AppKit
+import PetBehaviour
 
 /// The bubble's metrics and the one drawing routine they describe.
 ///

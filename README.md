@@ -38,7 +38,8 @@ make rerun                  # 构建、打包、签名并启动
 | `Sources/PetDesktop/` | 读取桌面（窗口/显示器/地形图）与绘制几何 |
 | `Sources/PetMedia/` | 美术与语音的加载、播放 |
 | `Sources/PetBehaviour/` | 她的状态、需求，以及吃东西/说话这些事 |
-| `Sources/Pet/` | 她本人：大脑、身体（捏脸）与 overlay |
+| `Sources/Pet/` | 仿真：她的位置、状态机、支撑 |
+| `Sources/PetPresentation/` | 把她画出来：overlay 与 panel 两个渲染器 |
 | `Sources/PetApp/` | 菜单栏与全部接线 |
 | `Sources/PetMedia/Asset/AssetManifest.swift` | 生成的素材清单（不提交，每次构建重生成） |
 | `Tests/` | swift-testing 测试 |
@@ -47,7 +48,7 @@ make rerun                  # 构建、打包、签名并启动
 | `Makefile` | 格式化、构建、测试、打包、签名 |
 | `Vendor/JiuNuoDesktopPet/` | 上游素材仓库（submodule） |
 
-模块**只能依赖更低的模块**（无环）。每个模块内部再按子系统分子目录： `App` `Sprite` `Physics` `Life` `Voice` `Dialogue` `Cheek` `World` `Meal` `System` `Asset` `Settings` `Common` `Vocabulary` `Presentation`。
+模块**只能依赖更低的模块**（无环）。每个模块内部再按子系统分子目录： `App` `Sprite` `Physics` `Life` `Voice` `Dialogue` `Cheek` `World` `Meal` `System` `Asset` `Settings` `Common` `Vocabulary`。
 
 ## 素材
 

@@ -2,6 +2,7 @@ import AppKit
 import Testing
 
 @testable import Pet
+@testable import PetPresentation
 
 @Suite("Overlay pet panel")
 @MainActor

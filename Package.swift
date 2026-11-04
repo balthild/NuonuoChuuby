@@ -28,16 +28,31 @@ let package = Package(
 			name: "Pet",
 			dependencies: ["PetFoundation", "PetDesktop", "PetMedia", "PetBehaviour"]
 		),
+		// Putting her on screen: the overlay and the panel, and everything they draw with.
+		.target(
+			name: "PetPresentation",
+			dependencies: [
+				"PetFoundation", "PetDesktop", "PetBehaviour", "Pet",
+			]
+		),
 		// The app shell: the menu bar, and everything wired together.
 		.target(
 			name: "PetApp",
-			dependencies: ["PetFoundation", "PetDesktop", "PetMedia", "PetBehaviour", "Pet"]
+			dependencies: [
+				"PetFoundation", "PetDesktop", "PetMedia", "PetBehaviour", "Pet",
+				"PetPresentation",
+			]
 		),
-		.executableTarget(name: "NuonuoChuuby", dependencies: ["PetApp"]),
+		// The entrypoint.
+		.executableTarget(
+			name: "NuonuoChuuby",
+			dependencies: ["PetApp"]
+		),
 		.testTarget(
 			name: "NuonuoChuubyTests",
 			dependencies: [
-				"PetFoundation", "PetDesktop", "PetMedia", "PetBehaviour", "Pet", "PetApp",
+				"PetFoundation", "PetDesktop", "PetMedia", "PetBehaviour", "Pet",
+				"PetPresentation", "PetApp",
 			]
 		),
 	]

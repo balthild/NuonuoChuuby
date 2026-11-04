@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import Pet
 import PetFoundation
 
 /// The shapes the cheek-pinch overlay draws, in the pet's own point space

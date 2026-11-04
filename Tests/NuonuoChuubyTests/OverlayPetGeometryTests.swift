@@ -2,6 +2,7 @@ import Testing
 
 @testable import PetDesktop
 @testable import PetFoundation
+@testable import PetPresentation
 
 @Suite("Overlay pet geometry")
 struct OverlayPetGeometryTests {

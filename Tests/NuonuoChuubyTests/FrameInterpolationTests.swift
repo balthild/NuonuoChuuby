@@ -4,6 +4,7 @@ import Testing
 
 @testable import Pet
 @testable import PetDesktop
+@testable import PetPresentation
 
 @Suite("Frame interpolation")
 @MainActor

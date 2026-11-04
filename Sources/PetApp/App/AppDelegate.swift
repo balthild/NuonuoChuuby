@@ -4,6 +4,7 @@ import PetBehaviour
 import PetDesktop
 import PetFoundation
 import PetMedia
+import PetPresentation
 
 /// Application bootstrap: resolve assets and settings, build the pet, and wire
 /// the menu bar.

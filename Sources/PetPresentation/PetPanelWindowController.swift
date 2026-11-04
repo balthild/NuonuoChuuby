@@ -1,4 +1,5 @@
 import AppKit
+import Pet
 import PetBehaviour
 import PetDesktop
 import PetFoundation

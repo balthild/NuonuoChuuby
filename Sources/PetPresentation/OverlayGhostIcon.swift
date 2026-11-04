@@ -1,5 +1,5 @@
 import AppKit
-import PetDesktop
+import PetBehaviour
 import PetFoundation
 import QuartzCore
 
