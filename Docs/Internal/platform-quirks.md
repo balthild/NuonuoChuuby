@@ -89,6 +89,20 @@
   - **owner name 没有私有读法**：`CGSCopyConnectionProperty` 对 7 个候选 key × 3 个 target 都返回
     `kCGErrorSuccess` 却从不写出值；`CGSGetWindowProperty` 符号已不存在。
 
+- **私有 `CGSMoveWindow` 搬窗口比 `setFrameOrigin` 便宜约 4 倍**（探针：60 Hz 每帧移动，app Δ **+6.3
+  → +1.4 pt**；单次调用 **280 → 32 µs**，其中私有那次大部分成本还在被包住的调用之外）。它被小窗口渲
+  染器用过，但因为下面第一条而被换成 AppKit 的移动，代码已删除 —— 结论留在这里：
+  - **对「还没有 device 的窗口」（从未 `orderFront` 过）返回 `kCGErrorSuccess` 却不移动它。** 启动时
+    用它定位，窗口会停在创建位置（实测停在屏幕左下角），而且因为「记下了意图位置」让命中测试整体偏
+    移。**修法是先用 AppKit 定位，直到一次私有移动被 `CGSGetWindowBounds` 读回确认再接管。** 「返回
+    0 不等于生效」这条规则在这里是**具体可复现**的，不只是理论。
+  - **AppKit 不会知道窗口移动过**：`NSWindow.frame` 停在旧位置，`convert(_:from:)` 之类的换算全部偏
+    移。要吃它的便宜就得自己记真实原点、并回补 AppKit 给的点。
+  - **它和 Core Animation 提交不同事务**：同一帧里若还要移动窗口内的图层做补偿，两者会被看到错开一帧
+    （她瞬移一格时闪一下）。**AppKit 的 `setFrameOrigin` 会与 CA 提交合并**，所以「窗口 + 窗口内图层
+    同帧一起动」的场景必须用它。
+  - 移动整个矩形（`CGSMoveWindowWithGroup`）比只移原点贵（单次 70 vs 32 µs）。
+
 ## 绘图
 
 - **`NSView.isFlipped = true` 只改坐标原点，不镜像内容。** `CGContext.draw(_:in:)` 假定左下原

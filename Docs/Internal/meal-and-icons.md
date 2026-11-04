@@ -175,8 +175,10 @@ s 才纠正。「stale beats no answer」把两者混为一谈 —— 别再犯�
 改成「有则复位，无则新建」—— 覆盖「被打断的 meal 幽灵已淡出、重新开始时需复现」。 `GhostShown` 只在
 入队时打一次。
 
-**生产代码只有 overlay 一个 presenter**；`GhostIconWindow` / `--pet-panel` 那条路已不存在（grep 无匹
-配）。别照旧笔记去找它。
+**生产代码现在有两个 presenter**（`PetPresenting`）：默认的网格小窗口与 `--pet-overlay` 的全屏
+overlay（见 `rendering.md`）。幽灵图标在两者里实现不同：overlay 里是图层，小窗口里是独立小窗
+（`PetPanelGhostIcon`）。`GhostIconWindow` / `--pet-panel` 那条旧路已不存在（grep 无匹配），别照旧笔
+记去找它。
 
 ## 安静模式对删除的处理（已与上游对齐）
 

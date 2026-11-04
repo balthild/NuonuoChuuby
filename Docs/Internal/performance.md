@@ -161,7 +161,7 @@ ms ≈ 1.0 pt，约占 idle 一半）。旧数字的 0.48 ms/次 ⇒ 1.3% 本来
 **教训：把诊断事件对着每帧路径审一遍。** `AirborneCaught` 曾每帧写（向上拖的窗口每帧重新接住她，累积
 1252 行），即 60 × 45 µs ≈ **0.27% CPU**，与它正在记录的节省是同一量级。现在用 `ChangeGate` 折叠。
 
-## 拖动 vs `setFrame`：为什么 overlay 必须存在
+## 拖动 vs `setFrame`：为什么不能每帧移动窗口
 
 探针（`Probes/WindowMoveProbe/`，每模式一个进程：3 s settle + 8 s IDLE + 20 s ACTIVE， `ACTIVE −
 IDLE` 抵消启动尖峰/层级/合成）。`app` = 自己的 `getrusage`； `ws` = Window Server 的累计 CPU（`ps -o
@@ -181,7 +181,13 @@ time=` 每秒采样）。 **`move` 是让拖动可解释的对照：同样的鼠
 - **为什么本质不同**：拖动的移动是在 Window Server 自己的鼠标跟踪循环里执行的（因为指针在动，那个循
   环本来就在跑），应用被拖，它自己不发起移动。 `setFrame` 是**每次调用**一次同步的应用→服务器 IPC +
   CoreAnimation 事务。
-- **应用没有借用拖动路径的办法。** overlay / `CALayer` 位置是唯一便宜的应用驱动移动。
+- **应用没有借用拖动路径的办法。** `CALayer` 位置是唯一便宜的应用驱动移动。
+
+**这两条结论后来各自长成了现在默认渲染方式的一半**（见 `rendering.md`）：
+
+- 「不移动窗口」→ 网格小窗口在**格内**只改图层位置（正是下表最后一行），窗口每 132 pt 才动一次。
+- 「没有便宜的 `setFrame`」→ **拖动时切成一块永不移动的全屏窗口**（`PetDragSurface`），那整段拖动就
+  是下表最后一行。代价是窗口重新盖满屏，但拖动时指针本来就在她身上。
 
 ### 透明不便宜：`setFrame` 的成本与像素无关
 
@@ -198,17 +204,39 @@ time=` 每秒采样）。 **`move` 是让拖动可解释的对照：同样的鼠
 - **省下的是机制，不是像素**：静态窗口 + 移动 CALayer 便宜约 5 倍。 **没有更便宜的 `setFrame`，只有
   「不移动窗口」。**
 
-## 鼠标移动的开销（透明 overlay 的固有代价）
+## 鼠标移动的开销（全屏窗口的固有代价）
 
-移动光标把 overlay 应用从 ~0.75% 抬到 ~6.5%，同时 Window Server +约 15 pt。不是窗口切换（合成
-CGEvent 移动流就能复现），也不是我们自己的全局事件监听（当时的 `--pet-panel` 小窗口渲染器跑同一个
-`MouseMonitor`，开销约 0；它在 2026-10 中旬已被删除，只剩 overlay）。`PetController.step` 的绝对时间
-不变。
+移动光标把 **overlay** 应用从 ~0.75% 抬到 ~6.5%，同时 Window Server +约 15 pt。不是窗口切换（合成
+CGEvent 移动流就能复现），也不是我们自己的全局事件监听。`PetController.step` 的绝对时间不变。
+
+**实测（2026-11-03，手动四阶段 A/B，`_ignored/move-ab/measure.py`，`--mouse-move-count` 数投递 +
+`ps` 计 CPU）** —— 这就是默认从 overlay 换成网格小窗口的依据（见 `rendering.md`）：
+
+| 阶段 | overlay | 小窗口 |
+| - | - | - |
+| idle | 2.06% | 2.40% |
+| **光标在别处持续移动** | **8.05%（+5.99）** | **1.73%（≈0）** |
+| 光标在她身上移动 | 8.32%（+6.25） | 5.45%（+3.06） |
+| 拖动她 | 9.32% | 9.12% |
+
+- overlay 的 `away` 收到 **1961 次 / 15 s** mouseMoved，小窗口 **0 次** —— 差别完全在**投递次数**。
+- 归一化后 **overlay 407 µs/次、小窗口 395 µs/次：单价相同**。所以「窗口小就省」的全部原因是它**只在
+  指针压在她身上时才收到投递**，不是每次更便宜。
+- 小窗口在 `hover` 收到 1163 次 —— 证明它**能**收事件，只是指针不在她身上时不收。这排除了「小窗口只
+  是坏了所以便宜」。
+- **拖动时两者持平**，因为拖动时指针本来就在她身上、小窗口也收满。所以收益在**绝大多数时间**（指针不
+  在她身上时），不在拖动时。
+- 方法论缺陷：那一轮**不是跨进程交替**（小窗口跑完才跑 overlay），顺序效应没排除。效应有 6 pt，不像
+  顺序能解释，但严格说不满足交替要求。
 
 **成本位置（已钉住）**：`NSEventThread` 占活跃 CPU 的 34–39%，链路是 `CGSSnarfAndDispatchDatagrams →
 SLSGetNextEventRecordInternal → SLEventCreateNextEvent → PullEventsFromWindowServerOnConnection` ——
 私有 SkyLight 客户端**在我们进程里**拉取并解析 Window Server 的事件数据报。主线程再加
 `routeMouseMovedEvent → _routeMouseMovedEvent → -[NSWindow _reallySendEvent:]`（约 9–11%）。
+
+**这一项是连接级的，在所有按窗口的判定之上**，这就是历史上所有窗口级/连接级开关都无效的原因（逐个实
+测见 `rejected-approaches.md`）。**唯一的例外是窗口大小**：它不 gate 投递，而是让「指针下的那个窗口
+是不是我们」随指针位置而变 —— 这是唯一真正有效的窗口属性。
 
 `NSEventThread` 自身耗时（420 个 running 样本的叶子帧占比）：
 

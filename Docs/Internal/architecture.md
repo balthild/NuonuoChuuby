@@ -114,8 +114,8 @@ ms。所以「她脚下的窗口」是实时的，「世界上有哪些边」是
 
 ## 依赖注入接缝
 
-- `PetPresenting`：渲染方式的接缝（历史上用于在「全屏 overlay / 移动面板」之间切换；现在只有 overlay
-  一个实现，但协议与工厂仍在，避免把渲染细节漏进 controller）。
+- `PetPresenting`：渲染方式的接缝（两个实现：默认的网格小窗口 `PetPanelWindowController` 与
+  `--pet-overlay` 的全屏 `OverlayPetWindowController`）。协议把渲染细节挡在 controller 外面。
 - `Platform`：所有窗口/显示器查询。
 - `PetMealDelegate`、`PetControllerDelegate` 等协议的**扩展给默认空实现**，所以测试 spy 不必为新增方
   法全部实现。

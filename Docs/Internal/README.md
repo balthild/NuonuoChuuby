@@ -17,7 +17,7 @@
 | [physics.md](physics.md) | 窗口封闭盒、侧撞、腾空/落地、遮挡与支撑的有效性 |
 | [behavior.md](behavior.md) | 自主行为、巡逻与边缘动作、生命状态、台词 |
 | [meal-and-icons.md](meal-and-icons.md) | 删除检测（FSEvents/AX）、幽灵图标、吃图标动画 |
-| [rendering.md](rendering.md) | 全屏 overlay、气泡/捏脸/幽灵的图层化、位置插值 |
+| [rendering.md](rendering.md) | 两个渲染方式（默认的网格小窗口 / `--pet-overlay` 全屏）、气泡与位置插值、拖动时切表面 |
 | [performance.md](performance.md) | 实测 CPU、热点、测量方法与其陷阱 |
 | [rejected-approaches.md](rejected-approaches.md) | 试过并否决的优化/方案，以及否决它的证据 |
 | [testing.md](testing.md) | 测试约定、可播种 RNG、反复踩到的测试陷阱 |
