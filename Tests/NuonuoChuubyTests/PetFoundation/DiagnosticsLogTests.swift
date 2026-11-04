@@ -152,3 +152,33 @@ struct DiagnosticsLogTests {
 		#expect(!FileManager.default.fileExists(atPath: url.path))
 	}
 }
+@Suite("Diagnostic privacy")
+struct DiagnosticPrivacyTests {
+	@Test("Paths and e-mails are replaced by references")
+	func redaction() {
+		let log = DiagnosticsLog()
+		let text = DiagnosticsPrivacy.message(
+			"opened /Users/someone/Secret/file.txt and mailed a@b.com",
+			reference: log.reference
+		)
+		#expect(!text.contains("Secret"))
+		#expect(!text.contains("a@b.com"))
+		#expect(text.contains("[private:"))
+	}
+
+	@Test("A reference is stable within a session but hides the value")
+	func referenceStability() {
+		let log = DiagnosticsLog()
+		let first = log.reference("/Users/someone/file")
+		let second = log.reference("/Users/someone/file")
+		let other = log.reference("/Users/someone/other")
+		#expect(first == second)
+		#expect(first != other)
+		#expect(!first.contains("someone"))
+	}
+
+	@Test("Newlines are flattened")
+	func flattening() {
+		#expect(DiagnosticsPrivacy.message("a\nb\rc") == "a b c")
+	}
+}

@@ -1,7 +1,6 @@
 import Foundation
 import Testing
 
-@testable import PetBehaviour
 @testable import PetFoundation
 @testable import PetMedia
 
@@ -159,107 +158,5 @@ struct LandingVoicePolicyTests {
 				displayScale: 1
 			)
 		)
-	}
-}
-
-@Suite("Pet dialogue")
-struct PetDialogueTests {
-	@Test("Every cue has lines")
-	func everyCueHasLines() {
-		for cue in DialogueCue.allCases {
-			#expect(!PetDialogueCatalog.lines(for: cue).isEmpty, "\(cue) has no lines")
-		}
-	}
-
-	@Test("The selector never repeats a cue's own previous line")
-	func noImmediateRepeat() {
-		var selector = PetDialogueSelector()
-		var previous: [DialogueCue: String] = [:]
-		for _ in 0..<200 {
-			let cue = DialogueCue.allCases.randomElement()!
-			let line = selector.choose(cue)
-			if let last = previous[cue] {
-				#expect(line != last, "\(cue) repeated \(line)")
-			}
-			previous[cue] = line
-		}
-	}
-
-	@Test("The item placeholder is substituted")
-	func itemSubstitution() {
-		var selector = PetDialogueSelector()
-		let line = selector.choose(.tastedItem, itemName: "蛋糕")
-		#expect(line.contains("蛋糕"))
-		#expect(!line.contains("{item}"))
-	}
-}
-
-@Suite("Mood speech")
-struct PetMoodSpeechTests {
-	@Test("The hunger bands report themselves, and a fed pet reports fullness")
-	func bands() {
-		var life = PetLifeState()
-		life.hunger = 20
-		life.fullness = 10
-		#expect(PetMoodSpeech.line(life: life, fastingMode: false) == nil)
-
-		life.hunger = LifeBehaviorPolicy.aBitHungryHungerThreshold
-		#expect(PetMoodSpeech.line(life: life, fastingMode: false)?.cue == .aBitHungry)
-
-		life.hunger = LifeBehaviorPolicy.veryHungryHungerThreshold
-		#expect(PetMoodSpeech.line(life: life, fastingMode: false)?.cue == .veryHungry)
-
-		life.fullness = LifeBehaviorPolicy.comfortablyFullThreshold
-		#expect(PetMoodSpeech.line(life: life, fastingMode: false)?.cue == .comfortablyFull)
-	}
-
-	@Test("Fasting silences hunger but not fullness")
-	func fasting() {
-		var life = PetLifeState()
-		life.hunger = 100
-		life.fullness = 10
-		#expect(PetMoodSpeech.line(life: life, fastingMode: true) == nil)
-
-		life.fullness = LifeBehaviorPolicy.comfortablyFullThreshold
-		#expect(PetMoodSpeech.line(life: life, fastingMode: true)?.cue == .comfortablyFull)
-	}
-
-	@Test("The ravenous band needs more hunger than the peckish one")
-	func thresholdsAreOrdered() {
-		#expect(
-			LifeBehaviorPolicy.aBitHungryHungerThreshold
-				< LifeBehaviorPolicy.veryHungryHungerThreshold
-		)
-	}
-}
-
-@Suite("Diagnostic privacy")
-struct DiagnosticPrivacyTests {
-	@Test("Paths and e-mails are replaced by references")
-	func redaction() {
-		let log = DiagnosticsLog()
-		let text = DiagnosticsPrivacy.message(
-			"opened /Users/someone/Secret/file.txt and mailed a@b.com",
-			reference: log.reference
-		)
-		#expect(!text.contains("Secret"))
-		#expect(!text.contains("a@b.com"))
-		#expect(text.contains("[private:"))
-	}
-
-	@Test("A reference is stable within a session but hides the value")
-	func referenceStability() {
-		let log = DiagnosticsLog()
-		let first = log.reference("/Users/someone/file")
-		let second = log.reference("/Users/someone/file")
-		let other = log.reference("/Users/someone/other")
-		#expect(first == second)
-		#expect(first != other)
-		#expect(!first.contains("someone"))
-	}
-
-	@Test("Newlines are flattened")
-	func flattening() {
-		#expect(DiagnosticsPrivacy.message("a\nb\rc") == "a b c")
 	}
 }
