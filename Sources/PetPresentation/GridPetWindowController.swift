@@ -145,6 +145,10 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 		bubbleLayer.minificationFilter = .linear
 		bubbleLayer.magnificationFilter = .linear
 		bubbleLayer.isOpaque = false
+		// Without these a manually created layer eases every change over the default
+		// quarter second — and `hidden` is one of them, which is how a bubble outlived
+		// its own hiding long enough to be seen where the window had already moved to.
+		bubbleLayer.actions = OverlayPetWindowController.bubbleLayerActions
 		bubbleLayer.isHidden = true
 		root.layer?.addSublayer(bubbleLayer)
 		// Touching the lazy bubble now wires its extent callback, before the first pass
@@ -326,10 +330,19 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 
 		if panel.frame.size != windowSize {
 			// She was resized (a menu action), or the bubble's reserve changed. A reshape
-			// cannot go through a move — this changes the size, not the origin — so it
-			// goes to AppKit, which also reasserts the frame it believes in.
-			panel.setFrame(target, display: true)
-			FrameInterpolation.withoutAnimation { updatePetLayer(layerPosition: layerPosition) }
+			// cannot go through a move — this changes the size, not the origin — so it goes
+			// to AppKit, which also reasserts the frame it believes in.
+			//
+			// Inside the same transaction as her own move, and with `display: false`, for
+			// the reason the crossing below gives: the window and her layer compensate for
+			// each other, so they have to reach the compositor together. AppKit's own move
+			// is coalesced with the Core Animation commit, but a `display: true` here would
+			// flush the window's new geometry on the spot, and she is then seen offset by
+			// whatever the reserve just gave up until the commit catches up.
+			FrameInterpolation.withoutAnimation {
+				panel.setFrame(target, display: false)
+				updatePetLayer(layerPosition: layerPosition)
+			}
 			onPlacementChanged?(petFrame)
 			return
 		}
