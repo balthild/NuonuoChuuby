@@ -112,6 +112,21 @@ extension PetController {
 
 	public var isBeingDragged: Bool { isDragging }
 
+	/// Whether a window's box is holding her and she is not resting on its floor.
+	///
+	/// This is the fastest she ever moves. Her own walking pace is `Motion.walkSpeed` /
+	/// `exploreSpeed`, 92 and 118 pt/s, while a box's walls send her at up to
+	/// `maximumVelocityX` / `maximumVelocityY`, 1350 and 1200 — an order of magnitude
+	/// more. A renderer that keeps her window near her pays for that in window moves,
+	/// so it wants to know (see `PetPanelWindowController`).
+	///
+	/// False whenever no box holds her, and false again once she has settled inside one:
+	/// what is expensive is the bouncing, not the box.
+	public var isMovingInsideEnclosure: Bool {
+		guard let enclosure else { return false }
+		return !enclosure.isResting
+	}
+
 	public func beginDrag(at cursor: PixelPoint) {
 		guard canBeginDrag() else { return }
 		// Picked up: whatever box was holding her no longer does, and no window is

@@ -3,17 +3,19 @@ import PetDesktop
 import PetFoundation
 import QuartzCore
 
-/// The full-display window she is drawn into while the pointer is dragging her.
+/// The full-display window she is drawn into while she is moving fast enough that keeping
+/// a small window next to her would mean moving it every few frames — see
+/// ``PetPanelWindowController/wantsOverlaySurface``.
 ///
-/// One window covering the union of every display, so a drag that crosses from one to
-/// another needs nothing to change. It is never moved, never resized once shown, and
-/// takes no input: it exists so that a drag's 60 motion updates a second cost one layer
-/// position each instead of a window move.
+/// One window covering the union of every display, so a drag or a bounce that crosses
+/// from one to another needs nothing to change. It is never moved, never resized once
+/// shown, and takes no input: it exists so that those frames cost one layer position each
+/// instead of a window move.
 ///
 /// It is deliberately a flat window with two layers rather than a second presenter — the
 /// only thing it has to draw is her and her bubble, and both are already layers.
 @MainActor
-final class PetDragSurface {
+final class PetOverlaySurface {
 	let panel: PetChromePanel
 	let root: PetLayerHostView
 	let pet = CALayer()

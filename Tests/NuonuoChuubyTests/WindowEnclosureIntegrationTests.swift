@@ -133,6 +133,27 @@ struct WindowEnclosureIntegrationTests {
 		#expect(rig.controller.state == .falling, "inside the box she is a falling body")
 	}
 
+	/// What the small window renderer asks before giving up on moving its window: a box
+	/// throwing her around is the fastest she ever moves, so the window stops moving
+	/// entirely for as long as it lasts. The settling is the other half of it — a box she
+	/// is asleep in costs nothing, and keeping the full-display window up for that would
+	/// be paying the overlay's price for no reason.
+	@Test("A box only wants the overlay while it is throwing her around")
+	func overlayOnlyWhileTheBoxMovesHer() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		#expect(!rig.controller.isMovingInsideEnclosure, "no box at all")
+
+		drop(rig, at: PixelPoint(x: 900, y: 900))
+		#expect(rig.controller.debugState.enclosureWindowID == Self.windowID)
+		#expect(rig.controller.isMovingInsideEnclosure, "taken in by the box, and falling")
+
+		advance(rig, seconds: 5)
+		#expect(rig.controller.state == .idle, "she had not settled")
+		#expect(!rig.controller.isMovingInsideEnclosure, "settled on the box's floor")
+	}
+
 	@Test("Settled on a box's floor, her feet are on it — not below the window")
 	func restingPutsHerFeetOnTheBoxFloor() throws {
 		let rig = try makeRig()

@@ -162,21 +162,21 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 	}
 
 	public func hide() {
-		// A suspension can land mid-drag, and the drag surface would otherwise outlive the
-		// window it belongs to.
-		if isDraggingPet {
-			isDraggingPet = false
+		// A suspension can land while she is in one of the states that use the overlay, and
+		// the surface would otherwise outlive the window it belongs to.
+		if usesOverlaySurface {
+			usesOverlaySurface = false
 			pet.isHidden = false
 		}
-		dragSurfaceStorage?.hide()
+		overlaySurface?.hide()
 		panel.orderOut(nil)
 	}
 
 	public func updateDisplaySpace(_ space: DisplaySpace) {
 		displaySpace = space
-		// A drag that spans the change would leave the surface sized for the old set of
+		// A state that spans the change would leave the surface sized for the old set of
 		// displays, and nothing else re-sizes it while it is up.
-		if isDraggingPet { dragSurfaceStorage?.show(covering: space) }
+		if usesOverlaySurface { overlaySurface?.show(covering: space) }
 		applyPlacement()
 	}
 
@@ -268,10 +268,8 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 
 	/// Puts the window, and her inside it, where the controller says she is.
 	private func applyPlacement() {
-		// First, because the rest of this decides between the two windows: she is drawn
-		// in the drag surface while the controller has her, and in her own window
-		// otherwise.
-		syncDragSurface()
+		// First, because the rest of this decides which window she is drawn in.
+		syncOverlaySurface()
 
 		isPlacing = true
 		defer {
@@ -289,10 +287,10 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 
 		let petFrame = controller.petFrame
 
-		if isDraggingPet, let surface = dragSurfaceStorage {
-			// She is drawn in the drag surface, at her global position. The small window
-			// stays exactly where it is — all it is doing now is holding the mouse
-			// capture — and is not even redrawn, so this frame costs one layer's position.
+		if usesOverlaySurface, let surface = overlaySurface {
+			// She is drawn in the overlay, at her global position. The small window stays
+			// exactly where it is — all it is doing is holding the mouse capture, if it has
+			// it — and is not even redrawn, so this frame costs one layer's position.
 			//
 			// Inside `FrameInterpolation`, deliberately: her layer has no implicit
 			// `position` action, so outside a transaction that position would fall back to
@@ -352,18 +350,23 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 		onPlacementChanged?(petFrame)
 	}
 
-	/// Whether the drag surface is up, mirrored from `controller.isBeingDragged`.
+	/// Whether she is drawn in the overlay instead of her own window.
 	///
-	/// Never set directly: see ``syncDragSurface()``, which is the only writer. The two
+	/// True in the two states where she moves fast enough that keeping a window next to her
+	/// would mean moving that window every few frames — ``PetController/isBeingDragged``
+	/// and ``PetController/isMovingInsideEnclosure``.
+	///
+	/// Never set directly: see ``syncOverlaySurface()``, which is the only writer. The two
 	/// used to be driven by the up and down gestures separately, and the conditions did
 	/// not match — a press could raise the surface through a path where the drag was
 	/// refused, and the release could take the other branch and never lower it. What that
 	/// left behind was her drawn in a surface that takes no clicks, over a small window
 	/// that had stopped following her: visible, and impossible to click.
-	private var isDraggingPet = false
+	private var usesOverlaySurface = false
 
-	/// The full-display window she is drawn into while a drag lasts, built on demand.
-	private var dragSurfaceStorage: PetDragSurface?
+	/// The full-display window she is drawn into while one of those states lasts, built on
+	/// demand.
+	private var overlaySurface: PetOverlaySurface?
 
 	/// The bubble changed the room it needs, so the next pass has to size the window
 	/// for it.
@@ -375,42 +378,51 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 		}
 	}
 
-	// MARK: - The drag surface
+	// MARK: - The overlay surface
 
-	/// Raises or lowers the full-display window she is drawn into while a drag lasts,
-	/// to match whether the controller actually has her.
+	/// Whether she should be drawn in the overlay rather than in her own window.
+	///
+	/// The two states are the same situation: she is being moved fast. A drag puts her
+	/// wherever the pointer goes at pointer speed, and a window's box throws her around at
+	/// up to `maximumVelocityX`/`maximumVelocityY` — both far above her own walking pace.
+	/// In either one the grid window would move every few frames, so it stops moving at all.
+	private var wantsOverlaySurface: Bool {
+		controller.isBeingDragged || controller.isMovingInsideEnclosure
+	}
+
+	/// Raises or lowers the full-display window she is drawn into, to match whether she is
+	/// in one of the states that wants it.
 	///
 	/// The controller is the one truth here, and this is the only place that acts on it,
-	/// so the surface cannot outlive the drag or lag behind it — including a release the
-	/// process never saw. It is called from ``applyPlacement()``, which every drag frame
-	/// already goes through.
+	/// so the surface cannot outlive the state or lag behind it — including a release the
+	/// process never saw. It is called from ``applyPlacement()``, which runs every frame.
 	///
-	/// Why the surface exists at all: a drag moves her on every frame, and in the small
-	/// window that means moving the window — once per pet of travel, which at drag speed
-	/// is every few frames. Moving a window is the most expensive thing this renderer
-	/// does, and the grid only makes it rarer; a window that is never moved costs one
-	/// layer position per frame, which is the cheapest thing there is.
+	/// Why the surface exists at all: in both states she moves on every frame, far faster
+	/// than she ever walks, so keeping the small window next to her would mean moving it
+	/// every few frames. Moving a window is the most expensive thing this renderer does,
+	/// and the grid only makes it rarer; a window that is never moved costs one layer
+	/// position per frame, which is the cheapest thing there is.
 	///
 	/// The trade is the window's size: it is under the pointer everywhere, which is what
-	/// the small window exists to avoid. It is worth taking only here, because during a
-	/// drag the pointer is on her anyway — for once, the overlay's weakness and the drag
-	/// coincide.
+	/// the small window exists to avoid. It is worth taking because both states are
+	/// short-lived — a drag ends when the button comes up, and a box stops throwing her
+	/// around once she settles on its floor — so the exposure is bounded by them.
 	///
-	/// The small window stays up and keeps the mouse capture. AppKit delivers the rest of
-	/// a drag to the window that took the button down, wherever the pointer goes, so it
-	/// does not have to follow her — and not following it is the point.
-	private func syncDragSurface() {
-		let dragging = controller.isBeingDragged
-		guard dragging != isDraggingPet else { return }
-		isDraggingPet = dragging
+	/// The small window stays up and keeps the mouse capture, if it has it. AppKit
+	/// delivers the rest of a drag to the window that took the button down, wherever the
+	/// pointer goes, so it does not have to follow her — and not following it is the point.
+	private func syncOverlaySurface() {
+		let wanted = wantsOverlaySurface
+		guard wanted != usesOverlaySurface else { return }
+		usesOverlaySurface = wanted
 
-		guard dragging else {
-			dragSurfaceStorage?.hide()
+		guard wanted else {
+			overlaySurface?.hide()
 			pet.isHidden = false
 			return
 		}
-		if dragSurfaceStorage == nil { dragSurfaceStorage = PetDragSurface() }
-		guard let surface = dragSurfaceStorage else { return }
+		if overlaySurface == nil { overlaySurface = PetOverlaySurface() }
+		guard let surface = overlaySurface else { return }
 		surface.show(covering: displaySpace)
 		// She appears in the new window at the position she had in the old one, so the
 		// handover is invisible.
@@ -424,7 +436,6 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 	private static func transform(for controller: PetController) -> CATransform3D {
 		PetLayerTransform.make(lean: controller.bodyLeanDegrees, facing: controller.facing)
 	}
-
 	private func updatePetLayer(layerPosition: CGPoint) {
 		let size = panel.frame.size
 		if shapeDotsSize != size {
@@ -519,8 +530,8 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 		pet.transform = transform
 		// Both, so whichever window is showing has this frame without anything having to
 		// copy it across at the handover.
-		dragSurfaceStorage?.pet.contents = image
-		dragSurfaceStorage?.pet.transform = transform
+		overlaySurface?.pet.contents = image
+		overlaySurface?.pet.transform = transform
 	}
 
 	public func petController(
@@ -566,10 +577,10 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 @MainActor
 extension PetPanelWindowController: SpeechBubbleLayerHosting {
 	public func speechBubbleLayer(at point: PixelPoint) -> SpeechBubbleLayerTarget? {
-		// While she is dragged the bubble rides in the drag surface with her, in the same
-		// window, so it follows for the same reason she does: one layer's position and no
-		// window move. Its own window never moves, so nothing has to land instantly.
-		if isDraggingPet, let surface = dragSurfaceStorage {
+		// While she is in the overlay the bubble rides in it with her, in the same window, so
+		// it follows for the same reason she does: one layer's position and no window move.
+		// That window never moves, so nothing has to land instantly.
+		if usesOverlaySurface, let surface = overlaySurface {
 			return SpeechBubbleLayerTarget(
 				layer: surface.bubble,
 				displayFrame: surface.frame,
