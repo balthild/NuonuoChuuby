@@ -12,15 +12,15 @@
   在屏都是 0 条）。单窗口查询要用 `CGWindowListCopyWindowInfo([.optionIncludingWindow], id)`（返回 1
   条）。用错版本会让逐帧跟随静默退化成 0.5 s 的图。
 
-- **`CGWindowListCopyWindowInfo` 的列表顺序就是 z 序**，且读 `kCGWindowName` 在实践中不花权限。我们
-  曾把它读进 `TerrainWindow.title`，而没有任何消费者 —— 纯死代码。
+- **`CGWindowListCopyWindowInfo` 的列表顺序就是 z 序**。读 `kCGWindowName` 在实践中也不花权限，但
+  **本项目的建模不使用窗口标题** —— 几何与列表顺序已经够用（见 `architecture.md`）。
 
 - **读窗口的几何与身份（number/bounds/layer/alpha/ownerPID）不需要任何权限**，屏幕录制只对窗口**内
   容**（`CGWindowListCreateImage`、ScreenCaptureKit）才需要。所以地形与遮挡天然免权限。
 
 - **`kCGWindowOwnerName` 是本地化的**：中文系统上 Dock 报「程序坞」、Control Center 报「控制中心」、
-  Dock 的窗口在 `CGWindowLevel` 20。所以**按名字排除系统外壳不可靠，按层级才可靠**。这条曾让地形策略
-  里的英文名字黑名单变成纯死代码，现已删除（见 `architecture.md`）。
+  Dock 的窗口在 `CGWindowLevel` 20。所以**排除系统外壳要按层级，不能按名字**（见
+  `architecture.md`）。
 
 - **窗口层级是粗粒度整数**：Dock 是 20、菜单栏是 24、`.floating` 是 3。所以「把她的窗口夹在 A、B 两
   个普通窗口之间」不可能（它们都是 0）。画在菜单栏上面需要 25+，但那样会盖住 Dock。
@@ -90,8 +90,8 @@
     `kCGErrorSuccess` 却从不写出值；`CGSGetWindowProperty` 符号已不存在。
 
 - **私有 `CGSMoveWindow` 搬窗口比 `setFrameOrigin` 便宜约 4 倍**（探针：60 Hz 每帧移动，app Δ **+6.3
-  → +1.4 pt**；单次调用 **280 → 32 µs**，其中私有那次大部分成本还在被包住的调用之外）。它被小窗口渲
-  染器用过，但因为下面第一条而被换成 AppKit 的移动，代码已删除 —— 结论留在这里：
+  → +1.4 pt**；单次调用 **280 → 32 µs**，其中私有那次大部分成本还在被包住的调用之外）。**本项目的窗
+  口移动仍走 AppKit**，因为下面第一条使它不划算：
   - **对「还没有 device 的窗口」（从未 `orderFront` 过）返回 `kCGErrorSuccess` 却不移动它。** 启动时
     用它定位，窗口会停在创建位置（实测停在屏幕左下角），而且因为「记下了意图位置」让命中测试整体偏
     移。**修法是先用 AppKit 定位，直到一次私有移动被 `CGSGetWindowBounds` 读回确认再接管。** 「返回

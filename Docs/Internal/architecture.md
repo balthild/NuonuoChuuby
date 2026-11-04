@@ -18,15 +18,16 @@ macOS 重写版 JiuNuoDesktopPet（原版是 C#/WPF 的 Windows 桌宠）。当�
   段**）。`SurfaceProvider` 持有这张图；`FullscreenDetector` 是纯函数。
 - `Pet/Perch.swift` —— `{key, t}`，她的支撑。`PetController` 每帧把她放到当前 surface 上；走动时把
   `foot.x` 折回 `t`。
-- `SupportSurface` 与 `TerrainWindow` 已被删除（不是弃用）。
+- `SupportSurface` / `TerrainWindow` 是照上游分类的建模方式（每类支撑一个类型），已被 `Surface`
+  - `SurfaceKey{owner, kind}` 取代：**边从几何推导，不按来源分类**（见下）。
 
 ## 窗口建模（思路来自 Ledgeling）
 
 核心决定：**不把窗口建模成对象，而是每轮从矩形重新推导出一整张几何图。**
 
-一次枚举（`MacOSPlatform.windows()`）只取几何与少量身份字段：窗口号、owner PID、owner 名、bounds（已
-是左上原点、Y 向下）、layer、alpha，以及**列表下标作为 z 序**（`CGWindowListCopyWindowInfo` 的列表顺
-序就是前后顺序）。 **不读窗口标题。**
+一次枚举（`MacOSPlatform.windows()`）只取几何与少量身份字段：窗口号、owner PID、bounds（已是左上原
+点、Y 向下）、layer、alpha，以及**列表下标作为 z 序**（`CGWindowListCopyWindowInfo` 的列表顺序就是前
+后顺序）。**窗口标题与 owner 名都不读。**
 
 由此派生三层数据：
 
@@ -94,30 +95,13 @@ ms。所以「她脚下的窗口」是实时的，「世界上有哪些边」是
 | `PetPresentation` | `Cheek` | 把她放到屏幕上：overlay 与 panel 两个渲染器，及它们画图用的一切 |
 | `PetApp` | `App` `System` | 菜单栏、素材设置窗，与全部接线 |
 
-- **`PetSimulation` 与 `PetPresentation` 的分界是「仿真 vs 画出来」**（2026-11 拆开）。之前两者同在
-  一个 `Pet` 模块里，于是那个模块既拥有 `PetController` 又拥有两个窗口控制器；拆开后 `PetSimulation`
-  里**没有任何绘制符号**（`CALayer`/`NSImage`/`NSWindow`/`CATransaction` 一律不出现），而
-  `PetPresentation` 里没有任何仿真状态。证据与动机：`PetController` 侧对渲染类型**零引用**，唯一的跨
-  界是 `PetPresentation` → `PetSimulation`（渲染器持有 `PetController`、实现
-  `PetControllerDelegate`）。_注意典型陷阱：`CheekPinchDynamics`（弹簧）留在 `PetSimulation`，
-  `CheekPinchLayer`/`CheekPinchShapes`（绘制）在 `PetPresentation`。_
-- **归位的判据是「框架类型有没有越界」，不是「这概念属于哪一层」。** 分两步：
-  1. **需要 AppKit 的就是 presentation，不需要的就是仿真**（实测：`PetSimulation` 里连 `import
-     AppKit` 都是多余的，移除后 0 错误、测试全绿——它只用 `CGImage`/`CGPoint`/`CGRect`、
-     `CFAbsoluteTime`、`Timer`/`RunLoop`）。
-  2. **纯数值运算与单位换算不算跨层。** 2026-11 曾想把 `PetSizePolicy` 的 `fromPercent`/`toPercent`
-     从 `PetFoundation` 搬到菜单栏旁边，理由只是「它的唯一调用者是滑块」——这是错的：它只是 `Double`
-     算术，没有任何 UI 类型越界，而且 `StatusItemController` 本来就因 `Double.clamp` 而 import
-     `PetFoundation`，搬了也不能断掉那条模块边。**已回退。** （对照：`AssetSetupWindow` 是真正
-     `NSPanel` 落在资源模块里，`GhostIconPresenting` 的签名携带 `NSImage`/`CATransform3D`——那两个才
-     是真问题。）
-- 同一把尺子又查出三个文件放错了（2026-11）：`AssetSetupWindow`（`NSPanel`）从 `PetMedia` 到
-  `PetApp`；`GhostIconPresenting` 与 `ShellIconProvider` 从 `PetBehaviour` 到 `PetPresentation` ——后
-  两个使 `PetBehaviour` 的绘制符号归零。`GhostIconPresenting` 的两个实现
-  （`OverlayGhostIcon`、`PetPanelGhostIcon`）都在 `PetPresentation`，声明却在 `PetBehaviour`，而
-  `PetBehaviour` 自己从来没引用过它。
-- **模块名不带后缀会让人误以为它在统摄其余的 `PetX`** —— 这正是 `Pet` 改名 `PetSimulation` 的原因。
-  七个模块现在都是「`Pet` 前缀 + 它负责的那一层」，没有一个读起来像父模块。
+- **`PetSimulation` 与 `PetPresentation` 的分界是「仿真 vs 画出来」**：`PetSimulation` 里**没有任何
+  绘制符号**（`CALayer`/`NSImage`/`NSWindow`/`CATransaction` 一律不出现），而 `PetPresentation` 里没
+  有任何仿真状态。证据与动机：`PetController` 侧对渲染类型**零引用**，唯一的跨界是 `PetPresentation`
+  → `PetSimulation`（渲染器持有 `PetController`、实现 `PetControllerDelegate`）。_注意典型陷
+  阱：`CheekPinchDynamics`（弹簧）留在 `PetSimulation`， `CheekPinchLayer`/`CheekPinchShapes`（绘
+  制）在 `PetPresentation`。_
+- **归位的判据：需要 AppKit 的就是 presentation，不需要的就是仿真。**
 - **模块边界是这次重构唯一的强制手段。** 2026-11 的重构先把 15 个目录之间**已经存在**的循环依赖解开
   （当时 14 个目录构成单一强连通分量），再按上表的层次切分 —— 因为 SwiftPM 的模块不允许成环。破环本
   身（`Vocabulary` 的抽出、`DisplaySpace`/`DiagnosticsLog` 的下沉等）与模块切分是两件独立的事：前者
@@ -125,15 +109,12 @@ ms。所以「她脚下的窗口」是实时的，「世界上有哪些边」是
 - **跨模块使用符号要 `public`**（本仓库不对 API 稳定性作保证，所以这不是负担）。更重要的副作用是
   `internal` 重新变成「模块内可见」—— 这正是 `PetController` 内部能拆成多个文件、而不向全 app 暴露的
   原因。
-- **改一个文件只重编它所在的模块。** 实测：改 `PetSimulation` 模块 1.9 s；改 `PetPresentation` 1.1
-  s；改底层而接口未变时下游会被整体跳过（llbuild 按输出签名判断）。拆分前任何一处改动都要重编整个
-  Core，9 s。
+- **改一个文件只重编它所在的模块**（llbuild 按输出签名判断，接口未变的下游会被整体跳过）。
 - 新增类型时先看它依赖什么再决定模块与目录：跨子系统共用的「无行为」类型进 `Vocabulary`；**会画东西
   的东西（CALayer / NSWindow / 光栅化）进 `PetPresentation`，纯几何与缓动留在
   `PetDesktop`/`PetSimulation`**。
 - 依赖方向合法但概念上倒置的只剩一条：`System → Physics`（菜单栏 `StatusItemController` 直接用
-  `PetSizePolicy` 与 `Double.clamp`）。原有的 `Life → Settings` 已随 `@Fallback` 下沉到
-  `PetFoundation/Common/` 而消失。
+  `PetSizePolicy` 与 `Double.clamp`）。
 
 - `Sources/NuonuoChuuby/` —— 可执行文件，只有 `main.swift`（NSApplication 启动）。
 - `Tests/NuonuoChuubyTests/` —— swift-testing。**测试数量以 `make test` 实际输出为准。**

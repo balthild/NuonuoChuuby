@@ -42,8 +42,6 @@
 
 - 成本实测：`DateFormatter.string` = **0.9 µs/次**，对 26.3 µs 的行是 **+3.4%**；手写格式化只快一
   点，不值得。直接用现成的 `timestamp()`。
-- `session=` 已删除（全仓库只有生产、无消费者）—— 它本来就是从上游 C# 移植过来的，上游也没有每行时
-  间。
 - 顺带补了 `IconAppeared` / `IconNeverAppeared`，把一次文件的一生闭成环：
 
 ```

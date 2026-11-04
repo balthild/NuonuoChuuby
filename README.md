@@ -48,7 +48,7 @@ make rerun                  # 构建、打包、签名并启动
 | `Makefile` | 格式化、构建、测试、打包、签名 |
 | `Vendor/JiuNuoDesktopPet/` | 上游素材仓库（submodule） |
 
-模块**只能依赖更低的模块**（无环）。每个模块内部再按子系统分子目录： `App` `Sprite` `Physics` `Life` `Voice` `Dialogue` `Cheek` `World` `Meal` `System` `Asset` `Settings` `Common` `Vocabulary`。
+模块**只能依赖更低的模块**（无环），内部再按子系统分子目录。
 
 ## 素材
 
