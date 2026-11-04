@@ -24,15 +24,6 @@ final class OverlayPetRootView: NSView {
 	var onMouseUp: ((NSEvent) -> Void)?
 	var onRightMouseDown: ((NSEvent) -> Void)?
 
-	/// A shift applied to an incoming point before it is used, or `nil` for the overlay,
-	/// whose window never moves.
-	///
-	/// The panel renderer needs it: `CGSMoveWindow` moves the window server's copy of
-	/// the window and leaves AppKit's cached frame at the position the window was
-	/// created, so AppKit's idea of where the pointer is inside the window is off by
-	/// however far the window has travelled. See ``PetPanelWindowController``.
-	var pointCorrection: ((NSPoint) -> NSPoint)?
-
 	override var isFlipped: Bool { true }
 
 	override func draw(_ dirtyRect: NSRect) {}
@@ -40,7 +31,7 @@ final class OverlayPetRootView: NSView {
 	/// Only her body belongs to her. Everywhere else the overlay must not take the
 	/// click, so the window server routes it to whatever is behind.
 	override func hitTest(_ point: NSPoint) -> NSView? {
-		let local = convert(pointCorrection?(point) ?? point, from: superview)
+		let local = convert(point, from: superview)
 		guard bounds.contains(local), petRect.contains(local) else { return nil }
 		return Self.ellipseContains(bodyEllipse, petLocal(fromRoot: local)) ? self : nil
 	}
@@ -60,8 +51,7 @@ final class OverlayPetRootView: NSView {
 	}
 
 	private func petLocal(_ event: NSEvent) -> CGPoint {
-		let location = pointCorrection?(event.locationInWindow) ?? event.locationInWindow
-		return petLocal(fromRoot: convert(location, from: nil))
+		petLocal(fromRoot: convert(event.locationInWindow, from: nil))
 	}
 
 	override func mouseDown(with event: NSEvent) { onMouseDown?(event, petLocal(event)) }

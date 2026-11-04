@@ -4,74 +4,33 @@ import PetDesktop
 import PetFoundation
 
 /// Puts the pet on screen in a small window that goes to where she is, instead of a
-/// full-display window that never moves. Two modes, differing only in how much slack
-/// the window gives her:
+/// full-display window that never moves.
 ///
-/// - ``Mode/panel`` (`--pet-panel`): a window exactly her size, put where she is every
-///   tick. Her motion is a staircase — the window server places a window once per
-///   commit, so there is nothing to interpolate.
-/// - ``Mode/hybrid`` (`--pet-panel-hybrid`): a window **twice** her size, placed on a
-///   grid one pet wide, with her drawn at the remainder. She moves by changing only
-///   her own layer's position, which *is* interpolated, and the window is moved only
-///   when she reaches the edge of the slack it gave her.
+/// The window is **twice** her size and placed on a grid one pet wide, with her drawn at
+/// the remainder. Between two grid crossings she moves by changing only her own layer's
+/// position, which *is* interpolated, so her motion glides; the window itself is moved
+/// once per pet of travel rather than once per tick. The larger window still costs
+/// almost nothing in mouse-move delivery — the cost a full-display window cannot avoid
+/// at any size, because it is under the pointer wherever the pointer is.
 ///
-/// The hybrid is the answer to the one thing the panel pays for: a window move per
-/// frame while she is moving. It buys that with a window of four times her area, which
-/// still costs almost nothing in mouse-move delivery (the cost the overlay cannot
-/// avoid) and makes her motion smooth at the same time.
-///
-/// The two modes move their window differently, because they need different things
-/// from it:
-///
-/// - The panel moves it **every frame she moves**, which is why it borrows SkyLight's
-///   `CGSMoveWindow` (see ``PetPanelMover``) — AppKit's own move is the transaction the
-///   overlay was built to escape. The price is that AppKit never learns the window has
-///   moved: ``appKitOrigin`` holds the truth, and every point AppKit hands over is
-///   shifted back against the frame it still believes in.
-/// - The hybrid moves it **once per grid**, and must move her layer in the very same
-///   frame — so it uses AppKit's move, which is coalesced with the Core Animation
-///   commit. The private call is not, and using it here tore the two apart: the window
-///   stepped a whole pet while her layer was still a commit behind, and she was seen a
-///   grid away for as long as that lasted.
+/// The window is moved with AppKit's own move, which is coalesced with the Core
+/// Animation commit. That is required, not incidental: on a grid crossing the window
+/// steps a whole pet and her layer steps back by the same amount, so the two have to
+/// reach the compositor in the same frame. The private `CGSMoveWindow` is not coalesced,
+/// and using it tore the two apart — she was seen a grid away for as long as the commit
+/// lagged.
 ///
 /// She stays a **layer** inside the window rather than a drawn view, so the sprite
 /// reaches the compositor as `contents` and no CoreGraphics resampling happens per
 /// frame — the same reason the overlay draws her that way.
 ///
-/// The head bubble and the ghost icons each get a window of their own
-/// (``PetPanelSpeechBubble``, ``PetPanelGhostIcon``): a bubble is as wide as its line
-/// and a ghost stands where a file used to be, so neither fits inside her square. Both
-/// are click-through and ordered out when idle, so a rectangle of theirs is under the
-/// pointer only while one of them is actually on screen.
+/// The head bubble is a layer of this same window, in the slack it leaves. The ghost
+/// icons get a window each (``PetPanelGhostIcon``): a ghost stands where a file used to
+/// be, which can be anywhere on the display and is rarely near her.
 @MainActor
 public final class PetPanelWindowController: NSObject, PetControllerDelegate, PetPresenting {
-	/// How much slack the window gives her, and so how often it has to be moved.
-	public enum Mode {
-		/// A window exactly her size, moved to her every tick.
-		case panel
-		/// A window twice her size, so she has a full pet's width and height to move
-		/// inside it before the window itself has to go somewhere else.
-		case hybrid
-
-		/// The window side, as a multiple of the slack she is given.
-		///
-		/// It is `pet + grid` in both cases: the panel's grid is zero, which is exactly
-		/// its old behaviour rather than a special case.
-		func windowSide(petSize: Double) -> Double {
-			petSize + (self == .hybrid ? petSize : 0)
-		}
-
-		var title: String {
-			switch self {
-			case .panel: "pet panel"
-			case .hybrid: "pet hybrid panel"
-			}
-		}
-	}
-
 	private let controller: PetController
 	private var displaySpace: DisplaySpace
-	private let mode: Mode
 	private let panel: PetChromePanel
 	private let root: OverlayPetRootView
 	private let pet: CALayer
@@ -101,46 +60,24 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 	/// window from one that only moved her inside it.
 	private var lastWindowOrigin: PixelPoint?
 
-	/// Where the window really is, in AppKit's coordinate space.
+	/// The bubble, a layer of this window.
 	///
-	/// Not `panel.frame`: once the private move is in use those two disagree and never
-	/// meet again, and it is this one the window server is actually using.
-	private var appKitOrigin: NSPoint = .zero
-
-	/// Which call is putting the window where it belongs.
-	///
-	/// Starts on AppKit, because the private call cannot be trusted until the window has
-	/// a device: a window that has never been ordered on screen takes `CGSMoveWindow`,
-	/// returns success, and stays where it was made. That is not hypothetical — it left
-	/// her drawn in the bottom-left corner of the display and impossible to click, since
-	/// a move that did not happen still recorded a new origin and skewed the hit test.
-	/// The switch happens once the private move has been **read back** and confirmed.
-	private enum Placement {
-		case appKit
-		case privateMove
-	}
-	private var placement: Placement = .appKit
-
-	/// The bubble, when this mode draws it inside her own window.
-	///
-	/// A separate bubble window would be a rectangle under the pointer in a place she is
-	/// not, and — worse for the hybrid — a window moving once per grid crossed, which
-	/// while she is being dragged is a window move every few frames. Inside her window it
-	/// is a layer, and following her costs nothing at all.
-	private var bubble: OverlaySpeechBubbleController?
+	/// Lazy so it can host from `self` — a stored property has to be initialised before
+	/// `super.init`, and the host is this object. Everything that touches it runs well
+	/// after that.
+	private lazy var bubble: OverlaySpeechBubbleController = {
+		let bubble = OverlaySpeechBubbleController(host: self)
+		bubble.onExtentChanged = { [weak self] in self?.bubbleExtentChanged() }
+		return bubble
+	}()
 
 	/// The bubble layer drawn inside her window, above her sprite.
 	private let bubbleLayer = CALayer()
 
-	/// The plain panel's bubble: a window of its own, because her window is exactly her
-	/// size there and there is nowhere inside it to put anything else. Built only when
-	/// that mode asks for it.
-	private lazy var windowBubble = PetPanelSpeechBubble()
-
 	/// The window's rectangle the bubble converts its global position against.
 	///
-	/// Held rather than read from `panel.frame`, which in the panel mode is the stale
-	/// frame the private move never updates.
+	/// Held rather than read from `panel.frame`, which is only reasserted by AppKit on a
+	/// reshape.
 	private var bubbleWindowFrame: PixelRect = .zero
 
 	/// Whether the placement being applied right now moved the window.
@@ -148,7 +85,7 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 	/// The bubble is drawn at an offset inside this window, so a window move shifts its
 	/// local position by the opposite amount to keep it still on screen; that shift has
 	/// to land in the same frame, or she is seen with the bubble a whole pet away while it
-	/// glides back. Only true in the hybrid, and only on a grid crossing.
+	/// glides back.
 	private var windowMovedThisFrame = false
 
 	/// Whether a placement pass is running, so a reserve change it causes is folded into
@@ -161,22 +98,14 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 	public var onPlacementChanged: ((PixelRect) -> Void)?
 	public var onSuspensionChanged: ((Bool) -> Void)?
 
-	/// The bubble is a window of its own in the plain panel — her window is exactly her
-	/// size there, so there is nowhere inside it to put anything else. The hybrid's
-	/// window has slack, so its bubble is a layer of it instead.
-	public private(set) lazy var speechBubble: any SpeechBubblePresenting = {
-		switch mode {
-		case .panel: windowBubble
-		case .hybrid: bubble!
-		}
-	}()
+	/// The bubble is a layer of her window, in the slack the window leaves for it.
+	public var speechBubble: any SpeechBubblePresenting { bubble }
 
-	public init(controller: PetController, displaySpace: DisplaySpace, mode: Mode = .panel) {
+	public init(controller: PetController, displaySpace: DisplaySpace) {
 		self.controller = controller
 		self.displaySpace = displaySpace
-		self.mode = mode
 
-		let side = mode.windowSide(petSize: controller.petSize)
+		let side = controller.petSize * 2
 		let size = NSRect(x: 0, y: 0, width: side, height: side)
 		panel = PetChromePanel(contentRect: size)
 		root = OverlayPetRootView(frame: size)
@@ -185,7 +114,7 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 
 		super.init()
 
-		panel.title = mode.title
+		panel.title = "pet panel"
 
 		root.autoresizingMask = [.width, .height]
 		root.wantsLayer = true
@@ -194,9 +123,6 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 		// The view is flipped, so the pet's sublayer must share its top-left origin
 		// for the two coordinate systems to agree.
 		root.layer?.isGeometryFlipped = true
-		// AppKit's frame is stale from the first private move on, so its idea of where
-		// the pointer is inside the window has to be shifted back before it is used.
-		root.pointCorrection = { [weak self] point in self?.corrected(point) ?? point }
 
 		pet.anchorPoint = CGPoint(x: 0.5, y: 1)
 		pet.contentsGravity = .resize
@@ -212,19 +138,17 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 		panel.contentView = root
 		wireGestures()
 
-		if mode == .hybrid {
-			// Her window's bubble: a layer above her, in the slack the window leaves.
-			let bubble = OverlaySpeechBubbleController(host: self)
-			bubble.onExtentChanged = { [weak self] in self?.bubbleExtentChanged() }
-			bubbleLayer.anchorPoint = .zero
-			bubbleLayer.contentsGravity = .resize
-			bubbleLayer.minificationFilter = .linear
-			bubbleLayer.magnificationFilter = .linear
-			bubbleLayer.isOpaque = false
-			bubbleLayer.isHidden = true
-			root.layer?.addSublayer(bubbleLayer)
-			self.bubble = bubble
-		}
+		// Her window's bubble: a layer above her, in the slack the window leaves.
+		bubbleLayer.anchorPoint = .zero
+		bubbleLayer.contentsGravity = .resize
+		bubbleLayer.minificationFilter = .linear
+		bubbleLayer.magnificationFilter = .linear
+		bubbleLayer.isOpaque = false
+		bubbleLayer.isHidden = true
+		root.layer?.addSublayer(bubbleLayer)
+		// Touching the lazy bubble now wires its extent callback, before the first pass
+		// reads the room it needs.
+		_ = bubble
 
 		controller.delegate = self
 		applyPlacement()
@@ -232,8 +156,8 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 
 	public func show() {
 		panel.orderFrontRegardless()
-		// Ordering a window in lets AppKit reassert the frame it believes in, which is
-		// the stale one — so the real position has to be put back afterwards.
+		// Ordering a window in lets AppKit reassert the frame it believes in, so the
+		// real position has to be put back afterwards.
 		applyPlacement()
 	}
 
@@ -268,15 +192,6 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 		return monitor.scale
 	}
 
-	/// How far she may move inside the window before the window itself has to go
-	/// somewhere else.
-	///
-	/// Zero for the panel, whose window is exactly her size and so gives her no slack at
-	/// all; one pet for the hybrid.
-	private var grid: Double {
-		mode == .hybrid ? controller.petSize : 0
-	}
-
 	/// The room the showing bubble needs around her.
 	///
 	/// The bubble is centred on her, so both sides need the same; and it goes above her
@@ -291,7 +206,7 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 	}
 
 	private func reserve(petSize: Double) -> Reserve {
-		guard let extent = bubble?.currentExtent else { return Reserve() }
+		guard let extent = bubble.currentExtent else { return Reserve() }
 		return Reserve(
 			horizontal: max(0, (Double(extent.size.width) - petSize) / 2),
 			above: extent.tail == .down ? Double(extent.size.height) : 0,
@@ -301,10 +216,9 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 
 	/// Where her window goes, and where she sits inside it.
 	///
-	/// The hybrid places the window on a grid one pet wide and draws her at the
-	/// remainder, so between two window moves she moves by changing only her own layer's
-	/// position and the window's own rectangle never changes. The grid is zero for the
-	/// panel, which degenerates to "the window is exactly where she is".
+	/// The window is placed on a grid one pet wide and she is drawn at the remainder, so
+	/// between two window moves she moves by changing only her own layer's position and
+	/// the window's own rectangle never changes.
 	///
 	/// The grid is **shifted** by the reserve rather than widened: the window's origin is
 	/// still a whole number of grid steps, which is what keeps the window still while she
@@ -321,14 +235,6 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 	) {
 		let petSize = controller.petSize
 		let reserve = self.reserve(petSize: petSize)
-		guard mode == .hybrid else {
-			return (
-				PixelRect(x: petFrame.x, y: petFrame.y, width: petSize, height: petSize),
-				NSSize(width: petSize, height: petSize),
-				.zero
-			)
-		}
-
 		let grid = petSize
 		let x = (petFrame.x / grid).rounded(.down) * grid
 		let y = (petFrame.y / grid).rounded(.down) * grid
@@ -373,118 +279,49 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 			primaryHeight: displaySpace.primaryHeight
 		)
 		// Whether this frame has to put the window somewhere else, as opposed to only
-		// moving her inside it. True on the panel's every frame she moves, which is what
-		// keeps that mode's geometry — and its measurements — exactly what they were.
+		// moving her inside it: true once per pet of travel.
 		let origin = PixelPoint(x: windowOrigin.x, y: windowOrigin.y)
 		let movedWindow = origin != lastWindowOrigin
 		lastWindowOrigin = origin
 		windowMovedThisFrame = movedWindow
-		// Where the bubble's host converts a global point into window-local ones. Held
-		// rather than read from `panel`, whose frame is stale in the panel mode.
+		// Where the bubble's host converts a global point into window-local ones.
 		bubbleWindowFrame = windowOrigin
 
 		if panel.frame.size != windowSize {
-			// She was resized (a menu action), the mode changed, or the bubble's reserve
-			// changed. A reshape cannot go through the private call — it moves a window,
-			// it does not resize one — so this goes to AppKit, which also reasserts the
-			// frame it believes in. It is also the one route that can place a window the
-			// private call is not moving yet.
+			// She was resized (a menu action), or the bubble's reserve changed. A reshape
+			// cannot go through a move — this changes the size, not the origin — so it
+			// goes to AppKit, which also reasserts the frame it believes in.
 			panel.setFrame(target, display: true)
-			appKitOrigin = panel.frame.origin
 			FrameInterpolation.withoutAnimation { updatePetLayer(layerPosition: layerPosition) }
 			onPlacementChanged?(petFrame)
 			return
 		}
 
-		if mode == .hybrid {
-			// The window and her layer move **together**, in one transaction: on a grid
-			// crossing the window steps a whole pet and her layer steps back by the same
-			// amount, so the two must reach the compositor in the same frame or she is
-			// seen a grid away for however long separates them. AppKit's move is
-			// coalesced with the Core Animation commit and the private call is not — that
-			// is the whole reason this mode does not use it.
-			if movedWindow {
-				FrameInterpolation.withoutAnimation {
-					panel.setFrameOrigin(target.origin)
-					updatePetLayer(layerPosition: layerPosition)
-				}
-			} else {
-				// Between crossings only her layer moves, and that is free to glide.
-				FrameInterpolation.animate { updatePetLayer(layerPosition: layerPosition) }
-			}
-			appKitOrigin = panel.frame.origin
-			onPlacementChanged?(petFrame)
-			return
-		}
-
-		if place(windowOrigin: windowOrigin) {
-			appKitOrigin = target.origin
-		} else {
-			// The move could not be made through the private call yet — the window has no
-			// device, or the call is unavailable. AppKit is authoritative, so its own frame
-			// stays the truth and the correction collapses to nothing.
-			panel.setFrameOrigin(target.origin)
-			appKitOrigin = panel.frame.origin
-		}
-
-		// A frame that moved the window has to land in that frame: her layer position is
-		// unchanged here (the panel gives her no slack), and animating a position that is
-		// already where it belongs is only a way to be a frame late.
-		let update = { self.updatePetLayer(layerPosition: layerPosition) }
+		// The window and her layer move **together**, in one transaction: on a grid
+		// crossing the window steps a whole pet and her layer steps back by the same
+		// amount, so the two must reach the compositor in the same frame or she is seen a
+		// grid away for however long separates them. AppKit's move is coalesced with the
+		// Core Animation commit; the private `CGSMoveWindow` is not, which is why this
+		// renderer does not use it.
 		if movedWindow {
-			FrameInterpolation.withoutAnimation(update)
+			FrameInterpolation.withoutAnimation {
+				panel.setFrameOrigin(target.origin)
+				updatePetLayer(layerPosition: layerPosition)
+			}
 		} else {
-			FrameInterpolation.animate(update)
+			// Between crossings only her layer moves, and that is free to glide.
+			FrameInterpolation.animate { updatePetLayer(layerPosition: layerPosition) }
 		}
 		onPlacementChanged?(petFrame)
 	}
 
-	/// The bubble's window changed the room it has to leave her, so the next pass has to
-	/// size the window for it.
+	/// The bubble changed the room it needs, so the next pass has to size the window
+	/// for it.
 	private func bubbleExtentChanged() {
-		guard bubble != nil else { return }
 		if isPlacing {
 			needsAnotherPass = true
 		} else {
 			applyPlacement()
-		}
-	}
-
-	/// Places the window through the private call, where it is the chosen route and the
-	/// window is known to take it.
-	///
-	/// The first attempt is verified rather than trusted: it is the one made on a window
-	/// that may have just been ordered on screen and has no device yet. Once it is
-	/// confirmed the window is really moved, the steady state stops paying for the read —
-	/// a window that is being composited and answers the call is not going to ignore it.
-	private func place(windowOrigin: PixelRect) -> Bool {
-		switch placement {
-		case .appKit:
-			guard panel.isVisible else { return false }
-			let windowID = UInt32(panel.windowNumber)
-			guard
-				PetPanelMover.move(
-					windowID: windowID,
-					to: PixelPoint(x: windowOrigin.x, y: windowOrigin.y)
-				),
-				let actual = PetPanelMover.bounds(of: windowID),
-				// The read is already in the window server's space, so it compares directly.
-				abs(actual.x - windowOrigin.x) <= 1,
-				abs(actual.y - windowOrigin.y) <= 1
-			else { return false }
-			placement = .privateMove
-			return true
-
-		case .privateMove:
-			let moved = PetPanelMover.move(
-				windowID: UInt32(panel.windowNumber),
-				to: PixelPoint(x: windowOrigin.x, y: windowOrigin.y)
-			)
-			if !moved {
-				// The window was taken away under us. AppKit is authoritative again.
-				placement = .appKit
-			}
-			return moved
 		}
 	}
 
@@ -529,19 +366,6 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 			root.layer?.insertSublayer(dot, below: pet)
 			return dot
 		}
-	}
-
-	/// Shifts a point AppKit computed from the frame it believes in onto the frame the
-	/// window actually has.
-	///
-	/// Zero whenever the two agree, which is what a run without the private call looks
-	/// like — every move then went through AppKit and nothing needs correcting.
-	private func corrected(_ point: NSPoint) -> NSPoint {
-		let believed = panel.frame.origin
-		let dx = appKitOrigin.x - believed.x
-		let dy = appKitOrigin.y - believed.y
-		guard dx != 0 || dy != 0 else { return point }
-		return NSPoint(x: point.x - dx, y: point.y - dy)
 	}
 
 	// MARK: - Gestures
@@ -636,8 +460,6 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 @MainActor
 extension PetPanelWindowController: SpeechBubbleLayerHosting {
 	public func speechBubbleLayer(at point: PixelPoint) -> SpeechBubbleLayerTarget? {
-		// No bubble layer means the plain panel, whose bubble is a window of its own.
-		guard bubble != nil else { return nil }
 		return SpeechBubbleLayerTarget(
 			layer: bubbleLayer,
 			displayFrame: bubbleWindowFrame,

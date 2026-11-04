@@ -10,13 +10,8 @@ import QuartzCore
 /// display. This one has to have a window, because the icon stands where the file was,
 /// which can be anywhere on the display and is usually nowhere near her.
 ///
-/// The window is moved through the private ``PetPanelMover``, like the pet's own panel,
-/// so AppKit's frame goes stale — harmless here, because the ghost takes no input
-/// (``ignoresMouseEvents``) and its position comes from the animation every frame
-/// rather than from AppKit.
-///
-/// The icon shivers and shrinks by `transform` rather than by resizing the window, so
-/// only the fade-out and the first placement actually reshape it.
+/// The window is a plain panel the size of the icon, placed once: the icon stands where
+/// the file was and never moves, so nothing here has to follow anything.
 @MainActor
 final class PetPanelGhostIcon: GhostIconPresenting {
 	/// Everything the icon never animates. `opacity` is deliberately absent, so the
@@ -102,8 +97,9 @@ final class PetPanelGhostIcon: GhostIconPresenting {
 
 	/// Puts the window on the icon's square.
 	///
-	/// Only the first frame reshapes it; the shiver is a transform, so every later frame
-	/// is a move.
+	/// The ghost appears where the file was and does not move, so this reshapes it on the
+	/// first frame and does nothing after: the shiver is a transform on the layer, not a
+	/// move of the window.
 	private func place() {
 		let side = NSSize(width: size, height: size)
 		let rect = PixelRect(
@@ -112,17 +108,9 @@ final class PetPanelGhostIcon: GhostIconPresenting {
 			width: size,
 			height: size
 		)
-
-		if panel.frame.size != side {
-			panel.setFrame(
-				DisplaySpace.toAppKit(rect, primaryHeight: displaySpace.primaryHeight),
-				display: false
-			)
-		} else {
-			PetPanelMover.move(
-				windowID: UInt32(panel.windowNumber),
-				to: PixelPoint(x: rect.x, y: rect.y)
-			)
+		let target = DisplaySpace.toAppKit(rect, primaryHeight: displaySpace.primaryHeight)
+		if panel.frame != target {
+			panel.setFrame(target, display: false)
 		}
 
 		layer.contentsScale = scale(at: center)
