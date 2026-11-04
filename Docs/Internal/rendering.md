@@ -6,9 +6,8 @@
 Kind=panel|overlay`。
 
 - **小窗口（默认）** —— `PetPanelWindowController`。一个**两倍她大小**的窗口（气泡需要时更高更宽），
-  放在**一格她那么宽**的网格上，她在窗口内取余数位置。窗口只在**跨格**时移动 —— 每走一个她的身位一次
-  —— 格内只改她自己的 `CALayer.position`。于是她的移动是**插值**的，窗口移动次数掉了两个数量级。见下
-  面的「网格映射」。
+  放在**一格她那么宽**的网格上，她在窗口内取余数位置。窗口只在**跨格**时移动，格内只改她自己的
+  `CALayer.position`。
 - **全屏 overlay（`--pet-overlay`）** —— `OverlayPetWindowController`。每个显示器一块**永不移动的全
   屏透明窗口**，她是其中的 `CALayer` 子层，一切靠图层几何。
 
@@ -16,24 +15,12 @@ Kind=panel|overlay`。
 `SpeechBubbleDrawing`、`PetLayerTransform`、 `CheekPinchLayer`、形状点
 （`OverlayPetWindowController.shapeCorners`）与 `FrameInterpolation`。差别只在窗口多大、什么时候动。
 
+**为什么默认是小窗口、两者的代价差多少，都在 [performance.md](performance.md) 的「混合渲染」一
+节**（那是这两条代价轴的测量与折算）。这里只记怎么实现、以及哪些地方不能改。
+
 > **旧名字的坑**：小窗口最初是 `--pet-panel`（窗口**正好她大小**、**每帧**移动窗口，用来证明私有
 > `CGSMoveWindow` 比 `setFrame` 便宜约 4 倍）；被网格版取代后已删除。网格版一度叫
 > `--pet-panel-hybrid`，成为默认后去掉了 hybrid 字样。**旧笔记里这几个名字指的是不同的东西。**
-
-### 为什么默认不再是 overlay
-
-全屏窗口**在指针下的任何位置都是一个窗口**，所以窗口服务器一直把鼠标移动流投给这条连接；小窗口只在指
-针压在她身上时才收到。实测（`--mouse-move-count` 数投递 + `ps` 计 CPU，见 `performance.md`）：「指针
-在别处动」时 overlay **+5.99 pt**、小窗口 **≈0**；每次投递两模式都约 **400 µs**，所以差别完全在**投
-递次数**。
-
-代价是小窗口要管窗口位置；网格把它压到每 132 pt 一次，拖动时则完全消失（见「拖动时切全屏表面」）。
-
-### overlay 时代的实测（保留：它比的是 overlay 与**每帧移动窗口的旧面板**）
-
-**实测（Time Profiler，30 s，`all-thread Running / 30 s`，同一交互脚本）：** 拖动 **17.8% → 10.8%**
-（−39%），盒内 idle **5.7% → 3.9%**（−32%）。归因：旧模型每帧付一次窗口移动事务（`_setFrameCommon`
-2.4% + `commit_transaction` 4.9% 绝对值）；新模型是 0.19% + 1.3%。
 
 ### 两个陷阱 —— 都靠测量发现，别「简化」掉
 
@@ -86,7 +73,8 @@ Kind=panel|overlay`。
 窄 ⇒ 横向预留为 0**，所以绝大多数时间窗口一点都不加宽。
 
 预留变化 → 一次 reshape（`setFrame`，AppKit 的 reshape 与 CA 提交同事务，不会闪）。一次气泡约两次
-（show / hide），偶尔第三次（尾巴在屏幕顶上翻到脚下）。**比它消掉的每帧窗口移动低两个数量级。**
+（show / hide），偶尔第三次（尾巴在屏幕顶上翻到脚下）—— 相比它换掉的每帧窗口移动，这个频率可以忽略
+（见 [performance.md](performance.md)）。
 
 ### 跨格那一帧必须原子
 
