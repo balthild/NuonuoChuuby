@@ -72,6 +72,10 @@ Kind=grid|overlay`。
 `above`/`below` 取其一。所以窗口平时是 `2w×2w`，有气泡时高一点、长台词时宽一点。**普通台词气泡比她还
 窄 ⇒ 横向预留为 0**，所以绝大多数时间窗口一点都不加宽。
 
+**`2w×2w` 是对称的，而她的运动大多只在一个轴上** —— 沿窗口顶边走是纯横向，沿竖边爬是纯竖向。按轴缩小
+（甚至静止时完全不网格）看着划算，但收益只有约 0.1 pt，且某轴 slack 取 0 会让那个轴退化成每帧移窗
+口： **已评估并否决，见 [rejected-approaches.md](rejected-approaches.md)**。
+
 预留变化 → 一次 reshape（`setFrame`，AppKit 的 reshape 与 CA 提交同事务，不会闪）。一次气泡约两次
 （show / hide），偶尔第三次（尾巴在屏幕顶上翻到脚下）—— 相比它换掉的每帧窗口移动，这个频率可以忽略
 （见 [performance.md](performance.md)）。
