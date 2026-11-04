@@ -175,7 +175,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 			presenterKind = "grid"
 			petWindow = GridPetWindowController(
 				controller: controller,
-				displaySpace: displaySpace
+				displaySpace: displaySpace,
+				showsOutline: CommandLine.arguments.contains("--pet-outline")
 			)
 		}
 		petWindow.menuProvider = { [weak self] _ in

@@ -57,6 +57,18 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 	/// The size the dots were last laid out for, so they are rebuilt only on a reshape.
 	private var shapeDotsSize: CGSize = .zero
 
+	/// Whether to draw a visible border round the window's four edges — `--pet-outline`.
+	///
+	/// Diagnosis, not part of the renderer. A Space transition freezes each window's
+	/// **shape** — the bounding box of its opaque pixels — at the moment it begins, and she
+	/// is reported cut during one. The three dots hold that shape at the window's bounds
+	/// while being invisible, so a border over the same extent draws the very thing the dots
+	/// are there to keep: if it is cut, the shape is what is being clipped and not her sprite.
+	private let showsOutline: Bool
+
+	/// That border, on the root so it spans the window, resized with it.
+	private var outlineLayer: CALayer?
+
 	/// The window's origin the last time she was placed, to tell a frame that moved the
 	/// window from one that only moved her inside it.
 	private var lastWindowOrigin: PixelPoint?
@@ -102,9 +114,10 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 	/// The bubble is a layer of her window, in the slack the window leaves for it.
 	public var speechBubble: any SpeechBubblePresenting { bubble }
 
-	public init(controller: PetController, displaySpace: DisplaySpace) {
+	public init(controller: PetController, displaySpace: DisplaySpace, showsOutline: Bool = false) {
 		self.controller = controller
 		self.displaySpace = displaySpace
+		self.showsOutline = showsOutline
 
 		let side = controller.petSize * 2
 		let size = NSRect(x: 0, y: 0, width: side, height: side)
@@ -460,6 +473,7 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 		if shapeDotsSize != size {
 			shapeDotsSize = size
 			layoutShapeDots(in: size)
+			layoutOutline(in: size)
 		}
 
 		let side = controller.petSize
@@ -493,6 +507,26 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 			root.layer?.insertSublayer(dot, below: pet)
 			return dot
 		}
+	}
+
+	/// Draws the window's own rectangle, for `--pet-outline`; nothing at all otherwise.
+	///
+	/// A border inset inside the layer's bounds is what `borderWidth` draws, so a layer as
+	/// big as the window puts the line on the window's edge without arithmetic. It is laid
+	/// out last, so it sits above her and stays readable if a transition has cut her at it.
+	private func layoutOutline(in size: CGSize) {
+		outlineLayer?.removeFromSuperlayer()
+		outlineLayer = nil
+		guard showsOutline else { return }
+
+		let border = CALayer()
+		border.frame = CGRect(origin: .zero, size: size)
+		border.borderWidth = 1
+		// A fixed colour rather than a dynamic one: it is a diagnostic and never redrawn.
+		border.borderColor = CGColor(red: 1, green: 0, blue: 0.5, alpha: 1)
+		border.actions = PetLayerConventions.shapeCornerActions
+		root.layer?.addSublayer(border)
+		outlineLayer = border
 	}
 
 	// MARK: - Gestures
