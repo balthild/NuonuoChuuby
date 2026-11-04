@@ -26,10 +26,10 @@ import PetSimulation
 /// frame — the same reason the overlay draws her that way.
 ///
 /// The head bubble is a layer of this same window, in the slack it leaves. The ghost
-/// icons get a window each (``PetPanelGhostIcon``): a ghost stands where a file used to
+/// icons get a window each (``GridGhostIcon``): a ghost stands where a file used to
 /// be, which can be anywhere on the display and is rarely near her.
 @MainActor
-public final class PetPanelWindowController: NSObject, PetControllerDelegate, PetPresenting {
+public final class GridPetWindowController: NSObject, PetControllerDelegate, PetPresenting {
 	private let controller: PetController
 	private var displaySpace: DisplaySpace
 	private let panel: PetChromePanel
@@ -115,7 +115,7 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 
 		super.init()
 
-		panel.title = "pet panel"
+		panel.title = "pet grid window"
 
 		root.autoresizingMask = [.width, .height]
 		root.wantsLayer = true
@@ -182,7 +182,7 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 	}
 
 	public func makeGhostIcon() -> any GhostIconPresenting {
-		PetPanelGhostIcon(displaySpace: displaySpace)
+		GridGhostIcon(displaySpace: displaySpace)
 	}
 
 	// MARK: - Placement
@@ -208,8 +208,8 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 	/// The bubble is centred on her, so both sides need the same; and it goes above her
 	/// head or below her feet, so only one of those needs anything. Reserving the whole
 	/// bubble height rather than the part that actually pokes out is deliberate: the
-	/// layout tucks the bubble slightly into her panel, and the difference is a couple of
-	/// points.
+	/// layout tucks the bubble slightly into her square, and the difference is a couple
+	/// of points.
 	private struct Reserve {
 		var horizontal: Double = 0
 		var above: Double = 0
@@ -368,7 +368,7 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 
 	/// The full-display window she is drawn into while one of those states lasts, built on
 	/// demand.
-	private var overlaySurface: PetOverlaySurface?
+	private var overlaySurface: OverlayPetSurface?
 
 	/// The bubble changed the room it needs, so the next pass has to size the window
 	/// for it.
@@ -424,7 +424,7 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 			return
 		}
 		if overlaySurface == nil {
-			let surface = PetOverlaySurface()
+			let surface = OverlayPetSurface()
 			wireGestures(surface.root)
 			overlaySurface = surface
 		}
@@ -578,15 +578,15 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 	}
 }
 
-/// The hybrid's bubble is a layer of her window, so this is where it is told which layer
-/// to draw into and where that window currently is.
+/// The grid renderer's bubble is a layer of her window, so this is where it is told which
+/// layer to draw into and where that window currently is.
 ///
 /// The frame handed over is the window's own rectangle, not a display's: the bubble's
 /// global top-left is turned into window-local coordinates against it, which is what the
 /// root layer's flipped space expects. It is the window the *last* placement put her in,
 /// which is what the bubble is being positioned for.
 @MainActor
-extension PetPanelWindowController: SpeechBubbleLayerHosting {
+extension GridPetWindowController: SpeechBubbleLayerHosting {
 	public func speechBubbleLayer(at point: PixelPoint) -> SpeechBubbleLayerTarget? {
 		// While she is in the overlay the bubble rides in it with her, in the same window, so
 		// it follows for the same reason she does: one layer's position and no window move.

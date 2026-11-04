@@ -1,9 +1,9 @@
 import AppKit
 
-/// A panel content view that paints nothing, takes no clicks, and uses the flipped
+/// A window content view that paints nothing, takes no clicks, and uses the flipped
 /// (top-left, Y-down) coordinate system the window server and the layouts here speak.
 ///
-/// Used by the panel renderer's bubble and ghost icon, whose contents are a single
+/// Used by the grid renderer's bubble and ghost icon, whose contents are a single
 /// layer. Flipped rather than plain because the shapes drawn into them — a ghost icon's
 /// rotation in particular — were authored against the overlay's flipped root, and the
 /// direction of a rotation depends on it.

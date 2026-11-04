@@ -91,7 +91,7 @@ struct MockPlatformTests {
 		let platform = MockPlatform.singleMonitor(width: 1440, height: 900)
 		let space = DisplaySpace(monitors: platform.monitors(), primaryHeight: 900)
 		platform.setWindows([
-			// The pet's panel: floating, transparent, exactly where she is.
+			// Her window: floating, transparent, exactly where she is.
 			PlatformWindow(
 				id: 10,
 				ownerPID: ProcessInfo.processInfo.processIdentifier,
@@ -112,7 +112,7 @@ struct MockPlatformTests {
 		let provider = SurfaceProvider(platform: platform)
 		provider.refresh(displaySpace: space)
 
-		// She is falling through the panel's x-range onto the window top at y=800.
+		// She is falling through her own window's x-range onto the window top at y=800.
 		let landing = provider.landingSurface(footX: 700, fromY: 760, toY: 810)
 		#expect(landing?.key == SurfaceKey(owner: 20, kind: .windowTop))
 	}

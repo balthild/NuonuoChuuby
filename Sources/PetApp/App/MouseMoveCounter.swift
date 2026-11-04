@@ -3,7 +3,7 @@ import PetFoundation
 
 /// Counts the `.mouseMoved` events this process is handed, once a second.
 ///
-/// Only started by `--mouse-move-count`, for the overlay-versus-panel comparison. The
+/// Only started by `--mouse-move-count`, for the overlay-versus-grid comparison. The
 /// count is the part that makes a CPU reading meaningful: the whole hypothesis is that
 /// a full-display window is handed the move stream wherever the pointer is and a small
 /// window only over the pet, and a reading without these counters cannot tell a

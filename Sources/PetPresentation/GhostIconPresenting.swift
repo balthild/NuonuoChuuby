@@ -7,7 +7,7 @@ import QuartzCore
 /// What the app shell needs from a fake icon standing in for a file being eaten.
 ///
 /// Two things implement it: ``OverlayGhostIcon``, a layer of the full-display window,
-/// and the panel renderer's window ghost. The meal logic drives either the same way.
+/// and the grid renderer's window ghost. The meal logic drives either the same way.
 @MainActor
 public protocol GhostIconPresenting: AnyObject {
 	/// Set once the icon has been dismissed, so the presenter that owns it can drop it

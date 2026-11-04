@@ -125,7 +125,7 @@ struct SurfaceBuilderTests {
 
 	@Test("A raised overlay in front does not hide the edge")
 	func ineligibleFrontDoesNotOcclude() {
-		// Our own pet panel: floating level, transparent, sitting right where the
+		// Her own window: floating level, transparent, sitting right where the
 		// pet is. Treating it as an occluder hid the edge she was landing on, so
 		// she fell straight past every window.
 		let overlay = PlatformWindow(

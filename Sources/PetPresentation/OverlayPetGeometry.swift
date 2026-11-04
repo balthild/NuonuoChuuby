@@ -6,7 +6,7 @@ import PetFoundation
 ///
 /// Shared by everything that draws into those overlays — the pet window, the speech
 /// bubble and the ghost icons — so it lives on its own rather than inside the one that
-/// owns the panels.
+/// owns the windows.
 public enum OverlayPetGeometry {
 	/// The pet's rectangle, expressed in the overlay's own coordinate space.
 	///

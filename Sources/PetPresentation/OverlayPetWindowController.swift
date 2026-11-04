@@ -4,13 +4,6 @@ import PetDesktop
 import PetFoundation
 import PetSimulation
 
-/// A full-display, fully transparent panel.
-final class OverlayPetPanel: PetChromePanel {
-	init(displayFrame: NSRect) {
-		super.init(contentRect: displayFrame)
-	}
-}
-
 /// The overlay's content view. It draws nothing: the pet is a sublayer, so moving
 /// her changes only that layer's geometry and never re-runs any drawing. The view
 /// exists for hit testing, which is the one job a layer cannot do.
@@ -62,7 +55,7 @@ final class OverlayPetRootView: NSView {
 }
 
 /// Puts the pet on screen by drawing her into a full-display transparent window
-/// that never moves, instead of moving a small panel to where she is.
+/// that never moves, instead of moving a small window to where she is.
 ///
 /// The cost being attacked is the window-move transaction — `NSWindow._setFrameCommon:`
 /// plus the Core Animation commit — that a per-frame `setFrame` pays.
@@ -151,7 +144,7 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 
 	private struct Overlay {
 		let monitor: Monitor
-		let panel: OverlayPetPanel
+		let panel: PetChromePanel
 		let root: OverlayPetRootView
 		let pet: CALayer
 		let bubble: CALayer
@@ -234,7 +227,7 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 		}
 		overlays = displaySpace.displays.map { monitor in
 			let frame = DisplaySpace.toAppKit(monitor.frame, primaryHeight: displaySpace.primaryHeight)
-			let panel = OverlayPetPanel(displayFrame: frame)
+			let panel = PetChromePanel(contentRect: frame)
 			let root = OverlayPetRootView(frame: NSRect(origin: .zero, size: frame.size))
 			root.autoresizingMask = [.width, .height]
 			root.wantsLayer = true

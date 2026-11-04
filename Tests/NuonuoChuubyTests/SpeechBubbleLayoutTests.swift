@@ -39,7 +39,7 @@ struct SpeechBubbleLayoutTests {
 		#expect(abs(placement.topLeft.x - (600 + 110 - 35)) < 0.001)
 	}
 
-	@Test("The bubble sits above the pet, its body bottom inside the panel top")
+	@Test("The bubble sits above the pet, its body bottom inside the top of her square")
 	func aboveThePet() {
 		let placement = place(petX: 600, petY: 500)
 		// 500 + 0.16*220 = 535.2 → rounded 535, minus the body and the tail.
@@ -54,7 +54,7 @@ struct SpeechBubbleLayoutTests {
 		// line loses a character or two to the screen edge.
 		let placement = place(petX: -60, petY: 500, bodyWidth: 200)
 		#expect(placement.topLeft.x < workArea.left)
-		// Still centred on her: half her panel, less half the bubble.
+		// Still centred on her: half her square, less half the bubble.
 		#expect(abs(placement.topLeft.x - (-60 + 110 - 100)) < 0.001)
 	}
 
@@ -93,7 +93,7 @@ struct SpeechBubbleLayoutTests {
 
 	@Test("Her head off the screen moves the bubble underneath her, tail up")
 	func belowWhenHerHeadIsOffScreen() {
-		// 125 points of her panel are above the work area, so the bubble cannot sit
+		// 125 points of her square are above the work area, so the bubble cannot go
 		// above her head — there is nowhere there to put it.
 		let placement = place(petX: 600, petY: -100)
 		#expect(placement.tail == .up)
@@ -104,7 +104,7 @@ struct SpeechBubbleLayoutTests {
 
 	@Test("A bubble with no room above goes under her feet, never beside her")
 	func neverBesideHer() {
-		// Her panel's top is above the work area, so the bubble does not fit above her —
+		// Her square's top is above the work area, so the bubble does not fit above her —
 		// and beside her is not an option at any position.
 		let placement = place(petX: 600, petY: 10)
 		#expect(placement.tail == .up)

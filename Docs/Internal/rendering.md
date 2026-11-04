@@ -3,9 +3,9 @@
 ## 两个渲染方式，默认是「网格移动的小窗口」
 
 `PetPresenting` 是渲染方式的接缝；`AppDelegate` 按 `--pet-overlay` 选，启动时往日志写 `PetPresenter
-Kind=panel|overlay`。
+Kind=grid|overlay`。
 
-- **小窗口（默认）** —— `PetPanelWindowController`。一个**两倍她大小**的窗口（气泡需要时更高更宽），
+- **小窗口（默认）** —— `GridPetWindowController`。一个**两倍她大小**的窗口（气泡需要时更高更宽），
   放在**一格她那么宽**的网格上，她在窗口内取余数位置。窗口只在**跨格**时移动，格内只改她自己的
   `CALayer.position`。
 - **全屏 overlay（`--pet-overlay`）** —— `OverlayPetWindowController`。每个显示器一块**永不移动的全
@@ -15,7 +15,11 @@ Kind=panel|overlay`。
 `SpeechBubbleDrawing`、`PetLayerTransform`、 `CheekPinchLayer`、形状点
 （`OverlayPetWindowController.shapeCorners`）与 `FrameInterpolation`。差别只在窗口多大、什么时候动。
 
-**为什么默认是小窗口、两者的代价差多少，都在 [performance.md](performance.md) 的「混合渲染」一
+**命名**：`panel` 只指 AppKit 的 `NSPanel` 对象本身（`PetChromePanel` 与前缀 `panel` 的实例变量）；
+渲染方式只有两个名字 —— `grid`（默认的网格小窗口）与 `overlay`。已删除的 `--pet-panel` 是「每帧把窗
+口挪到她身后」的那一代，别再用 `panel` 指现在的默认渲染方式。
+
+**为什么默认是小窗口、两者的代价差多少，都在 [performance.md](performance.md) 的「网格渲染」一
 节**（那是这两条代价轴的测量与折算）。这里只记怎么实现、以及哪些地方不能改。
 
 ### 两个陷阱 —— 都靠测量发现，别「简化」掉
@@ -30,10 +34,10 @@ Kind=panel|overlay`。
 
 ### 承重约束（不是偏好）
 
-- **她、气泡、幽灵的层级都必须 > 0**：三者都用 `PetChromePanel`，层级 `PetPanelLevel.pet` = 菜单栏 +
-  1 = 25。`FullscreenDetector` 匹配任何**填满显示器的 layer-0 窗口**且**不排除自己的 PID**，所以层级
-  0 的窗口会把自己判成全屏 → 隐藏 → 恢复 → 闪烁。**25 也意味着她盖住菜单栏和 Dock**（有意）；同层之
-  间不再靠层级区分先后，靠窗口/图层顺序。
+- **她、气泡、幽灵的层级都必须 > 0**：三者都用 `PetChromePanel`，其 `petPanelLevel` = 菜单栏 + 1 =
+  25。`FullscreenDetector` 匹配任何**填满显示器的 layer-0 窗口**且**不排除自己的 PID**，所以层级 0
+  的窗口会把自己判成全屏 → 隐藏 → 恢复 → 闪烁。**25 也意味着她盖住菜单栏和 Dock**（有意）；同层之间
+  不再靠层级区分先后，靠窗口/图层顺序。
 - **`constrainFrameRect` 必须直通**（`PetChromePanel` 提供）：overlay 需要它才盖得住菜单栏那一条，她
   自己的窗口需要它才能让脚锚点挂出屏幕顶边。
 - `onPlacementChanged` 必须报**她自己的方块**，绝不能报窗口的 frame，否则气泡会按整个窗口（overlay
@@ -86,7 +90,7 @@ Kind=panel|overlay`。
 
 ## 两个「画在 overlay 里」的状态
 
-有两个状态她**改画在一块全屏窗口里**（`PetOverlaySurface`），而不是她自己的小块窗口：
+有两个状态她**改画在一块全屏窗口里**（`OverlayPetSurface`），而不是她自己的小块窗口：
 
 1. **被拖动**（`isBeingDragged`）。
 2. **被关在窗口里且在动**（`isMovingInsideEnclosure`）—— 被抛起，或被侧壁撞击后在滑。静止躺在盒子底
@@ -170,9 +174,9 @@ overlay 渲染器同一套）。这一条是**必须**的，不是可选：以�
 - **捏脸**：两个渲染方式都一样，画在她自己图层的上方（`CheekPinchLayer` 的容器是 pet 图层的子层），
   所以它跟着她的位移、倾斜与镜像走。
 - **幽灵图标**：两个渲染方式不一样。overlay 里它是 overlay 窗口的图层；小窗口里它**是一块独立的小窗
-  口**（`PetPanelGhostIcon`），因为它站在被删文件原来的位置，那个位置可能离她很远，塞不进她的窗口。
-  它出现得少、**出现后从不移动**（只有 `transform` 在抖），所以那块窗口只 `setFrame` 一次、之后什么
-  都不做。
+  口**（`GridGhostIcon`），因为它站在被删文件原来的位置，那个位置可能离她很远，塞不进她的窗口。它出
+  现得少、**出现后从不移动**（只有 `transform` 在抖），所以那块窗口只 `setFrame` 一次、之后什么都不
+  做。
 
 ## 窗口形状：转场会冻结它的包围盒，所以四角各放一个隐形点
 

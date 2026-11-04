@@ -55,7 +55,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		)
 
 		// The measurement's own instrument: the count of `.mouseMoved` events this
-		// process is handed is the quantity the overlay-versus-panel comparison is
+		// process is handed is the quantity the overlay-versus-grid comparison is
 		// about, and without it a CPU reading cannot distinguish a renderer that
 		// receives nothing from one that is merely idle.
 		if CommandLine.arguments.contains("--mouse-move-count") {
@@ -155,7 +155,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 
 		// The full-display overlay keeps the window still and moves the pet inside it,
 		// which measured ~39% less CPU while dragging and ~32% less at idle than moving
-		// a panel every frame. It also owns the head bubble and the ghost icons — layers
+		// a window every frame. It also owns the head bubble and the ghost icons — layers
 		// of that same window — so it is built before the speech coordinator, which
 		// needs the bubble it chose.
 		//
@@ -172,8 +172,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 				displaySpace: displaySpace
 			)
 		} else {
-			presenterKind = "panel"
-			petWindow = PetPanelWindowController(
+			presenterKind = "grid"
+			petWindow = GridPetWindowController(
 				controller: controller,
 				displaySpace: displaySpace
 			)

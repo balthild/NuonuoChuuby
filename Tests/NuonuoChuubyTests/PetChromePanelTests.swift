@@ -3,18 +3,18 @@ import Testing
 
 @testable import PetPresentation
 
-@Suite("Overlay pet panel")
+@Suite("Pet chrome panel")
 @MainActor
-struct OverlayPetPanelTests {
+struct PetChromePanelTests {
 	/// Her foot anchor is near the bottom of her square, so standing on a window
-	/// close to the top of the screen needs the panel to hang above the screen — and
+	/// close to the top of the screen needs the window to hang above the screen — and
 	/// the overlay has to reach the menu bar strip too. AppKit's default constraint
 	/// pulls a window back into the screen's visible frame, which would leave her
 	/// drawn below the simulation position and stop the overlay covering the strip.
-	@Test("The panel may be placed off the screen edges")
+	@Test("The window may be placed off the screen edges")
 	func notConstrained() {
 		let frame = NSRect(x: 0, y: 0, width: 1728, height: 1117)
-		let panel = OverlayPetPanel(displayFrame: frame)
+		let panel = PetChromePanel(contentRect: frame)
 		let proposed = NSRect(x: -40, y: 1100, width: 1728, height: 1117)
 		#expect(panel.constrainFrameRect(proposed, to: NSScreen.main) == proposed)
 	}
@@ -25,10 +25,10 @@ struct OverlayPetPanelTests {
 	/// exclude our own process, so a level-0 overlay would suspend her against itself.
 	@Test("The pet clears the menu bar and the Dock, and stays above level 0")
 	func stackingLevel() {
-		#expect(OverlayPetPanel(displayFrame: .zero).level == PetPanelLevel.pet)
-		#expect(PetPanelLevel.pet.rawValue == NSWindow.Level.mainMenu.rawValue + 1)
-		#expect(PetPanelLevel.pet.rawValue > 20)
-		#expect(PetPanelLevel.pet.rawValue > 0)
-		#expect(PetPanelLevel.pet.rawValue < NSWindow.Level.popUpMenu.rawValue)
+		#expect(PetChromePanel(contentRect: .zero).level == PetChromePanel.petPanelLevel)
+		#expect(PetChromePanel.petPanelLevel.rawValue == NSWindow.Level.mainMenu.rawValue + 1)
+		#expect(PetChromePanel.petPanelLevel.rawValue > 20)
+		#expect(PetChromePanel.petPanelLevel.rawValue > 0)
+		#expect(PetChromePanel.petPanelLevel.rawValue < NSWindow.Level.popUpMenu.rawValue)
 	}
 }

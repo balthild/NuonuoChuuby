@@ -78,7 +78,7 @@ accessibilityNotTrusted | finderNotRunning | noIconContainer`，门控键包含�
 ## 用得上的事件（排查入口）
 
 `StatusHeartbeat`（状态/位置/支撑，周期快照）、`StateTransition`、`FallStarted` （`fallReason` 的唯
-一出口）、`SuspensionChanged`、`PetPresenter`（启动一次，`Kind=panel|overlay` + 显示器数量，用来确认
+一出口）、`SuspensionChanged`、`PetPresenter`（启动一次，`Kind=grid|overlay` + 显示器数量，用来确认
 这一轮跑的是哪个渲染方式）、`MouseMoveCount`（仅 `--mouse-move-count`，每秒上报一次收到的
 `.mouseMoved` 投递数）、 `MealRequeued`、`MealsDiscarded`、`DeletionDetected`、
 `DeletionIgnored`、`GhostShown`、`PatrolInterrupted`、`PerchCovered`、`DragProfile`、

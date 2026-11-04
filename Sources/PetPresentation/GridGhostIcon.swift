@@ -4,16 +4,16 @@ import PetDesktop
 import PetFoundation
 import QuartzCore
 
-/// Draws a deleted file's fake icon in a window of its own, for the panel renderer.
+/// Draws a deleted file's fake icon in a window of its own, for the grid renderer.
 ///
 /// The overlay draws the ghost as a layer of the window that already covers the
 /// display. This one has to have a window, because the icon stands where the file was,
 /// which can be anywhere on the display and is usually nowhere near her.
 ///
-/// The window is a plain panel the size of the icon, placed once: the icon stands where
-/// the file was and never moves, so nothing here has to follow anything.
+/// The window is a plain window the size of the icon, placed once: the icon stands
+/// where the file was and never moves, so nothing here has to follow anything.
 @MainActor
-final class PetPanelGhostIcon: GhostIconPresenting {
+final class GridGhostIcon: GhostIconPresenting {
 	/// Everything the icon never animates. `opacity` is deliberately absent, so the
 	/// fade-out is the one implicit animation it does get.
 	private static let noActions: [String: CAAction] = [
@@ -37,7 +37,7 @@ final class PetPanelGhostIcon: GhostIconPresenting {
 	public init(displaySpace: DisplaySpace) {
 		self.displaySpace = displaySpace
 		panel = PetChromePanel(contentRect: .zero, ignoresMouseEvents: true)
-		panel.title = "pet panel ghost"
+		panel.title = "pet ghost"
 		root = PetLayerHostView(frame: .zero)
 		root.wantsLayer = true
 		// Flipped like the overlay's root, so the shiver's rotation turns the same way.

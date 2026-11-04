@@ -48,7 +48,7 @@ public enum SpeechBubbleLayout {
 	}
 
 	/// - Parameters:
-	///   - petFrame: the pet panel's frame, top-left origin, Y down.
+	///   - petFrame: her square, top-left origin, Y down.
 	///   - area: the vertical bounds the bubble must stay within (see ``area(for:)``).
 	///   - contentWidth: the bubble body, tail excluded.
 	///   - contentHeight: the bubble body, tail excluded.
@@ -64,7 +64,7 @@ public enum SpeechBubbleLayout {
 		// there is nothing to clamp against.
 		let x = petFrame.centerX - contentWidth / 2
 
-		// The body's bottom edge sits just inside the pet panel's top, with the tail
+		// The body's bottom edge sits just inside the top of her square, with the tail
 		// hanging between the two.
 		let anchorTop = petFrame.top + (petFrame.height * 0.16).rounded()
 		if anchorTop - contentHeight - tailHeight >= area.top {

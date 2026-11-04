@@ -569,7 +569,7 @@ public final class PetController: SpriteAnimatorDelegate {
 		)
 	}
 
-	/// The panel follows the simulation, so every place that moves the foot or
+	/// Her window follows the simulation, so every place that moves the foot or
 	/// changes the size must go through here — a drag updates the foot *between*
 	/// ticks, where a change made during `step()` would never be noticed.
 	private func notifyPlacementIfChanged() {
@@ -1110,12 +1110,12 @@ public final class PetController: SpriteAnimatorDelegate {
 		)
 	}
 
-	/// The panel's top-left corner in global top-left coordinates.
+	/// Her window's top-left corner in global top-left coordinates.
 	public var windowTopLeft: PixelPoint {
 		PixelPoint(x: foot.x - footInset.x, y: foot.y - footInset.y)
 	}
 
-	/// The pet panel's full frame, in global top-left coordinates.
+	/// Her whole square, in global top-left coordinates.
 	public var petFrame: PixelRect {
 		let topLeft = windowTopLeft
 		return PixelRect(x: topLeft.x, y: topLeft.y, width: petSize, height: petSize)

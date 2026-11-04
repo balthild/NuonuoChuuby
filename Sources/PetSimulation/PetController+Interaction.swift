@@ -119,7 +119,7 @@ extension PetController {
 	/// `exploreSpeed`, 92 and 118 pt/s, while a box's walls send her at up to
 	/// `maximumVelocityX` / `maximumVelocityY`, 1350 and 1200 — an order of magnitude
 	/// more. A renderer that keeps her window near her pays for that in window moves,
-	/// so it wants to know (see `PetPanelWindowController`).
+	/// so it wants to know (see `GridPetWindowController`).
 	///
 	/// False whenever no box holds her, and false again once she has settled inside one:
 	/// what is expensive is the bouncing, not the box.

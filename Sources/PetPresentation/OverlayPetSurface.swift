@@ -5,7 +5,7 @@ import QuartzCore
 
 /// The full-display window she is drawn into while she is moving fast enough that keeping
 /// a small window next to her would mean moving it every few frames — see
-/// ``PetPanelWindowController/wantsOverlaySurface``.
+/// ``GridPetWindowController/wantsOverlaySurface``.
 ///
 /// One window covering the union of every display, so a drag or a bounce that crosses
 /// from one to another needs nothing to change. It is never moved, never resized once
@@ -21,7 +21,7 @@ import QuartzCore
 /// It is deliberately a flat window with two layers rather than a second presenter — the
 /// only thing it has to draw is her and her bubble, and both are already layers.
 @MainActor
-final class PetOverlaySurface {
+final class OverlayPetSurface {
 	let panel: PetChromePanel
 	let root: OverlayPetRootView
 	let pet = CALayer()

@@ -29,9 +29,9 @@ public protocol GhostIconLayerHosting: AnyObject {
 }
 
 /// Draws a deleted item's fake icon as a `CALayer` inside the pet's full-display
-/// overlay, instead of as a panel of its own.
+/// overlay, instead of as a window of its own.
 ///
-/// The panel it replaces had to be created, ordered in and moved on the window
+/// The window it replaces had to be created, ordered in and moved on the window
 /// server for every meal; a sublayer is composited with the pet she is walking
 /// towards, inside a window that never moves.
 @MainActor

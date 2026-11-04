@@ -2,7 +2,7 @@ import AppKit
 import PetDesktop
 
 /// How long a bubble stays up, and the tail's height — both part of the bubble's
-/// contract rather than of any one way of drawing it, so the overlay and the panel
+/// contract rather than of any one way of drawing it, so the overlay and the grid
 /// renderers cannot drift apart on them.
 public enum SpeechBubbleTiming {
 	/// How long a bubble stays up unless the caller says otherwise.
@@ -12,7 +12,7 @@ public enum SpeechBubbleTiming {
 /// What `PetSpeechCoordinator` needs from whatever draws the head bubble.
 ///
 /// Two things implement it: ``OverlaySpeechBubbleController``, which puts the bubble in
-/// a layer of the full-display window, and the panel renderer's window bubble. The
+/// a layer of the full-display window, and the grid renderer's window bubble. The
 /// coordinator speaks the same either way, so a renderer swap changes nothing about
 /// when or what she says.
 @MainActor

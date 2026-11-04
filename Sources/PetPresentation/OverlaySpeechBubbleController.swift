@@ -50,7 +50,7 @@ public protocol SpeechBubbleLayerHosting: AnyObject {
 
 /// Draws the head bubble as a `CALayer` inside the pet's full-display overlay.
 ///
-/// The bubble used to be a panel moved to follow her, and that move was the
+/// The bubble used to be a window of its own moved to follow her, and that move was the
 /// expensive part: `setFrame` was measured at 12–13% of main-thread CPU while she
 /// was falling, all of it inside the same frame that also moved the pet. A sublayer
 /// is composited instead, so following her changes only its `position`, and the

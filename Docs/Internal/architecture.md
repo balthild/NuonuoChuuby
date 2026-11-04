@@ -92,7 +92,7 @@ ms。所以「她脚下的窗口」是实时的，「世界上有哪些边」是
 | `PetMedia` | `Asset` `Sprite` `Voice` | 美术与语音的加载、播放 |
 | `PetBehaviour` | `Settings` `Life` `Meal` `Dialogue` | 她的状态、需求，以及吃东西/说话这些事 |
 | `PetSimulation` | `Cheek` | 仿真：她的位置、状态机、支撑 |
-| `PetPresentation` | `Cheek` | 把她放到屏幕上：overlay 与 panel 两个渲染器，及它们画图用的一切 |
+| `PetPresentation` | `Cheek` | 把她放到屏幕上：overlay 与 grid 两个渲染器，及它们画图用的一切 |
 | `PetApp` | `App` `System` | 菜单栏、素材设置窗，与全部接线 |
 
 - **`PetSimulation` 与 `PetPresentation` 的分界是「仿真 vs 画出来」**：`PetSimulation` 里**没有任何
@@ -123,7 +123,7 @@ ms。所以「她脚下的窗口」是实时的，「世界上有哪些边」是
 
 ## 依赖注入接缝
 
-- `PetPresenting`：渲染方式的接缝（两个实现：默认的网格小窗口 `PetPanelWindowController` 与
+- `PetPresenting`：渲染方式的接缝（两个实现：默认的网格小窗口 `GridPetWindowController` 与
   `--pet-overlay` 的全屏 `OverlayPetWindowController`）。协议把渲染细节挡在 controller 外面。
 - `Platform`：所有窗口/显示器查询。
 - `PetMealDelegate`、`PetControllerDelegate` 等协议的**扩展给默认空实现**，所以测试 spy 不必为新增方

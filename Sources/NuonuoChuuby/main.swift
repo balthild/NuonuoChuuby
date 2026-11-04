@@ -1,7 +1,7 @@
 import AppKit
 import PetApp
 
-// The app runs on AppKit's lifecycle so the status item, the pet panel and the
+// The app runs on AppKit's lifecycle so the status item, her windows and the
 // auxiliary panels can all be driven directly. SwiftUI, where used, is hosted
 // inside those AppKit containers.
 let application = NSApplication.shared
