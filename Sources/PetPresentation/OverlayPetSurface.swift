@@ -5,7 +5,7 @@ import QuartzCore
 
 /// The full-display window she is drawn into while she is moving fast enough that keeping
 /// a small window next to her would mean moving it every few frames — see
-/// ``GridPetWindowController/wantsOverlaySurface``.
+/// ``PetController/isMovingFast``.
 ///
 /// One window covering the union of every display, so a drag or a bounce that crosses
 /// from one to another needs nothing to change. It is never moved and never resized once
@@ -40,7 +40,7 @@ final class OverlayPetSurface {
 	/// each window's shape — the bounding box of its opaque pixels — at the moment it begins
 	/// and goes on drawing the contents, so a window whose shape is only her silhouette is
 	/// cut the instant she moves out of it. She is drawn here exactly when she is moving
-	/// fastest (see ``GridPetWindowController/wantsOverlaySurface``), so the two met often,
+	/// fastest (see ``PetController/isMovingFast``), so the two met often,
 	/// and the dots the two renderers put up are what stops it. See
 	/// ``PetLayerConventions/shapeCorners(in:)``.
 	private var shapeDots: [CALayer] = []
