@@ -130,7 +130,7 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 		pet.minificationFilter = .linear
 		pet.magnificationFilter = .linear
 		pet.isOpaque = false
-		pet.actions = OverlayPetWindowController.petLayerActions
+		pet.actions = PetLayerConventions.petActions
 		root.layer?.addSublayer(pet)
 
 		// The cheek overlay rides on the pet's own layer, above the sprite.
@@ -148,7 +148,7 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 		// Without these a manually created layer eases every change over the default
 		// quarter second — and `hidden` is one of them, which is how a bubble outlived
 		// its own hiding long enough to be seen where the window had already moved to.
-		bubbleLayer.actions = OverlayPetWindowController.bubbleLayerActions
+		bubbleLayer.actions = PetLayerConventions.bubbleActions
 		bubbleLayer.isHidden = true
 		root.layer?.addSublayer(bubbleLayer)
 		// Touching the lazy bubble now wires its extent callback, before the first pass
@@ -453,7 +453,7 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 
 	/// Her lean and mirror, the one place they are worked out.
 	private static func transform(for controller: PetController) -> CATransform3D {
-		PetLayerTransform.make(lean: controller.bodyLeanDegrees, facing: controller.facing)
+		PetLayerConventions.transform(lean: controller.bodyLeanDegrees, facing: controller.facing)
 	}
 	private func updatePetLayer(layerPosition: CGPoint) {
 		let size = panel.frame.size
@@ -478,7 +478,7 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 	/// Puts the shape dots at the window's extremes, under her own layer.
 	private func layoutShapeDots(in size: CGSize) {
 		for dot in shapeDots { dot.removeFromSuperlayer() }
-		shapeDots = OverlayPetWindowController.shapeCorners(in: size).map { corner in
+		shapeDots = PetLayerConventions.shapeCorners(in: size).map { corner in
 			let dot = CALayer()
 			dot.anchorPoint = .zero
 			dot.bounds = CGRect(origin: .zero, size: corner.size)
@@ -487,9 +487,9 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 				red: 0,
 				green: 0,
 				blue: 0,
-				alpha: OverlayPetWindowController.shapeCornerAlpha
+				alpha: PetLayerConventions.shapeCornerAlpha
 			)
-			dot.actions = OverlayPetWindowController.shapeCornerActions
+			dot.actions = PetLayerConventions.shapeCornerActions
 			root.layer?.insertSublayer(dot, below: pet)
 			return dot
 		}

@@ -44,9 +44,9 @@ final class OverlayPetSurface {
 		root.layer?.isGeometryFlipped = true
 
 		pet.anchorPoint = CGPoint(x: 0.5, y: 1)
-		pet.actions = OverlayPetWindowController.petLayerActions
+		pet.actions = PetLayerConventions.petActions
 		bubble.anchorPoint = .zero
-		bubble.actions = OverlayPetWindowController.bubbleLayerActions
+		bubble.actions = PetLayerConventions.bubbleActions
 		for layer in [pet, bubble] {
 			layer.contentsGravity = .resize
 			layer.minificationFilter = .linear

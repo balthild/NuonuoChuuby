@@ -49,7 +49,7 @@ struct FrameInterpolationTests {
 	/// flattens her as it passes through a zero scale).
 	@Test("The pet animates its position and nothing else")
 	func petLayerAnimatesOnlyPosition() {
-		let actions = OverlayPetWindowController.petLayerActions
+		let actions = PetLayerConventions.petActions
 		#expect(actions["position"] == nil)
 		for key in ["contents", "transform", "bounds", "hidden"] {
 			#expect(actions[key] is NSNull)
@@ -59,7 +59,7 @@ struct FrameInterpolationTests {
 	/// The bubble has to glide with her, or its tail leaves her head as she moves.
 	@Test("The bubble animates its position too, but never its picture")
 	func bubbleLayerAnimatesOnlyPosition() {
-		let actions = OverlayPetWindowController.bubbleLayerActions
+		let actions = PetLayerConventions.bubbleActions
 		#expect(actions["position"] == nil)
 		for key in ["contents", "contentsScale", "bounds", "hidden"] {
 			#expect(actions[key] is NSNull)

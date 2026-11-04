@@ -67,81 +67,6 @@ final class OverlayPetRootView: NSView {
 /// sublayer with `contents` set is only composited, so moving her is free.
 @MainActor
 public final class OverlayPetWindowController: NSObject, PetControllerDelegate, PetPresenting {
-	/// What the pet's layer must never animate.
-	///
-	/// `position` is deliberately absent: it rides `FrameInterpolation`, so the render
-	/// server glides her between ticks instead of stepping once per tick. Everything
-	/// listed here has to land in the frame it was set in — `contents` especially,
-	/// because animating it cross-fades one sprite frame into the next, and `transform`
-	/// because it carries the mirror flip, which interpolates through a zero scale and
-	/// would flatten her every time she turned around.
-	///
-	/// A manually created sublayer does not get AppKit's implicit animations suppressed
-	/// for it, so without these it eases every change over the default ~0.25 s.
-	static let petLayerActions: [String: CAAction] = [
-		"bounds": NSNull(),
-		"transform": NSNull(),
-		"contents": NSNull(),
-		"hidden": NSNull(),
-	]
-
-	/// What the corner dots must never animate: they never move.
-	static let shapeCornerActions: [String: CAAction] = [
-		"bounds": NSNull(),
-		"position": NSNull(),
-		"backgroundColor": NSNull(),
-		"hidden": NSNull(),
-	]
-
-	/// One 8-bit step of alpha: enough to be part of the window's shape, far too little to
-	/// be seen.
-	static let shapeCornerAlpha: CGFloat = 1.0 / 255.0
-
-	/// How far each dot sits from the edge of the display.
-	///
-	/// A pointer reaches a screen edge easily — it stops there — so an anchor on the edge
-	/// would be the one place these dots could take a click by accident. One point in from
-	/// it is somewhere a hand practically never lands.
-	///
-	/// The cost is that the shape — their bounding box — loses this much on all four sides,
-	/// so during a transition the outermost point of the display is cut. Her feet land
-	/// exactly on the display's bottom edge, so one point of them goes; it has not been
-	/// visible.
-	static let shapeCornerInset: CGFloat = 1
-
-	/// Where the anchors go: their **bounding box** is what holds the window's shape, so each
-	/// has to sit at one of its extremes.
-	///
-	/// Two at the bottom, and one at the top centre. Deliberately **not** the top corners:
-	/// both of those are live controls — the Apple menu on the left, Notification Centre on
-	/// the right — and the menu bar's middle holds nothing, being the notch on a laptop.
-	static func shapeCorners(in size: CGSize) -> [(origin: CGPoint, size: CGSize)] {
-		let side: CGFloat = 2
-		let inset = shapeCornerInset
-		guard size.width > side + inset * 2, size.height > side + inset * 2 else { return [] }
-		let square = CGSize(width: side, height: side)
-		return [
-			// Bottom left and bottom right, clear of the corners.
-			(CGPoint(x: inset, y: size.height - inset - side), square),
-			(CGPoint(x: size.width - inset - side, y: size.height - inset - side), square),
-			// Top centre: the one stretch of the menu bar with nothing in it.
-			(CGPoint(x: (size.width - side) / 2, y: inset), square),
-		]
-	}
-
-	/// What the bubble's layer must never animate.
-	///
-	/// `position` is absent here too, and for the opposite reason to the pet's: the
-	/// bubble sits on her head, so it has to take the same glide she does. Landing
-	/// instantly while she interpolated would pull its tail off her every frame she
-	/// moved.
-	static let bubbleLayerActions: [String: CAAction] = [
-		"bounds": NSNull(),
-		"contents": NSNull(),
-		"contentsScale": NSNull(),
-		"hidden": NSNull(),
-	]
-
 	private struct Overlay {
 		let monitor: Monitor
 		let panel: PetChromePanel
@@ -252,13 +177,18 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 			// outside these dots belongs to whatever is behind her. That combination is what
 			// makes this possible at all: a cover layer fixes the clipping and takes the whole
 			// screen's clicks, because the shape is the same thing that decides both.
-			for corner in Self.shapeCorners(in: frame.size) {
+			for corner in PetLayerConventions.shapeCorners(in: frame.size) {
 				let dot = CALayer()
 				dot.anchorPoint = .zero
 				dot.bounds = CGRect(origin: .zero, size: corner.size)
 				dot.position = corner.origin
-				dot.backgroundColor = CGColor(red: 0, green: 0, blue: 0, alpha: Self.shapeCornerAlpha)
-				dot.actions = Self.shapeCornerActions
+				dot.backgroundColor = CGColor(
+					red: 0,
+					green: 0,
+					blue: 0,
+					alpha: PetLayerConventions.shapeCornerAlpha
+				)
+				dot.actions = PetLayerConventions.shapeCornerActions
 				root.layer?.addSublayer(dot)
 			}
 
@@ -271,7 +201,7 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 			pet.magnificationFilter = .linear
 			pet.isOpaque = false
 			pet.contentsScale = monitor.scale
-			pet.actions = Self.petLayerActions
+			pet.actions = PetLayerConventions.petActions
 			root.layer?.addSublayer(pet)
 
 			// The cheek overlay rides on the pet's own layer, above the sprite.
@@ -287,7 +217,7 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 			bubble.isOpaque = false
 			bubble.contentsScale = monitor.scale
 			bubble.isHidden = true
-			bubble.actions = Self.bubbleLayerActions
+			bubble.actions = PetLayerConventions.bubbleActions
 			root.layer?.addSublayer(bubble)
 
 			panel.contentView = root
@@ -364,7 +294,7 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 			)
 		else { return }
 		hostingIndex = index
-		let transform = PetLayerTransform.make(
+		let transform = PetLayerConventions.transform(
 			lean: controller.bodyLeanDegrees,
 			facing: controller.facing
 		)
@@ -411,7 +341,7 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 		baseFrame = image
 		let overlay = overlays[hostingIndex]
 		overlay.pet.contents = image
-		overlay.pet.transform = PetLayerTransform.make(
+		overlay.pet.transform = PetLayerConventions.transform(
 			lean: controller.bodyLeanDegrees,
 			facing: controller.facing
 		)
@@ -425,7 +355,7 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 		let overlay = overlays[hostingIndex]
 		// The lean follows the pull, and a pinch can hold one sprite frame for many
 		// ticks — so it has to be re-applied here, not only with a new frame.
-		overlay.pet.transform = PetLayerTransform.make(
+		overlay.pet.transform = PetLayerConventions.transform(
 			lean: controller.bodyLeanDegrees,
 			facing: controller.facing
 		)

@@ -453,8 +453,8 @@ pt、alpha 1/255** 的点（肉眼不可见），**就不裁**。若形状是逐
 
 ### 修法：三个隐形点，都离屏幕边缘 1 pt、顶部那个在正中
 
-`OverlayPetWindowController.shapeCorners(in:)` 在每块 overlay 的根层放**三个** **2×2 pt、alpha
-1/255** 的点（`shapeCornerActions` 禁用隐式动画）：
+`PetLayerConventions.shapeCorners(in:)` 在每块 overlay 的根层放**三个** **2×2 pt、alpha 1/255** 的点
+（`PetLayerConventions.shapeCornerActions` 禁用隐式动画）：
 
 - 两个在**底部**（左下、右下），一个在**顶部正中央** —— 左上角是苹果菜单、右上角是通知中心，都是活控
   件，中间的菜单栏空着（MacBook 上是刘海）。**不要把点放回顶部两角。**
@@ -465,7 +465,7 @@ pt、alpha 1/255** 的点（肉眼不可见），**就不裁**。若形状是逐
 
 **不要改成「整屏铺一层」**：那会把点击一起抢走。**也不要删掉这三个点**：删掉截断就回来。
 `OverlayShapeCornerTests` 钉住「点的数量与位置」「顶部两角必须空着」「包围盒只内缩
-`shapeCornerInset`」——少一个点、多内缩 1 pt，都会在某个方向重新开始裁。
+`PetLayerConventions.shapeCornerInset`」——少一个点、多内缩 1 pt，都会在某个方向重新开始裁。
 
 ### 三条已尝试且**失败**的路线，不要再走
 

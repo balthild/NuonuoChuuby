@@ -12,8 +12,8 @@ Kind=grid|overlay`。
   屏透明窗口**，她是其中的 `CALayer` 子层，一切靠图层几何。
 
 两者都是「她是 `contents = CGImage` 的 `CALayer`」，共用
-`SpeechBubbleDrawing`、`PetLayerTransform`、 `CheekPinchLayer`、形状点
-（`OverlayPetWindowController.shapeCorners`）与 `FrameInterpolation`。差别只在窗口多大、什么时候动。
+`SpeechBubbleDrawing`、`PetLayerConventions`、 `CheekPinchLayer`、形状点
+（`PetLayerConventions.shapeCorners`）与 `FrameInterpolation`。差别只在窗口多大、什么时候动。
 
 **命名**：`panel` 只指 AppKit 的 `NSPanel` 对象本身（`PetChromePanel` 与前缀 `panel` 的实例变量）；
 渲染方式只有两个名字 —— `grid`（默认的网格小窗口）与 `overlay`。已删除的 `--pet-panel` 是「每帧把窗
@@ -203,10 +203,10 @@ overlay 渲染器同一套）。这一条是**必须**的，不是可选：以�
 | **整片 alpha=1/255** | 不裁 | **被抢** |
 | **四角各一个 2×2 pt、alpha=1/255 的点** | **不裁** | **穿透** |
 
-所以修法是 `OverlayPetWindowController.shapeCorners(in:)`：窗口的根层放**三个 2×2 pt、alpha 1/255 的
-点**（`shapeCornerActions` 禁用隐式动画），位置让它们的包围盒尽量接近整窗。overlay 每块屏放一次；小
-窗口放一次，尺寸变（气泡预留变了）时重建。三个点而不是四个，且都离屏幕边缘 **1 pt**，是为了少抢点
-击：
+所以修法是 `PetLayerConventions.shapeCorners(in:)`：窗口的根层放**三个 2×2 pt、alpha 1/255 的
+点**（`PetLayerConventions.shapeCornerActions` 禁用隐式动画），位置让它们的包围盒尽量接近整
+窗。overlay 每块屏放一次；小窗口放一次，尺寸变（气泡预留变了）时重建。三个点而不是四个，且都离屏幕边
+缘 **1 pt**，是为了少抢点击：
 
 - **两个在底部**（左下、右下）。指针很容易停在屏幕角落（它会顶住），1 pt 之外几乎点不中。
 - **一个在顶部正中央**。左上角是苹果菜单、右上角是通知中心，两处都是活控件；中间的菜单栏什么都没有
@@ -217,8 +217,8 @@ overlay 渲染器同一套）。这一条是**必须**的，不是可选：以�
 
 **不要改成「整屏铺一层」**（会把点击一起抢走），**也不要删掉这三个点**（截断立刻回来）。
 `OverlayShapeCornerTests` 钉住三件事：点的数量与位置、**顶部两角必须空着**、以及包围盒恰好只内缩
-`shapeCornerInset`。少一个点、或多内缩 1 pt，都会在某个方向上重新开始裁。完整机制见
-[physics.md](physics.md)。
+`PetLayerConventions.shapeCornerInset`。少一个点、或多内缩 1 pt，都会在某个方向上重新开始裁。完整机
+制见 [physics.md](physics.md)。
 
 - **捏脸：控制器不再合成位图。** 新增 `cheekPinchState`（`{geometry, dynamics}`）与委托方法
   `didUpdateCheekPinch`（协议扩展给默认空实现）。`didProduceFrame` **永远送 cel 本身**，捏脸作为「叠
