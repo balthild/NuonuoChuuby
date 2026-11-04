@@ -174,6 +174,9 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 
 	public func updateDisplaySpace(_ space: DisplaySpace) {
 		displaySpace = space
+		// A drag that spans the change would leave the surface sized for the old set of
+		// displays, and nothing else re-sizes it while it is up.
+		if isDraggingPet { dragSurfaceStorage?.show(covering: space) }
 		applyPlacement()
 	}
 
@@ -265,6 +268,11 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 
 	/// Puts the window, and her inside it, where the controller says she is.
 	private func applyPlacement() {
+		// First, because the rest of this decides between the two windows: she is drawn
+		// in the drag surface while the controller has her, and in her own window
+		// otherwise.
+		syncDragSurface()
+
 		isPlacing = true
 		defer {
 			isPlacing = false
@@ -344,7 +352,14 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 		onPlacementChanged?(petFrame)
 	}
 
-	/// Whether she is being dragged with the pointer right now.
+	/// Whether the drag surface is up, mirrored from `controller.isBeingDragged`.
+	///
+	/// Never set directly: see ``syncDragSurface()``, which is the only writer. The two
+	/// used to be driven by the up and down gestures separately, and the conditions did
+	/// not match — a press could raise the surface through a path where the drag was
+	/// refused, and the release could take the other branch and never lower it. What that
+	/// left behind was her drawn in a surface that takes no clicks, over a small window
+	/// that had stopped following her: visible, and impossible to click.
 	private var isDraggingPet = false
 
 	/// The full-display window she is drawn into while a drag lasts, built on demand.
@@ -362,13 +377,19 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 
 	// MARK: - The drag surface
 
-	/// Starts drawing her in a full-display window, for as long as the pointer has her.
+	/// Raises or lowers the full-display window she is drawn into while a drag lasts,
+	/// to match whether the controller actually has her.
 	///
-	/// A drag moves her on every frame, and in the small window that means moving the
-	/// window — once per pet of travel, which at drag speed is every few frames. Moving a
-	/// window is the most expensive thing this renderer does, and the grid only makes it
-	/// rarer; this makes it never happen at all. A full-display window that is never moved
-	/// costs one layer position per frame, which is the cheapest thing there is.
+	/// The controller is the one truth here, and this is the only place that acts on it,
+	/// so the surface cannot outlive the drag or lag behind it — including a release the
+	/// process never saw. It is called from ``applyPlacement()``, which every drag frame
+	/// already goes through.
+	///
+	/// Why the surface exists at all: a drag moves her on every frame, and in the small
+	/// window that means moving the window — once per pet of travel, which at drag speed
+	/// is every few frames. Moving a window is the most expensive thing this renderer
+	/// does, and the grid only makes it rarer; a window that is never moved costs one
+	/// layer position per frame, which is the cheapest thing there is.
 	///
 	/// The trade is the window's size: it is under the pointer everywhere, which is what
 	/// the small window exists to avoid. It is worth taking only here, because during a
@@ -378,9 +399,16 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 	/// The small window stays up and keeps the mouse capture. AppKit delivers the rest of
 	/// a drag to the window that took the button down, wherever the pointer goes, so it
 	/// does not have to follow her — and not following it is the point.
-	private func beginDragSurface() {
-		guard !isDraggingPet else { return }
-		isDraggingPet = true
+	private func syncDragSurface() {
+		let dragging = controller.isBeingDragged
+		guard dragging != isDraggingPet else { return }
+		isDraggingPet = dragging
+
+		guard dragging else {
+			dragSurfaceStorage?.hide()
+			pet.isHidden = false
+			return
+		}
 		if dragSurfaceStorage == nil { dragSurfaceStorage = PetDragSurface() }
 		guard let surface = dragSurfaceStorage else { return }
 		surface.show(covering: displaySpace)
@@ -390,18 +418,6 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 		surface.pet.transform = pet.transform
 		pet.isHidden = true
 		bubbleLayer.isHidden = true
-		applyPlacement()
-	}
-
-	private func endDragSurface() {
-		guard isDraggingPet else { return }
-		isDraggingPet = false
-		dragSurfaceStorage?.hide()
-		pet.isHidden = false
-		// The small window has not moved since the drag began, so this pass finds it a
-		// whole drag away from her and jumps it there — in one frame, with her layer
-		// compensating, which is what `movedWindow` is for.
-		applyPlacement()
 	}
 
 	/// Her lean and mirror, the one place they are worked out.
@@ -453,6 +469,13 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 
 	/// The point arrives in the **pet's** own space, which is the space `cheekHitTest`
 	/// and the pinch take.
+	///
+	/// Each handler ends by asking for a placement pass, because that is what reconciles
+	/// the drag surface with what the controller actually has. Nothing here decides that
+	/// for itself, and deliberately so: deciding it from the gesture — a press starts a
+	/// drag, a release ends one — is what let the two drift apart, since a press can be
+	/// refused by the drag policy and a release can arrive while a pinch is still
+	/// settling.
 	private func wireGestures() {
 		root.onMouseDown = { [weak self] _, petLocal in
 			guard let self else { return }
@@ -460,8 +483,10 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 				self.controller.beginPinch(side: side, at: petLocal)
 			} else {
 				self.controller.beginDrag(at: self.globalCursor)
-				self.beginDragSurface()
 			}
+			// `beginDrag` may have been refused (she is pinching, climbing, rolling), and
+			// she may not move for a frame or two, so nothing else would run this pass.
+			self.applyPlacement()
 		}
 		root.onMouseDragged = { [weak self] _, petLocal in
 			guard let self else { return }
@@ -473,12 +498,11 @@ public final class PetPanelWindowController: NSObject, PetControllerDelegate, Pe
 		}
 		root.onMouseUp = { [weak self] _ in
 			guard let self else { return }
-			if self.controller.isPinching {
-				self.controller.endPinch()
-			} else {
-				self.controller.endDrag(at: self.globalCursor)
-				self.endDragSurface()
-			}
+			// Both, without choosing: a pinch and a drag are mutually exclusive, and
+			// `endDrag` and the surface are no-ops when nothing is running.
+			self.controller.endPinch()
+			self.controller.endDrag(at: self.globalCursor)
+			self.applyPlacement()
 		}
 		root.onRightMouseDown = { [weak self] event in
 			guard let self, let menu = self.menuProvider?(event) else { return }

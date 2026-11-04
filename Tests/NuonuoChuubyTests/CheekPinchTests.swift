@@ -81,6 +81,16 @@ struct CheekPinchInteractionTests {
 			}
 		}
 	}
+
+	@Test("A pinch in progress is still refused a drag")
+	func pinchingRefusesADrag() {
+		// `.pinching` is the state the two policies disagree on, and the disagreement is
+		// load-bearing: `cheekHitTest` admits a press in it on its own (so a pull can be
+		// re-aimed) while the drag policy refuses it, so a press can arrive and be denied
+		// a drag. That is why the presenter reconciles its drag surface against
+		// `isBeingDragged` rather than against the gesture that arrived.
+		#expect(!DragInteractionPolicy.canStart(from: .pinching))
+	}
 }
 
 /// The rig's anchors describe one pose only, so whatever clip the pinch interrupts
@@ -168,6 +178,25 @@ struct CheekPinchDynamicsTests {
 		for _ in 0..<240 { dynamics.tick(1.0 / 60) }
 		#expect(!dynamics.isActive)
 		#expect(dynamics.x == 0)
+	}
+
+	@Test("A release does not end the pinch until the spring has travelled back")
+	func releaseLeavesItRunning() {
+		// The frames between a release and the spring's return are the ones a second press
+		// can land in, and in them the controller still reports a pinch *and* refuses a
+		// drag. Both gestures are therefore half-present at once, which is the overlap the
+		// presenter has to reconcile rather than assume away.
+		var dynamics = CheekPinchDynamics()
+		dynamics.begin(side: .left)
+		dynamics.drag(x: -80, y: 0)
+		for _ in 0..<60 { dynamics.tick(1.0 / 60) }
+
+		dynamics.release()
+		#expect(!dynamics.isHeld)
+		#expect(dynamics.isActive)
+
+		for _ in 0..<240 { dynamics.tick(1.0 / 60) }
+		#expect(!dynamics.isActive)
 	}
 
 	@Test("A hard pull produces the nibble wobble")
