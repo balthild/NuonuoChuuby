@@ -810,11 +810,6 @@ struct WindowEnclosureIntegrationTests {
 		var box = Self.box
 		for _ in 0..<4 {
 			box = PixelRect(x: box.x, y: box.y + 40, width: box.width, height: box.height)
-			// The scripted desktop moves with the box, so the graph, the body sample and
-			// the live read all agree about where it is, as they would on a real desktop.
-			// The rest of this test steps whole frames, which re-samples the bodies —
-			// against a desktop that had not moved it would settle her somewhere else.
-			rig.platform.setWindows([Self.window(bounds: box)])
 			rig.controller.debugLiveWindowBoundsOverride = { _ in box }
 			_ = rig.controller.debugUpdateEnclosure(delta: Self.frame)
 		}
@@ -838,26 +833,101 @@ struct WindowEnclosureIntegrationTests {
 			"she was in mid-air when the drag stopped, but is \(rig.controller.debugState.state)"
 		)
 
-		// And then she comes down. By now the box's floor has gone past the work area,
-		// and the floor of the screen is what is underneath her — a box whose floor is
-		// beyond the screen's floor is not one that holds her, which is the same rule
-		// entry applies when she is let go inside one. She stands on the screen's floor,
-		// on screen, instead of sinking out of sight on an off-screen window edge.
-		let floor = rig.space.displays.first?.visibleFrame.bottom ?? Self.box.bottom
-		var settled = false
+		// And then she comes down onto the floor it left behind, standing on it at
+		// the feet — the window's own bottom edge. That edge is past the work area by
+		// now, and it is still her floor: inside a box the box's floor is the floor,
+		// and the desktop's own floor underneath it is not a ledge to be handed to.
+		let floor = box.bottom
+		advance(rig, seconds: 5)
+		#expect(rig.controller.debugState.state == .idle, "she should have settled")
+		#expect(
+			abs(rig.controller.debugState.foot.y - floor) < 1,
+			"expected her on the box's floor at \(Int(floor)), found \(Int(rig.controller.debugState.foot.y))"
+		)
+	}
+
+	@Test(
+		"Let go inside a box that reaches below the screen, and the desktop's floor still catches her"
+	)
+	func entryStillCountsTheDesktopFloor() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		// The box's floor is past the bottom of the work area, so taking her in would
+		// put her on an edge she cannot be seen standing on. She is not in the box yet,
+		// so the desktop's own floor is a real answer — and the one that leaves her on
+		// screen. It is the same floor that must not count once she *is* inside a box.
+		let tall = PixelRect(x: 600, y: 700, width: 600, height: 500)
+		rig.platform.setWindows([Self.window(bounds: tall)])
+
+		drop(rig, at: PixelPoint(x: 900, y: 900))
+
+		#expect(
+			rig.controller.debugState.enclosureWindowID == nil,
+			"a box whose floor is off the bottom of the screen does not take her in"
+		)
+
+		let screenFloor = try #require(rig.space.displays.first?.visibleFrame.bottom)
 		for _ in 0..<300 {
 			rig.controller.debugStep(delta: Self.frame)
 			// Stopped at the first idle frame: she is free to wander off the spot
 			// afterwards, and this is about where the fall put her.
-			if rig.controller.debugState.state == .idle {
-				settled = true
-				break
-			}
+			if rig.controller.debugState.state == .idle { break }
 		}
-		#expect(settled, "she should have settled")
 		#expect(
-			abs(rig.controller.debugState.foot.y - floor) < 1,
-			"expected her on the screen's floor at \(Int(floor)), found \(Int(rig.controller.debugState.foot.y))"
+			abs(rig.controller.debugState.foot.y - screenFloor) < 1,
+			"expected her on the desktop's floor at \(Int(screenFloor)), found \(Int(rig.controller.debugState.foot.y))"
+		)
+	}
+
+	@Test("A box dragged below the screen's floor keeps her while it throws her around")
+	func boxBelowTheScreenFloorStillHoldsHer() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		drop(rig, at: PixelPoint(x: 900, y: 900))
+		settle(rig)
+		#expect(rig.controller.state == .idle, "she should be resting before the drag")
+
+		// Throw her up inside the box, and then drag the box down past the bottom of
+		// the work area while she is still in the air. She now comes down with the
+		// desktop's own floor between her feet and the box's floor — and that is not a
+		// ledge to hand her to: the box was never anywhere she could leave, and the
+		// desktop's floor is only a landmark the box has been dragged across.
+		//
+		// Whoever is moving the box is doing the throwing; being taken out of it for
+		// it is what the rule against the display's floor inside a box exists to stop.
+		var box = Self.box
+		for _ in 0..<3 {
+			box = PixelRect(x: box.x, y: box.y - 20, width: box.width, height: box.height)
+			rig.controller.debugLiveWindowBoundsOverride = { _ in box }
+			_ = rig.controller.debugUpdateEnclosure(delta: Self.frame)
+		}
+		#expect(rig.controller.debugState.state == .falling, "a flick is a flick")
+		#expect(rig.controller.debugState.velocityY < -300, "flung up with the wall")
+
+		let screenFloor = try #require(rig.space.displays.first?.visibleFrame.bottom)
+		for _ in 0..<7 {
+			box = PixelRect(x: box.x, y: box.y + 40, width: box.width, height: box.height)
+			rig.controller.debugLiveWindowBoundsOverride = { _ in box }
+			_ = rig.controller.debugUpdateEnclosure(delta: Self.frame)
+		}
+		#expect(
+			box.bottom > screenFloor,
+			"the box has to hang below the work area for this to say anything"
+		)
+
+		advance(rig, seconds: 5)
+
+		let state = rig.controller.debugState
+		#expect(
+			state.enclosureWindowID == Self.windowID,
+			"the box still holds her at \(Int(state.foot.y))"
+		)
+		#expect(state.state == .idle, "and she has come to rest")
+		#expect(
+			abs(state.foot.y - box.bottom) < 1,
+			"expected her on the box's floor at \(Int(box.bottom)), found \(Int(state.foot.y))"
 		)
 	}
 

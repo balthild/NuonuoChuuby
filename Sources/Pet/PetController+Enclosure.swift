@@ -161,7 +161,13 @@ extension PetController {
 		// She is handed back to the open desktop rather than landed here, so which
 		// surface she meets and where it is are read exactly as they are for any other
 		// fall: live, and again on every frame.
-		if velocity.y > 0, landingInsideTheBox(footX: foot.x, box: box) != nil {
+		//
+		// Window tops only. The desktop's own floor is *not* a ledge in here, and
+		// leaving it in threw her out of the box the moment a box was dragged down past
+		// the bottom of the screen: while the box is thrown she is above its floor, so
+		// the desktop's floor looked like a ledge under her and handed her back to the
+		// open desktop. See ``ledgeInsideTheBox(footX:box:)``.
+		if velocity.y > 0, ledgeInsideTheBox(footX: foot.x, box: box) != nil {
 			surrenderEnclosure(reason: "EnclosureLanding")
 			beginFall(
 				reason: "EnclosureLanding",
@@ -317,9 +323,18 @@ extension PetController {
 		// Asked here about the moment of release only. The descent inside the box asks
 		// the same question again, because a throw carries her up over windows that were
 		// not under her then; see ``updateWindowEnclosure(_:)``.
-		guard landingInsideTheBox(footX: foot.x, box: fitted.value.bounds) == nil else {
-			return false
-		}
+		//
+		// The desktop's own floor counts *here* and nowhere else: she is not in the box
+		// yet, so falling to the desktop's floor is a real alternative to being taken in,
+		// and it is the one that leaves her on screen. See
+		// ``standingSurfaceUnderHer(footX:box:includingDisplayFloors:)``.
+		guard
+			standingSurfaceUnderHer(
+				footX: foot.x,
+				box: fitted.value.bounds,
+				includingDisplayFloors: true
+			) == nil
+		else { return false }
 
 		enclosure = Enclosure(
 			windowID: fitted.key,
@@ -355,22 +370,46 @@ extension PetController {
 		return true
 	}
 
-	/// A standable surface between her feet and the box's floor: something inside the
-	/// box she would come down on, rather than fall past to its floor.
+	/// A ledge inside the box: a window top she would come down on rather than fall
+	/// past it to the box's own floor.
 	///
-	/// **One question, asked at both ends of a box's life.** Entry refuses a box that
-	/// has one, so she is not swallowed while a ledge is under her; the descent inside
-	/// the box leaves for that same ledge. Sharing the helper is what keeps the two from
-	/// disagreeing about which surfaces count and how far down the box reaches.
+	/// Window tops only, and that is the point of the helper — the desktop's floor is
+	/// not a ledge in here. See
+	/// ``standingSurfaceUnderHer(footX:box:includingDisplayFloors:)``.
+	private func ledgeInsideTheBox(footX: Double, box: PixelRect) -> Surface? {
+		standingSurfaceUnderHer(footX: footX, box: box, includingDisplayFloors: false)
+	}
+
+	/// A standing surface between her feet and the box's floor: what she would come
+	/// down on instead of falling past to the box's own floor.
+	///
+	/// **The one difference between the two callers is whether the display's floor
+	/// counts, and it is not a detail.**
+	///
+	/// - **Before she is in** (entry, `true`) it does. She is still on the open
+	///   desktop, so its floor is a real alternative to being taken in — and the one
+	///   that leaves her on screen, where a box whose floor is past the bottom of the
+	///   display would otherwise put her.
+	/// - **Once she is in** (the descent, `false`) it does not. There the box's floor
+	///   *is* the floor and a window top is the only ledge. Counting the display's
+	///   floor there threw her out of the box the moment a box was dragged below the
+	///   bottom of the screen: her feet are above the box's floor whenever the box is
+	///   thrown, so the display's floor read as a ledge she was crossing and handed her
+	///   back to the open desktop.
 	///
 	/// The floor is the window's own bottom edge, not one pulled in with the walls
 	/// (``WindowEnclosurePhysics/walls(of:inset:)``) — the feet rest on the edge itself.
-	private func landingInsideTheBox(footX: Double, box: PixelRect) -> Surface? {
+	private func standingSurfaceUnderHer(
+		footX: Double,
+		box: PixelRect,
+		includingDisplayFloors: Bool
+	) -> Surface? {
 		surfaceProvider.landingSurface(
 			footX: footX,
 			fromY: foot.y,
 			toY: box.bottom - WindowEnclosurePhysics.wallInset * displayScale,
-			inset: Motion.landingInset
+			inset: Motion.landingInset,
+			includingDisplayFloors: includingDisplayFloors
 		)
 	}
 

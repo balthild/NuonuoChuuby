@@ -280,15 +280,24 @@ public final class SurfaceProvider {
 	}
 
 	/// The surface a descending foot crosses between `fromY` and `toY`.
+	///
+	/// A display's own floor is a landmark of the desktop rather than an object in it,
+	/// so a caller asking about the **inside of a window** passes
+	/// `includingDisplayFloors: false` to search window tops alone: inside a box the
+	/// box's own bottom edge is the floor, and the display's floor is either below it —
+	/// out of range anyway — or a line the box hangs across, which is not something she
+	/// comes down on.
 	public func landingSurface(
 		footX: Double,
 		fromY: Double,
 		toY: Double,
-		inset: Double = 10
+		inset: Double = 10,
+		includingDisplayFloors: Bool = true
 	) -> Surface? {
 		standable(horizontalOnly: true)
 			.filter {
-				$0.offset >= fromY - 1 && $0.offset <= toY + 1
+				(includingDisplayFloors || $0.key.kind != .floor)
+					&& $0.offset >= fromY - 1 && $0.offset <= toY + 1
 					&& $0.isVisible(atCoordinate: footX, inset: inset)
 			}
 			.min { $0.offset < $1.offset }
