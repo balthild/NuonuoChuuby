@@ -57,6 +57,10 @@ root = H"<证书 SHA-1>"`**，**不是 cdhash**。所以只要**证书不变、b
 - 自签名证书**不受信任**，所以 `security find-identity -v` **不会**列出它；指纹要直接用 `security
   find-certificate -a -Z` 读。
 - 先签包内嵌套的 Mach-O，再签 bundle；**不要用 `--deep`**。
+- **`op` 像 `sudo` 一样会过一段时间重新要授权**：1Password 桌面版弹一次确认，**人不在就超时**，于是
+  `make sign` / `make rerun` 报 `error initializing client: authorization timeout` 并失败。**无人值
+  守时重试无效** —— 它等的是人点确认，不是偶发失败。看到这个错先确认 1Password 桌面版醒着且有人，不
+  要反复重试。
 
 ## 关掉的选项，以及为什么
 
