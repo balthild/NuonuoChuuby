@@ -158,14 +158,33 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		// of that same window — so it is built before the speech coordinator, which
 		// needs the bubble it chose.
 		//
-		// `--pet-panel` is the other renderer, kept for the mouse-move comparison: a
-		// window the size of the pet is handed the pointer's move stream only over her,
-		// where the overlay is handed it wherever the pointer is.
-		let usesPetPanel = CommandLine.arguments.contains("--pet-panel")
-		let petWindow: any PetPresenting =
-			usesPetPanel
-			? PetPanelWindowController(controller: controller, displaySpace: displaySpace)
-			: OverlayPetWindowController(controller: controller, displaySpace: displaySpace)
+		// `--pet-panel` and `--pet-panel-hybrid` are the small-window renderers, kept for
+		// the mouse-move comparison: a window the size of the pet (or twice it, when the
+		// hybrid gives her slack to move in) is handed the pointer's move stream only over
+		// her, where the overlay is handed it wherever the pointer is.
+		let presenterKind: String
+		let petWindow: any PetPresenting
+		if CommandLine.arguments.contains("--pet-panel-hybrid") {
+			presenterKind = "hybrid"
+			petWindow = PetPanelWindowController(
+				controller: controller,
+				displaySpace: displaySpace,
+				mode: .hybrid
+			)
+		} else if CommandLine.arguments.contains("--pet-panel") {
+			presenterKind = "panel"
+			petWindow = PetPanelWindowController(
+				controller: controller,
+				displaySpace: displaySpace,
+				mode: .panel
+			)
+		} else {
+			presenterKind = "overlay"
+			petWindow = OverlayPetWindowController(
+				controller: controller,
+				displaySpace: displaySpace
+			)
+		}
 		petWindow.menuProvider = { [weak self] _ in
 			// The status item owns the menu; borrow it for a right-click on the pet.
 			self?.statusItem?.popUpMenu(atScreenPoint: NSEvent.mouseLocation)
@@ -195,7 +214,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, PetMealDelegate
 		DiagnosticsLog.shared.writeEvent(
 			"PetPresenter",
 			[
-				("Kind", usesPetPanel ? "panel" : "overlay"),
+				("Kind", presenterKind),
 				("Displays", "\(displaySpace.displays.count)"),
 			]
 		)
