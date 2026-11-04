@@ -10,8 +10,12 @@ import Testing
 /// is cut off. The dots make the box the window, while clicks keep being routed per pixel
 /// — measured with a probe, which is what makes this combination possible at all.
 ///
-/// Both renderers use them, so they live in ``PetLayerConventions`` rather than on either
-/// one. The choice of where to put the third dot is the **overlay's** problem, since it
+/// Every window that can draw her uses them — three of them: the two renderers and the
+/// full-display surface a drag or a bouncing box draws her in — so they live in
+/// ``PetLayerConventions`` rather than on any one of them. The surface was the one left
+/// out, and the omission was invisible until a transition cut her while she was being
+/// thrown around; nothing here can catch a window that simply forgot to ask for the dots.
+/// The choice of where to put the third dot is the **overlay's** problem, since it
 /// covers the display and its top corners are the Apple menu and Notification Centre; the
 /// grid window inherits that choice along with the rest of the geometry.
 /// See `Docs/Internal/rendering.md`.

@@ -453,8 +453,9 @@ pt、alpha 1/255** 的点（肉眼不可见），**就不裁**。若形状是逐
 
 ### 修法：三个隐形点，都离屏幕边缘 1 pt、顶部那个在正中
 
-`PetLayerConventions.shapeCorners(in:)` 在每块 overlay 的根层放**三个** **2×2 pt、alpha 1/255** 的点
-（`PetLayerConventions.shapeCornerActions` 禁用隐式动画）：
+`PetLayerConventions.shapeCorners(in:)` 在**每一块能画她的窗口**的根层放**三个** **2×2 pt、alpha
+1/255** 的点（`PetLayerConventions.shapeCornerActions` 禁用隐式动画）。共三块：`--pet-overlay` 的每
+屏面板、网格小窗口、以及拖动 / 盒内弹跳时用的全屏表面 `OverlayPetSurface`：
 
 - 两个在**底部**（左下、右下），一个在**顶部正中央** —— 左上角是苹果菜单、右上角是通知中心，都是活控
   件，中间的菜单栏空着（MacBook 上是刘海）。**不要把点放回顶部两角。**
@@ -464,8 +465,30 @@ pt、alpha 1/255** 的点（肉眼不可见），**就不裁**。若形状是逐
 以脚底 1 pt 会被切 —— 实测看不出。
 
 **不要改成「整屏铺一层」**：那会把点击一起抢走。**也不要删掉这三个点**：删掉截断就回来。
-`OverlayShapeCornerTests` 钉住「点的数量与位置」「顶部两角必须空着」「包围盒只内缩
+`WindowShapeCornerTests` 钉住「点的数量与位置」「顶部两角必须空着」「包围盒只内缩
 `PetLayerConventions.shapeCornerInset`」——少一个点、多内缩 1 pt，都会在某个方向重新开始裁。
+
+### 复发：第一次的修法只加在两块窗口，漏了拖动表面
+
+第一版的三个点只加在两块**渲染窗口**上（`GridPetWindowController` 与
+`OverlayPetWindowController`），而**拖动 / 盒内弹跳时用的 `OverlayPetSurface` 一块点都没有** —— 它就
+是 `freezeprobe` 的 P1：透明窗口、内容在动、没有任何东西撑住形状。所以修完仍会被裁，只是收窄到了她在
+表面里的那些时候。
+
+**她是靠一条可见边框定位到的**（`--pet-outline`，见 [rendering.md](rendering.md)）：观察到「有时释放
+后边框还留在**抓起来之前**的位置」，而那些时候她被裁、切回网格窗口的那些时候一切正常。边框不动 = 表
+面还升着（升着期间那块小窗口是故意不动的），于是「升着的表面」与「被裁」是同一件事。
+
+这与表面自己的生命周期完全对得上（`wantsOverlaySurface` = `isBeingDragged` ||
+`isMovingInsideEnclosure`）：释放在**空处**会让下一帧把它降下、切回网格窗口 —— 那正是「正常」的那
+些；释放在**窗口内部**则被盒壁弹着，表面一直留着。也解释了为什么装了那么久才发现：最常见的拖动是「拖
+到所有窗口外、落到地板上」，那一路结束时表面正好降下。
+
+**顺带否掉的两个假设**（实测见 `_ignored/space-probe/followprobe.swift` 与 `crossprobe.swift`）：不
+是「转场冻结的区域不跟着我们自己的窗口移动」（自己横向平滑移动的窗口、分别跨格与 reshape 过的窗口，
+转场里都完好）；也不是「窗口矩形出现缺口」（四块的宽度从头到尾没变过）。**所以原因不在窗口自己做了什
+么，而在那一块窗口。** 判据因此是「每一块能画她的窗口都要有点」——而那个测试只测几何，测不出某块窗口
+忘了用它。
 
 ### 三条已尝试且**失败**的路线，不要再走
 

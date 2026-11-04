@@ -8,8 +8,8 @@ import QuartzCore
 /// ``GridPetWindowController/wantsOverlaySurface``.
 ///
 /// One window covering the union of every display, so a drag or a bounce that crosses
-/// from one to another needs nothing to change. It is never moved, never resized once
-/// shown, and it draws nothing but her and her bubble.
+/// from one to another needs nothing to change. It is never moved and never resized once
+/// shown, and it draws nothing but her, her bubble, and the dots that hold its shape.
 ///
 /// It **does** take input, and only over her: the root hit-tests her body ellipse and
 /// answers nil everywhere else, so a click on the rest of the display goes to whatever is
@@ -18,8 +18,8 @@ import QuartzCore
 /// are throwing her around — and a window that ignored the mouse would leave her visible
 /// in it and impossible to click.
 ///
-/// It is deliberately a flat window with two layers rather than a second presenter — the
-/// only thing it has to draw is her and her bubble, and both are already layers.
+/// It is deliberately a flat window rather than a second presenter — the only things it
+/// has to draw are her and her bubble, and both are already layers.
 @MainActor
 final class OverlayPetSurface {
 	let panel: PetChromePanel
@@ -32,6 +32,18 @@ final class OverlayPetSurface {
 	/// This is the frame every global point is converted against, so it is also what the
 	/// bubble's host hands over as its `displayFrame`.
 	private(set) var frame: PixelRect = .zero
+
+	/// The dots that hold this window's **shape** at its full size.
+	///
+	/// This window needed them and did not have them, which is why she used to be sliced
+	/// across when a Space was switched while she was being drawn here: a transition freezes
+	/// each window's shape — the bounding box of its opaque pixels — at the moment it begins
+	/// and goes on drawing the contents, so a window whose shape is only her silhouette is
+	/// cut the instant she moves out of it. She is drawn here exactly when she is moving
+	/// fastest (see ``GridPetWindowController/wantsOverlaySurface``), so the two met often,
+	/// and the dots the two renderers put up are what stops it. See
+	/// ``PetLayerConventions/shapeCorners(in:)``.
+	private var shapeDots: [CALayer] = []
 
 	init() {
 		panel = PetChromePanel(contentRect: .zero)
@@ -67,8 +79,29 @@ final class OverlayPetSurface {
 			DisplaySpace.toAppKit(frame, primaryHeight: space.primaryHeight),
 			display: false
 		)
+		layoutShapeDots(in: CGSize(width: frame.width, height: frame.height))
 		pet.isHidden = false
 		panel.orderFrontRegardless()
+	}
+
+	/// Puts the shape-holding dots at the window's extremes, above her and her bubble.
+	private func layoutShapeDots(in size: CGSize) {
+		for dot in shapeDots { dot.removeFromSuperlayer() }
+		shapeDots = PetLayerConventions.shapeCorners(in: size).map { corner in
+			let dot = CALayer()
+			dot.anchorPoint = .zero
+			dot.bounds = CGRect(origin: .zero, size: corner.size)
+			dot.position = corner.origin
+			dot.backgroundColor = CGColor(
+				red: 0,
+				green: 0,
+				blue: 0,
+				alpha: PetLayerConventions.shapeCornerAlpha
+			)
+			dot.actions = PetLayerConventions.shapeCornerActions
+			root.layer?.addSublayer(dot)
+			return dot
+		}
 	}
 
 	func hide() {
