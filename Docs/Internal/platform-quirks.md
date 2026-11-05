@@ -15,6 +15,11 @@
 - **`CGWindowListCopyWindowInfo` 的列表顺序就是 z 序**。读 `kCGWindowName` 在实践中也不花权限，但
   **本项目的建模不使用窗口标题** —— 几何与列表顺序已经够用（见 `architecture.md`）。
 
+- **`CGRect(dictionaryRepresentation:)` 在字段类型不对时抛异常，不是返回 `nil`。** 缺字段返回
+  `nil`（窗口被丢弃），但值类型不对时它在 CoreGraphics 里对那个对象发 `_getValue:forType:` —— 字符串
+  会直接终止进程。窗口 bounds 的值正常都是 `Double`，所以平时见不到。现在窗口描述走 CF 直读，没有这
+  个风险（见 `performance.md`）。
+
 - **读窗口的几何与身份（number/bounds/layer/alpha/ownerPID）不需要任何权限**，屏幕录制只对窗口**内
   容**（`CGWindowListCreateImage`、ScreenCaptureKit）才需要。所以地形与遮挡天然免权限。
 
