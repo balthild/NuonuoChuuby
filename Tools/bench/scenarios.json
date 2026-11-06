@@ -1,5 +1,5 @@
 {
-	"$comment": "The default scenario set for measure.py. Each entry is an instruction to the person driving the mouse (prep/gesture), the evidence that they followed it (expect/forbid, checked per round against the app's own log events), and whatever is left for a person to judge (note). `wait` holds the round until a heartbeat reports that state; `seconds`/`settle` override the flags for one scenario. Unknown keys are an error. Event names are the ones the app writes; add a check by naming one, no script change needed.",
+	"$comment": "The default scenario set for measure.py. Each entry is an instruction to the person driving the mouse (prep/gesture), the evidence that they followed it (expect/forbid, checked per round against the app's own log events), and whatever is left for a person to judge (note). `wait` holds the round until a heartbeat reports that state; `sleepiness` pins how sleepy she is, which decides whether quiet mode rests her awake or asleep; `seconds`/`settle` override the flags for one scenario. Unknown keys are an error. Event names are the ones the app writes; add a check by naming one, no script change needed.",
 	"scenarios": [
 		{
 			"key": "idle",
@@ -8,6 +8,15 @@
 			"gesture": "保持不动：不要碰她、不要点击、不要让指针移动。",
 			"wait": "sleeping",
 			"note": "heartbeat 应当全是 sleeping、鼠标应当 0/s"
+		},
+		{
+			"key": "rest",
+			"title": "醒着静止",
+			"prep": "把手完全离开鼠标和触控板，什么都不要碰。",
+			"gesture": "保持不动：不要碰她、不要点击、不要让指针移动。",
+			"wait": "idle",
+			"sleepiness": 0,
+			"note": "和 idle 是同一件事，但她醒着（sleepiness 钉在 0）。要量「醒着静止能不能也降 tick」就得用这个 —— 两个静止状态的每 tick 成本不同"
 		},
 		{
 			"key": "drag",

@@ -29,10 +29,13 @@ The headline number is the delta of `ps -o time=` (cumulative user+system CPU �
 `getrusage` reports) over the wall time of the phase. `ps -o %cpu` is sampled every
 second beside it as a second, independent view; it is not the metric.
 
-Quiet mode is forced on and `sleepiness` is pinned to 100, so that wherever she is not
-being moved she is asleep — the same pet in every round, which is what makes the numbers
-comparable (`Docs/Internal/performance.md`, "测 idle 前先把她的状态钉死"). Both files are
-snapshotted per batch and put back afterwards.
+Quiet mode is forced on, so that wherever she is not being moved she is at rest rather
+than off on some errand — the same pet in every round, which is what makes the numbers
+comparable (`Docs/Internal/performance.md`, "测 idle 前先把她的状态钉死"). **Which rest**
+— resting awake or asleep — is the scenario's business, through its `sleepiness`: quiet
+mode leaves her that choice and how sleepy she is decides it, and the two states do not
+cost the same. The batch's default pins it high (asleep). Both files are snapshotted per
+batch and put back afterwards.
 
 A scenario is an instruction to a person plus, where it can be checked, the evidence that
 they followed it:
@@ -215,6 +218,11 @@ class Scenario:
     wait: Optional[str] = None
     seconds: Optional[float] = None
     settle: Optional[float] = None
+    # Overrides the batch's pin. Quiet mode leaves her a choice between resting and
+    # sleeping, and which one she picks is decided by how sleepy she is — so a scenario
+    # about her *awake* and still (`.idle`) pins this low, and one about her asleep pins it
+    # high. Pinning it at all is what makes every round measure the same pet.
+    sleepiness: Optional[float] = None
     note: str = ""
 
 
@@ -260,6 +268,7 @@ def load_scenarios(path: Path):
                 wait=entry.get("wait"),
                 seconds=entry.get("seconds"),
                 settle=entry.get("settle"),
+                sleepiness=entry.get("sleepiness"),
                 note=entry.get("note", ""),
             )
         )
@@ -401,17 +410,17 @@ def restore_state():
     MARKER.unlink(missing_ok=True)
 
 
-def force_sleepiness():
-    """Pins the sleepiness high, on disk, right before each launch.
+def force_sleepiness(sleepiness: float):
+    """Pins the sleepiness on disk, right before each launch.
 
     Every launch's exit saves the decayed state back, so this is re-applied per round
     rather than once for the batch — otherwise the later rounds start near a threshold
-    and flip her back to resting.
+    and flip her back to the other of rest and sleep.
     """
     if not LIFE.exists():
         raise SystemExit(f"no pet state at {LIFE} — run the app once")
     state = json.loads(LIFE.read_text())
-    state["sleepiness"] = FORCED_SLEEPINESS
+    state["sleepiness"] = sleepiness
     LIFE.write_text(json.dumps(state, indent=2))
 
 
@@ -434,10 +443,10 @@ def build(command=None):
         )
 
 
-def launch(bundle: Path):
+def launch(bundle: Path, sleepiness: Optional[float] = None):
     """Relaunches `bundle` through LaunchServices, as `make rerun` does."""
     kill_pet()
-    force_sleepiness()
+    force_sleepiness(sleepiness if sleepiness is not None else FORCED_SLEEPINESS)
     offset = log_offset()
     subprocess.run(
         ["open", "-n", str(bundle), "--args", *APP_ARGS], capture_output=True
@@ -957,7 +966,7 @@ def one_round(
         )
     print("═" * 78)
 
-    pid, offset, exe = launch(bundle)
+    pid, offset, exe = launch(bundle, scenario.sleepiness)
     pending = ""
     offset, pending, labels = confirm_running(offset, pending)
     digest = subprocess.run(
