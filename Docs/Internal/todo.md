@@ -35,32 +35,18 @@
 
 ## 5. 性能：还没做的
 
-按已知收益排序。**第 4–6 项的依据是 2026-11-04 五场景 trace 的重算**（主线程 inclusive 口径）。每项
+按已知收益排序。**第 3–5 项的依据是 2026-11-04 五场景 trace 的重算**（主线程 inclusive 口径）。每项
 成熟度不同：有的要先补一个计数器、有的要先分类、有的要先由用户拍板 —— 都写在各条里了。
 
-1. **把每个剪辑的帧拼成一张 sheet，用 `contentsRect` 换帧。** 排在 Metal 之前**不是因为它收益更
-   大**，而是因为 Metal 那条点名要的「纹理复用」就是它，而它的改动小一到两个数量级。现在每换一次帧都
-   把新的 `CGImage` 交给 CA（idle 7.4 次/秒、run 14 次/秒）；sheet 把它变成每剪辑一次。**解码本来就
-   是 O(1)**（`AssetCatalog` 首次用到某 folder 时整文件夹解码并缓存），所以省的是转换与传输，不是解
-   码。
-   - **收益未测**：Metal 那条记的「图像相关约 0.5%」（拖动 r1）是上限，idle 下换帧更慢、应更低。**要
-     不要长期留着由用户按 A/B 定**；先做是因为它便宜，且是 Metal 的前提。
-   - **不需要 gutter、不需要缩 tile**：实测 7 个跨剪辑的帧，透明边距最小 **10 px**（她脚下），其余几
-     十到上百；`.linear` 的核只有 2×2 tap，越界 1 texel 也落在透明区里。384 张帧全是 `384 x 384,
-     8-bit/color RGBA`、24 个剪辑尺寸一致；最大剪辑 16 帧 ⇒ 4×4 = 1536²、≤ 9.4 MB。
-   - **不改构建管线**：`AssetCatalog` 已拿到整段 `[CGImage]`，运行时一次 `CGContext` 拼出、按 folder
-     缓存即可。
-   - 三处必须一起改：`petActions` 加 `"contentsRect": NSNull()`（手工创建的图层不设它会让采样矩形在
-     整张 sheet 上缓动约 0.25 s）；`syncOverlaySurface()` 的交接（只拷了 `contents`）要同拷
-     `contentsRect`；sheet 的 key 是 `assetFolder` 而非剪辑名（`hatlessAliases` 换 folder，
-     `pair_feed_*` 三段共用一个 folder）。捏脸要的单帧 `baseFrame` 照旧送出，捏脸不改。
-   - **未验证（推论）**：CA 是把 `contentsRect` 当采样矩形（UV）还是每次重新裁位图 —— O(1) 的机制就
-     在这里；以及 tile 行序是否要在映射里做一次垂直翻转。两者由一次位图比对测试 + 一次目测钉住。
-2. **把帧节奏从 tick 上拿开：用 `CAKeyframeAnimation` 播 `contents` / `contentsRect`。** `Sources/`
-   里目前**没有任何 `CAAnimation` 子类**，唯一的显式动画机制是 `FrameInterpolation` 的隐式动画。转写
-   的前提很齐：整段剪辑一次性解码成连续 `[CGImage]`，每个剪辑只有一个 `frameSeconds` ⇒ `keyTimes` 等
-   距；`loop` / `pingPong` / `startReversed` 都能表达。`calculationMode = .discrete` 是硬要求 —— 连
-   续插值就是已知的「两帧交叉淡入，她看起来永远模糊」那个 bug。
+**已否决、不要再重开的**：「把剪辑的帧拼成一张 sheet、用 `contentsRect` 换帧」—— 实测无收益（CA 是按
+`CGImage` 缓存的，所以成本是「每个不同的帧一次」而不是每次换帧），数字与两个坑见
+[rejected-approaches.md](rejected-approaches.md)。
+
+1. **把帧节奏从 tick 上拿开：用 `CAKeyframeAnimation` 播 `contents`。** `Sources/` 里目前**没有任何
+   `CAAnimation` 子类**，唯一的显式动画机制是 `FrameInterpolation` 的隐式动画。转写的前提很齐：整段
+   剪辑一次性解码成连续 `[CGImage]`，每个剪辑只有一个 `frameSeconds` ⇒ `keyTimes` 等距；`loop` /
+   `pingPong` / `startReversed` 都能表达。`calculationMode = .discrete` 是硬要求 —— 连续插值就是已知
+   的「两帧交叉淡入，她看起来永远模糊」那个 bug。
    - **它换来的不是更便宜，而是「节奏不必跟着 tick」。** 现在换帧由 `SpriteAnimator.tick` 驱动，这正
      是 sleep 降频只敢用在 `sleep` 循环上的原因（10 Hz 落不到 `sleep_enter` 0.145 s / `sleep_exit`
      0.105 s 的帧边界上，会一顿一顿）。节奏交给渲染服务器后这条约束消失，**idle （0.135 s ≈ 7.4
@@ -76,19 +62,18 @@
    - app 侧的登记删不掉：`pingPong`/`startReversed`、hatless 别名换 `assetFolder`、角色覆盖的
      `frameSeconds`、中途 `play()`、以及捏脸要的单帧。动画要用显式 `add(_:forKey:)` 加，别被
      `withoutAnimation` 那类事务吞掉。
-   - **和 sheet 不互斥**：终态是 `CAKeyframeAnimation(keyPath: "contentsRect")` —— 一张纹理 + 交给
-     CA 的节奏，各自的收益相加。
-3. **Metal 渲染实验**。在干净树的独立分支做 A/B，先固定同一交互脚本与统计口径。目标是在不降低体感帧
-   率的前提下，比当前 CALayer 再降低拖动 / 下落 CPU；必须优先做纹理复用（避免每帧图像上传 / 转换），
-   否则可能比 CALayer 更差。trace 只量过拖动 r1：`send_message` 10.6%、`commit_if_needed` 4.4%、图像
-   相关约 0.5%，指向每次提交的 IPC。Metal 能否减少提交次数未知，是否继续由用户决定。
-4. **`CA::Transaction::commit()` 的调用者没有分类。** 拖动两轮里它是最大单项：295 / 223 ms，占主线程
+2. **Metal 渲染实验**。在干净树的独立分支做 A/B，先固定同一交互脚本与统计口径。目标是在不降低体感帧
+   率的前提下，比当前 CALayer 再降低拖动 / 下落 CPU。trace 只量过拖动 r1：`send_message` 10.6%、
+   `commit_if_needed` 4.4%、图像相关约 0.5%，指向每次提交的 IPC —— 但**图像那 0.5% 不是每帧重
+   传**（见已否决的 sheet 那条），而且休眠态实测 0.5 pt 级别的差异在这个仓库的噪声里看不见，所以「减
+   少图像成本」这个理由不再成立。Metal 能否减少**提交次数**未知，是否继续由用户决定。
+3. **`CA::Transaction::commit()` 的调用者没有分类。** 拖动两轮里它是最大单项：295 / 223 ms，占主线程
    32.5% / 27.1%。其中多少来自我们自己的 `FrameInterpolation.animate`、多少来自框架自己发起的提交，
    还没分过；分完才知道有没有可省的提交。
-5. **下落中的 `refreshForFalling`。** 六个下落轮次里它是 41–56 ms / 15 s（5.8–8.7% 主线程，约
+4. **下落中的 `refreshForFalling`。** 六个下落轮次里它是 41–56 ms / 15 s（5.8–8.7% 主线程，约
    0.3–0.37 pt）。能不能再收紧门控没有依据：先加计数器（每秒调用次数、有几次真的重建了图），测完再
    谈。
-6. **桌面图标 AX 读取：剩下的 quiet 模式那一项。** 批量取属性、记住容器元素、给遍历设界**都已做**
+5. **桌面图标 AX 读取：剩下的 quiet 模式那一项。** 批量取属性、记住容器元素、给遍历设界**都已做**
    （2026-11-05，见 [performance.md](performance.md) 的「批量取属性」「记住容器元素」「给遍历设界」
    三节）。仍可做的是**quiet 模式下暂停**这次读 —— 它会改变 idle 基线，所以需用户先确认要不要动。
 
