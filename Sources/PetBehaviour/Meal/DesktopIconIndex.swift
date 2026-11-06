@@ -353,26 +353,7 @@ public final class DesktopIconIndex {
 		guard let container = iconContainer(under: application) else {
 			return .unavailable(.noIconContainer)
 		}
-
-		var icons: [DesktopIcon] = []
-		for child in children(of: container) {
-			guard role(of: child) == kAXImageRole as String,
-				let name = string(of: child, kAXDescriptionAttribute as String),
-				let origin = point(of: child, kAXPositionAttribute as String),
-				let size = size(of: child, kAXSizeAttribute as String)
-			else { continue }
-			icons.append(
-				DesktopIcon(
-					name: name,
-					position: PixelPoint(
-						x: Double(origin.x + size.width / 2),
-						y: Double(origin.y + size.height / 2)
-					),
-					size: Double(size.width)
-				)
-			)
-		}
-		return .icons(icons)
+		return .icons(children(of: container).compactMap(icon(of:)))
 	}
 
 	private nonisolated static func finderPID() -> pid_t? {
@@ -385,6 +366,9 @@ public final class DesktopIconIndex {
 	/// Walking to it rather than screen-scraping the whole tree keeps the read to
 	/// a few dozen IPC round trips, and avoiding a role/description name match
 	/// keeps it working regardless of the system language.
+	///
+	/// This is the one place that reads a single attribute at a time: the role is all
+	/// it needs, and batching one value buys nothing.
 	private nonisolated static func iconContainer(
 		under root: AXUIElement,
 		maxDepth: Int = 5
@@ -403,6 +387,61 @@ public final class DesktopIconIndex {
 		return nil
 	}
 
+	/// The attributes an icon is described by, in the order the values come back, and
+	/// in one call: an attribute the element does not have comes back as `kCFNull`, or
+	/// as an `AXValue` carrying the error, rather than failing the whole read.
+	///
+	/// Nested rather than a member of the index: the index is `@MainActor`, so a stored
+	/// `static let` in it is isolated to the main actor, while the read that asks for
+	/// these is `nonisolated`.
+	private enum IconAttribute {
+		static let names = [
+			kAXRoleAttribute as String,
+			kAXDescriptionAttribute as String,
+			kAXPositionAttribute as String,
+			kAXSizeAttribute as String,
+		]
+	}
+
+	/// The icon this element draws, or nil when it is not one: a child of the
+	/// container that is not an image, or an icon Finder will not describe in full,
+	/// is skipped rather than guessed at.
+	///
+	/// Its four attributes are asked for in **one** call rather than four. Each is a
+	/// synchronous round trip to Finder, and for the 23 icons of a full desktop that
+	/// is 23 round trips instead of 92: measured in the app with `getrusage` wrapped
+	/// round the read, this cost 11.1–13.5 ms of blocked main thread and 2.8 ms of CPU
+	/// before, 8.6–10.3 ms and 2.1 ms after.
+	///
+	/// Asking for all four everywhere the walk passes gives the saving back — the
+	/// search descends through several dozen elements that want only a role — so the
+	/// batching is confined to the elements whose four attributes are all wanted.
+	private nonisolated static func icon(of element: AXUIElement) -> DesktopIcon? {
+		var values: CFArray?
+		guard
+			AXUIElementCopyMultipleAttributeValues(
+				element,
+				IconAttribute.names as CFArray,
+				[],
+				&values
+			) == .success,
+			let values = values as? [Any],
+			values.count == IconAttribute.names.count,
+			values[0] as? String == kAXImageRole as String,
+			let name = values[1] as? String,
+			let origin = point(values[2]),
+			let size = size(values[3])
+		else { return nil }
+		return DesktopIcon(
+			name: name,
+			position: PixelPoint(
+				x: Double(origin.x + size.width / 2),
+				y: Double(origin.y + size.height / 2)
+			),
+			size: Double(size.width)
+		)
+	}
+
 	private nonisolated static func children(of element: AXUIElement) -> [AXUIElement] {
 		attribute(element, kAXChildrenAttribute as String) as? [AXUIElement] ?? []
 	}
@@ -411,12 +450,8 @@ public final class DesktopIconIndex {
 		attribute(element, kAXRoleAttribute as String) as? String
 	}
 
-	private nonisolated static func string(of element: AXUIElement, _ key: String) -> String? {
-		attribute(element, key) as? String
-	}
-
-	private nonisolated static func point(of element: AXUIElement, _ key: String) -> CGPoint? {
-		guard let value = attribute(element, key), CFGetTypeID(value) == AXValueGetTypeID() else {
+	private nonisolated static func point(_ value: Any?) -> CGPoint? {
+		guard let value = value as? CFTypeRef, CFGetTypeID(value) == AXValueGetTypeID() else {
 			return nil
 		}
 		var result = CGPoint.zero
@@ -424,8 +459,8 @@ public final class DesktopIconIndex {
 		return result
 	}
 
-	private nonisolated static func size(of element: AXUIElement, _ key: String) -> CGSize? {
-		guard let value = attribute(element, key), CFGetTypeID(value) == AXValueGetTypeID() else {
+	private nonisolated static func size(_ value: Any?) -> CGSize? {
+		guard let value = value as? CFTypeRef, CFGetTypeID(value) == AXValueGetTypeID() else {
 			return nil
 		}
 		var result = CGSize.zero

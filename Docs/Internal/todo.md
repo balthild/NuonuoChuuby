@@ -80,15 +80,15 @@
 
 ## 8. 待用户决定的建议（2026-11-05，五场景 trace 复核）
 
-以下均**未实施**，依据是 2026-11-04 五场景 trace 的重算（主线程 inclusive 口径）。是否做、做到什么程
-度由用户决定。
+依据是 2026-11-04 五场景 trace 的重算（主线程 inclusive 口径）。未实施的部分是否做、做到什么程度由用
+户决定。
 
-1. **桌面图标 AX 读取。** `DesktopIconIndex.start(interval: 2)` 每 2 s 整表读取一次；idle-r1 中
-   `readIcons` 占主线程 41 ms / 219 ms（18.7%），其中 `AXUIElementCopyAttributeValue` 33
-   ms（15.1%），`iconContainer(under:maxDepth:)` 20 ms。trace 只有 Running，阻塞在 IPC 里的成本会被
-   低估，实际值以 `getrusage` 为准。候选：(a) `AXUIElementCopyMultipleAttributeValues` 批量取属
-   性；(b) 缓存容器元素，免去每次遍历；(c) quiet 模式下暂停（会改变 idle 基线，需用户确认）。验
-   证：`getrusage` 包住 `readIcons`。
+1. **桌面图标 AX 读取：剩下的两项。** 候选 (a) 批量取属性**已做**（2026-11-05，CPU −24%，数字与方法
+   见 [performance.md](performance.md)「桌面图标 AX 读」）。仍可做：
+   - (b) **缓存容器元素**：一次读的 79 次调用里 23 次是图标、其余约 56 次在找那同一个容器（早先
+     trace 里 `iconContainer` 占 `readIcons` 的 20 ms / 41 ms），是现在最大的单项。**收益未单独测
+     过。**
+   - (c) **quiet 模式下暂停**（会改变 idle 基线，需用户确认）。
 2. **下落中的 `refreshForFalling`。** 六个下落轮次里它是 41–56 ms / 15 s（5.8–8.7% 主线程，约
    0.3–0.37 pt）。能不能再收紧门控没有依据：先加计数器（每秒调用次数、有几次真的重建了图），测完再
    谈。
