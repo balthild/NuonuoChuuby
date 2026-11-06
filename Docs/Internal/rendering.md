@@ -377,7 +377,8 @@ CPU（6.87% → 7.58%）**；全线程 +0.31%，即 **+118 µs/tick**。自耗�
 
 **所以要让 idle 也降频，只能把帧的节奏交给渲染服务器** —— 上表 keyframes @ 10 Hz 与 tick @ 60 Hz 的
 直方图**完全一致**（199/22），也就是 `CAKeyframeAnimation` + 10 Hz tick 得到的正是今天 60 Hz 的外
-观。这是 [todo.md](todo.md) 里 keyframe 那一项的全部理由：**它不是优化，而是前提。**
+观。**它不是优化，而是前提**，而它已经做了（见本节末的「实现」与 [performance.md](performance.md) 的
+「醒着静止也降到 10 Hz」）。
 
 ### 把 `contents` 交给 `CAKeyframeAnimation`：接线上量过的五件事
 
