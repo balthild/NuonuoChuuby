@@ -364,22 +364,45 @@ public final class DesktopIconIndex {
 	/// The shallowest element that has icon children.
 	///
 	/// Walking to it rather than screen-scraping the whole tree keeps the read to
-	/// a few dozen IPC round trips, and avoiding a role/description name match
-	/// keeps it working regardless of the system language.
+	/// a few round trips, and avoiding a role/description name match keeps it
+	/// working regardless of the system language.
 	///
-	/// This is the one place that reads a single attribute at a time: the role is all
-	/// it needs, and batching one value buys nothing.
+	/// The walk is bounded so that it cannot run away when there is no container to
+	/// find. Measured on this machine 2026-11-05 with the probe in `_ignored/ax-walk`,
+	/// with the desktop's icons hidden — the state that made the read cost 38–63 ms
+	/// every two seconds:
+	///
+	///   * **The menu bar is never descended into.** It is not the desktop, and its
+	///     open menus are the bulk of Finder's tree: 185 elements, 382 round trips
+	///     without this, **1 element, 3 round trips** with it.
+	///   * **Three levels, not five.** The application's children are its windows, its
+	///     menu bar and the desktop's scroll area, and the container is that scroll
+	///     area's child, so three levels reach it. Three also keeps the cost
+	///     independent of how much Finder is showing: with the icons hidden and a
+	///     window open, **8–15 elements and 46–89 round trips**, against 217–245
+	///     elements and 479–565 round trips without the bound.
+	///
+	/// The desktop container was found at three levels in every state tried — icons
+	/// shown, hidden, Stacks on and off, and windows open in list and icon view.
 	private nonisolated static func iconContainer(
 		under root: AXUIElement,
-		maxDepth: Int = 5
+		maxDepth: Int = 3
 	) -> AXUIElement? {
 		var frontier = [root]
 		for _ in 0..<maxDepth {
 			var next: [AXUIElement] = []
 			for element in frontier {
 				let kids = children(of: element) ?? []
-				if kids.contains(where: { role(of: $0) == kAXImageRole as String }) { return element }
-				next.append(contentsOf: kids)
+				// One role read per child: it both answers "is this the container" and
+				// decides what is worth descending into. Batching would not help — this is
+				// one value per child either way.
+				var descendable: [AXUIElement] = []
+				for kid in kids {
+					let kidRole = role(of: kid)
+					if kidRole == kAXImageRole as String { return element }
+					if kidRole != kAXMenuBarRole as String { descendable.append(kid) }
+				}
+				next.append(contentsOf: descendable)
 			}
 			frontier = next
 			if frontier.isEmpty { break }
