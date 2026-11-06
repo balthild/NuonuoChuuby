@@ -51,6 +51,17 @@
 			"expect": ["FallStarted", "FallProfile"],
 			"forbid": ["WindowEnclosureEntered"],
 			"note": "走网格 + liveSurface 活读；没进盒子，所以和 drop 是两条不同的路径"
+		},
+		{
+			"key": "meal",
+			"title": "连续吃文件",
+			"prep": "只做两件事：先看 `DeletionIcons` 是不是 `Live>0`（辅助功能授权；`Live=0` 就是没授权，幽灵会落到鼠标上，那一轮不能当「走到真图标位置」读），再把**指针挪到不压在她身上的地方**、整轮不要动它 —— 她走动时指针的 CPU 是另一笔账。文件和删除都由 harness 代跑：它会在启动后铺 15 个 `~/Desktop/meal-bench-*.txt`（此刻 Finder 正在发布它们的图标，等几秒），再在测量窗口开始时每 2 秒删一个。不要自己动这些文件。",
+			"gesture": "整窗什么都不碰。删除命令由 harness 在 ps 段开始时启动、窗口结束时杀掉，共 15 个（约 30 秒），覆盖 ps 与 Time Profiler 两段。",
+			"expect": ["DeletionDetected", "GhostShown", "MealRunStarted"],
+			"quiet": false,
+			"setup": "find \"$HOME/Desktop\" -maxdepth 1 -name 'meal-bench-*.txt' -delete; for i in $(seq -w 1 15); do touch \"$HOME/Desktop/meal-bench-$i.txt\"; done",
+			"stimulus": "for f in \"$HOME\"/Desktop/meal-bench-*.txt; do rm -f \"$f\"; sleep 2; done",
+			"note": "心跳整窗不该有长长的 idle。`MealRunStarted` 少于 `DeletionDetected` 是饱和、不是失败；`MealQueueFull` 才说明删得太快（队列上限 24），把 `setup` 与 `stimulus` 里的 `15`/`sleep 2` 一起调慢。锚点看 `DeletionIcons` 的 Read/Live/Resolved；`Exact=false` 的幽灵位置来自鼠标、不是真图标。`setup` 会先清残留 —— 上一轮被中断留下的文件会让她在窗口开始前就吃起来，那几条 meal 会算进这一轮的活动量。"
 		}
 	]
 }

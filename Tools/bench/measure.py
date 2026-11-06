@@ -34,8 +34,10 @@ than off on some errand — the same pet in every round, which is what makes the
 comparable (`Docs/Internal/performance.md`, "测 idle 前先把她的状态钉死"). **Which rest**
 — resting awake or asleep — is the scenario's business, through its `sleepiness`: quiet
 mode leaves her that choice and how sleepy she is decides it, and the two states do not
-cost the same. The batch's default pins it high (asleep). Both files are snapshotted per
-batch and put back afterwards.
+cost the same. The batch's default pins it high (asleep). Whether quiet mode is on at all
+is a scenario's business too, through its `quiet`: it is what forbids the deletion meal, so
+a scenario about eating turns it off. Both files are snapshotted per batch and put back
+afterwards.
 
 A scenario is an instruction to a person plus, where it can be checked, the evidence that
 they followed it:
@@ -54,6 +56,14 @@ reported per round; `note` is the half a person has to judge, printed with the i
 `wait` holds the round until a heartbeat reports the state it needs, and `seconds` /
 `settle` override the flags for one scenario. Unknown keys are an error — a misspelled
 `expect` would otherwise check nothing, quietly.
+
+**A scenario can also bring its own stimulus**, for the half of an activity that is not a
+hand: `setup` is a shell command run once after the launch and before the window (it is
+what puts the files there), `stimulus` one started when the first window opens and stopped
+when the round ends (it is what deletes them). Both run through `/bin/sh`; both are data,
+so what an experiment does still lives in the scenarios file rather than here. They cannot
+pollute the reading: the CPU and log windows both open *after* `setup` and *at* the
+stimulus, and neither instrument covers the harness's own processes.
 
 Launching: the build command once for the whole batch (default: `make rerun`'s), then
 `pkill` + `open -n` per round — the same LaunchServices path `make rerun` takes, without
@@ -94,9 +104,11 @@ Usage:
 
 import argparse
 import json
+import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -145,6 +157,10 @@ ROUNDS = 2
 # cost the same; pinning the sleepiness high makes the choice unanimous, so every round
 # measures the same pet.
 FORCED_SLEEPINESS = 100
+# The batch's quiet mode: on, so that wherever she is not being moved she is at rest
+# rather than off on some errand. A scenario whose activity quiet mode forbids overrides it
+# with its own `quiet` (see `Scenario`).
+FORCED_QUIET = True
 
 # Set by `configure()` from this batch's options. Module-level because the file is one
 # batch's worth of work with one set of paths; threading an options object all the way
@@ -223,6 +239,17 @@ class Scenario:
     # about her *awake* and still (`.idle`) pins this low, and one about her asleep pins it
     # high. Pinning it at all is what makes every round measure the same pet.
     sleepiness: Optional[float] = None
+    # Overrides the batch's forced quiet mode. Quiet mode is what a measurement wants by
+    # default — she stays at rest instead of going off on some errand — but it is also what
+    # forbids the deletion meal outright (`PetModePolicy.allowsDeletionMeal` answers
+    # `!quietMode`, and the deletions are dropped before they are even logged), so a
+    # scenario about eating has to turn it off for its own rounds.
+    quiet: Optional[bool] = None
+    # Shell commands for the half of an activity that is not a hand: `setup` runs once
+    # after the launch and before the window (putting the files there), `stimulus` runs
+    # from the first window until the round ends (deleting them). See the module docstring.
+    setup: str = ""
+    stimulus: str = ""
     note: str = ""
 
 
@@ -269,6 +296,9 @@ def load_scenarios(path: Path):
                 seconds=entry.get("seconds"),
                 settle=entry.get("settle"),
                 sleepiness=entry.get("sleepiness"),
+                quiet=entry.get("quiet"),
+                setup=entry.get("setup", ""),
+                stimulus=entry.get("stimulus", ""),
                 note=entry.get("note", ""),
             )
         )
@@ -355,6 +385,53 @@ def kill_pet():
     raise SystemExit("the previous instance did not exit")
 
 
+def run_setup(command: str):
+    """Runs a scenario's `setup` once, right after the launch.
+
+    Put where it is on purpose: after the app is up, so it sees the files appear the
+    ordinary way, and before the measurement window, whose CPU and log both open later —
+    so anything the setup costs, including the app's own reads of the new icons, is
+    outside the round rather than mixed into it.
+    """
+    print(f"  ⚙ 布置环境：{command}")
+    result = subprocess.run(
+        ["/bin/sh", "-c", command], cwd=ROOT, capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        raise SystemExit(
+            f"setup 失败（{result.returncode}）：\n{result.stdout[-1000:]}\n{result.stderr[-1000:]}"
+        )
+
+
+def start_stimulus(command: str):
+    """Starts a scenario's `stimulus`, timed to the opening of the first window.
+
+    In its own process group, because stopping it has to stop all of it: a stimulus is a
+    loop with sleeps in it, and a shell left behind would go on deleting files into the
+    next round's setup.
+    """
+    print(f"  ⚡ 刺激开始：{command}")
+    return subprocess.Popen(
+        ["/bin/sh", "-c", command], cwd=ROOT, start_new_session=True
+    )
+
+
+def stop_stimulus(process):
+    """Stops the stimulus, which may already have finished on its own."""
+    if process is None or process.poll() is not None:
+        return
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        process.wait()
+    print("  ⚡ 刺激停止")
+
+
 def fields(line: str):
     return dict(FIELDS.findall(line))
 
@@ -386,9 +463,13 @@ def snapshot_state():
 
 
 def force_settings():
-    """Quiet mode and logging on — the two settings a measurement needs."""
+    """Logging on, and the batch's quiet mode — the settings a measurement needs.
+
+    This is only the batch default; `force_quiet` re-applies the flag per round, because a
+    scenario whose activity quiet mode forbids turns it off for its own rounds.
+    """
     settings = json.loads(SETTINGS.read_text())
-    settings["quietMode"] = True
+    settings["quietMode"] = FORCED_QUIET
     settings["loggingEnabled"] = True
     SETTINGS.write_text(json.dumps(settings, indent=2))
 
@@ -424,6 +505,18 @@ def force_sleepiness(sleepiness: float):
     LIFE.write_text(json.dumps(state, indent=2))
 
 
+def force_quiet(quiet: bool):
+    """Writes the quiet-mode flag for one round.
+
+    Per round like the sleepiness above, and for the same reason: the app saves its
+    settings when it exits, so the value written before one launch is the value the next
+    one starts from.
+    """
+    settings = json.loads(SETTINGS.read_text())
+    settings["quietMode"] = quiet
+    SETTINGS.write_text(json.dumps(settings, indent=2))
+
+
 # MARK: - launching
 
 
@@ -443,10 +536,11 @@ def build(command=None):
         )
 
 
-def launch(bundle: Path, sleepiness: Optional[float] = None):
+def launch(bundle: Path, sleepiness: Optional[float] = None, quiet: Optional[bool] = None):
     """Relaunches `bundle` through LaunchServices, as `make rerun` does."""
     kill_pet()
     force_sleepiness(sleepiness if sleepiness is not None else FORCED_SLEEPINESS)
+    force_quiet(quiet if quiet is not None else FORCED_QUIET)
     offset = log_offset()
     subprocess.run(
         ["open", "-n", str(bundle), "--args", *APP_ARGS], capture_output=True
@@ -966,7 +1060,7 @@ def one_round(
         )
     print("═" * 78)
 
-    pid, offset, exe = launch(bundle, scenario.sleepiness)
+    pid, offset, exe = launch(bundle, scenario.sleepiness, scenario.quiet)
     pending = ""
     offset, pending, labels = confirm_running(offset, pending)
     digest = subprocess.run(
@@ -976,6 +1070,8 @@ def one_round(
     labels["sha256"] = digest[0] if digest else None
     if scenario.wait:
         offset, pending = wait_until_state(offset, pending, scenario.wait)
+    if scenario.setup:
+        run_setup(scenario.setup)
 
     # Read and acted on **before** the windows, and once for the round rather than once per
     # phase: positioning her is part of the preparation, and it is why the Enter exists.
@@ -993,8 +1089,13 @@ def one_round(
     )
     ps = None
     trace = None
+    stimulus = None
     for index, phase in enumerate(phases, start=1):
         begin_phase(index, len(phases), phase, seconds, settle if index == 1 else gap)
+        # The settle is over and the first window is about to open, so this is where a
+        # stimulus belongs: the same instant as `cpu_start`, not a few seconds off it.
+        if index == 1 and scenario.stimulus:
+            stimulus = start_stimulus(scenario.stimulus)
         if phase == "ps":
             ps, offset, pending = ps_phase(pid, scenario, seconds, offset, pending)
         else:
@@ -1004,6 +1105,7 @@ def one_round(
             trace, offset, pending = trace_phase(
                 pid, scenario, seconds, offset, pending, label
             )
+    stop_stimulus(stimulus)
     print("  ■ 这一轮结束，手停下。")
     kill_pet()
 
@@ -1303,7 +1405,16 @@ def main():
         + f"（约 {per_round * total_rounds / 60:.0f} 分钟，不含读指令的时间）"
     )
     print(f"  启动参数：{' '.join(APP_ARGS) or '（无）'}")
-    print("  安静模式开 + sleepiness 钉在 100")
+    quiet_off = [scenario.key for scenario in chosen if scenario.quiet is False]
+    print(
+        f"  安静模式默认开，sleepiness 默认钉在 {FORCED_SLEEPINESS:.0f}"
+        + (f"；{'、'.join(quiet_off)} 关掉安静模式" if quiet_off else "")
+    )
+    scripted = [
+        scenario.key for scenario in chosen if scenario.setup or scenario.stimulus
+    ]
+    if scripted:
+        print(f"  自带刺激（harness 代跑 setup/stimulus）：{'、'.join(scripted)}")
     print("  settings.json / life-state.json 批次结束后还原")
     git = subprocess.run(
         ["git", "status", "--porcelain"], cwd=ROOT, capture_output=True, text=True
