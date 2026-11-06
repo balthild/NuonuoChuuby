@@ -42,26 +42,22 @@
 `CGImage` 缓存的，所以成本是「每个不同的帧一次」而不是每次换帧），数字与两个坑见
 [rejected-approaches.md](rejected-approaches.md)。
 
-1. **把帧节奏从 tick 上拿开：用 `CAKeyframeAnimation` 播 `contents`。** `Sources/` 里目前**没有任何
-   `CAAnimation` 子类**，唯一的显式动画机制是 `FrameInterpolation` 的隐式动画。转写的前提很齐：整段
-   剪辑一次性解码成连续 `[CGImage]`，每个剪辑只有一个 `frameSeconds` ⇒ `keyTimes` 等距；`loop` /
-   `pingPong` / `startReversed` 都能表达。`calculationMode = .discrete` 是硬要求 —— 连续插值就是已知
-   的「两帧交叉淡入，她看起来永远模糊」那个 bug。
-   - **它换来的不是更便宜，而是「节奏不必跟着 tick」。** 现在换帧由 `SpriteAnimator.tick` 驱动，这正
-     是 sleep 降频只敢用在 `sleep` 循环上的原因（10 Hz 落不到 `sleep_enter` 0.145 s / `sleep_exit`
-     0.105 s 的帧边界上，会一顿一顿）。节奏交给渲染服务器后这条约束消失，**idle （0.135 s ≈ 7.4
-     fps）也能进降频名单**。
-   - **收益是外推（未测）**：sleep 降频的实测是 1.17/1.33% → 0.63/0.67%（约减半，−0.5~−0.66 pt）。
-     idle 能省多少要从这个数外推，且**必须测稳态 / idle**（「提高 tick 率」那条的教训在这里同样成
-     立）。
-   - **代价是「两个时钟」。** `FrameTiming` 会把动画步长夹在 0.05 s（防一次卡顿跳掉整个循环），而非
-     循环剪辑的**结束**由 tick 上的 `didFinishClip` 驱动状态机（`land`/`curious` → idle、 `chomp` →
-     完成进食）。**CA 不受这个夹子管**，于是屏幕上的帧由 CA 走、状态机由 tick 走，卡顿或降频时两者会
-     分叉（屏幕上已播完而她僵着等最后一帧，或一个剪辑被抻长）。要接管非循环剪辑就得另找结束通知
-     （`animationDidStop` / `completionBlock`）。
-   - app 侧的登记删不掉：`pingPong`/`startReversed`、hatless 别名换 `assetFolder`、角色覆盖的
-     `frameSeconds`、中途 `play()`、以及捏脸要的单帧。动画要用显式 `add(_:forKey:)` 加，别被
-     `withoutAnimation` 那类事务吞掉。
+1. **把帧节奏从 tick 上拿开：用 `CAKeyframeAnimation` 播 `contents`（只为循环剪辑）。** **前置已探明
+   （2026-11-06）**，实测与机制见 [rendering.md](rendering.md) 的「慢 tick 下帧的驻留」与「把
+   `contents` 交给 `CAKeyframeAnimation`」两节 —— 那里有驻留直方图（keyframes @10 Hz 与 tick @ 60 Hz
+   **完全一致**，而 tick 累加 @10 Hz 在 100/200 ms 之间近乎均匀交替，用户目视确认过）、「按时间算下
+   标」这条死路、以及五条接线事实（`presentation()` 认得出帧、`keyTimes` 要 n+1 个、非循环不设
+   `fillMode` 会跳回模型值、必须显式 `add`、以及那个残影陷阱）。
+   - **下一步是测收益，不是写播放器。** 下界已经有了：sleep 降频实测 1.17/1.33% → 0.63/0.67%（约减
+     半），而 idle 的每 tick 工作是 sleep 的超集 ⇒ **省下的 ≥ 0.6 pt**。但按 sheet 那次的教训，**先
+     用临时改动确认这笔钱再建机器**：只把慢 tick 的谓词从 `sleep` 扩到 idle（两行，不做播放器），画
+     面会顿但 CPU 数字有效。需要一个「把她钉在醒着 idle」的办法（quiet 模式下她在 rest / sleep 之间
+     二选一，而 `measure.py` 把 `sleepiness` 钉在 100，必然睡）。
+   - **范围：只接管循环剪辑**。非循环剪辑都是转场（tick 保持 60 Hz），于是「播完跳回模型值」那个坑、
+     以及 `didFinishClip` 驱动的状态机（`land`/`curious` → idle、`chomp` → 完成进食）都不会被碰到 ——
+     也就没有「两个时钟」要调和。
+   - app 侧的登记仍要保留：`loop`/`pingPong`/`startReversed`、hatless 别名换 `assetFolder`、角色覆盖
+     的 `frameSeconds`、中途 `play()`。
 2. **Metal 渲染实验**。在干净树的独立分支做 A/B，先固定同一交互脚本与统计口径。目标是在不降低体感帧
    率的前提下，比当前 CALayer 再降低拖动 / 下落 CPU。trace 只量过拖动 r1：`send_message` 10.6%、
    `commit_if_needed` 4.4%、图像相关约 0.5%，指向每次提交的 IPC —— 但**图像那 0.5% 不是每帧重

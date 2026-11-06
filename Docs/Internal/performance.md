@@ -133,10 +133,14 @@ cputime` 差值；每轮都用日志核对窗口内三次心跳全是 `State="sl
 
 **为什么不是直接就降**，四条约束（每一条都对应一个会真的出错的地方）：
 
-1. **只能降在 `sleep` 循环上，不能降在它两边的转场剪辑上。** `sleep_enter` 的帧是 0.145 s、
-   `sleep_exit` 是 0.105 s，10 Hz（0.1 s）落不到它们的帧边界上，会一顿一顿；`sleep` 的 0.185 s 则刚
-   好是每个 0.1 s tick 的整齐倍数。所以判断是 `state == .sleeping && animator.currentClip ==
-   "sleep"`。
+1. **换帧由 tick 驱动，所以一降速，帧的驻留就变成 tick 的整数倍、不再均匀。** 原来这里写的是「10 Hz
+   落不到 `sleep_enter` / `sleep_exit` 的帧边界上、而 `sleep` 的 0.185 s 刚好是整齐倍数」—— **后半句
+   是错的**（0.185 不是 0.1 的整数倍），实测见 [rendering.md](rendering.md) 的「慢 tick 下帧的驻
+   留」：任何不是 0.1 s 整数倍的 `frameSeconds` 在 10 Hz 下都会在 100 ms 与 200 ms 之间交替。所以判
+   断仍是 `state == .sleeping && animator.currentClip == "sleep"`，但理由是**慢循环上这种不均匀看不
+   出来**，不是「它落得整」。**这正是 idle 不能跟着降的唯一原因**，也正是把节奏交给渲染服务器
+   （`CAKeyframeAnimation`）能换到的东西，见 [todo.md](todo.md) 与
+   [rejected-approaches.md](rejected-approaches.md) 里按轴网格那条旁边的记录。
 2. **必须已经静止 1 s。** 她可以睡在窗口顶边上，而那个窗口被拖时她照样被携带 —— 状态一直是
    `.sleeping`。10 Hz 下她会以 100 ms 一步沿窗口爬，而窗口本身是平滑的。所以每 tick 比较 `foot`，变
    过就把静止时钟清零。副作用：拖窗开始时会有**一步 100 ms 的跳跃**，之后立即恢复 60 Hz。
