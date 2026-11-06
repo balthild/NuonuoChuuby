@@ -53,6 +53,9 @@ public enum IconReading: Sendable, Equatable {
 /// plus one live read at the moment of detection, while the element is still
 /// there.
 ///
+/// Reads go through ``IconContainerCache``: the element whose children are the
+/// icons is found once per Finder process, not once per read.
+///
 /// Accessibility is a **soft** dependency: without it (or with Finder not running)
 /// `icons` is empty and callers fall back to ``DesktopIconGrid``.
 @MainActor
@@ -72,8 +75,10 @@ public final class DesktopIconIndex {
 	/// fallback can say how stale it is.
 	private var lastSnapshotAt: Date?
 
-	public init(reader: @escaping Reader = DesktopIconIndex.readDesktopIcons) {
-		self.reader = reader
+	/// - Parameter reader: A replacement for the real read, for tests. Left out, the
+	///   read is the real one, through a container kept from an earlier read.
+	public init(reader: Reader? = nil) {
+		self.reader = reader ?? IconContainerCache().read
 	}
 
 	public var isAvailable: Bool { !icons.isEmpty }
@@ -89,10 +94,10 @@ public final class DesktopIconIndex {
 
 	/// The icons behind these names, at the moment deletions are detected.
 	///
-	/// Every name is resolved from one read, because one enumeration is real work
-	/// (~11 ms measured) and a batch of deletions must not pay it per file. The
-	/// read is of the tree rather than the periodic snapshot, because an icon
-	/// created and deleted between two refreshes was never in the snapshot at all
+	/// Every name is resolved from one read, because one read is real work (10 ms
+	/// measured) and a batch of deletions must not pay it per file. The read is of
+	/// the tree rather than the periodic snapshot, because an icon created and
+	/// deleted between two refreshes was never in the snapshot at all
 	/// — and the deleted icons' own elements are still in Finder's tree at this
 	/// instant (measured: they survive the unlink by about 0.7 s), so this is the
 	/// last chance to ask where they really were. The reading becomes the new
@@ -342,18 +347,13 @@ public final class DesktopIconIndex {
 	// MARK: - The real read
 
 	/// The live reading, with the reason when it cannot be made.
+	///
+	/// Remembers nothing: this is the read without the kept container, which is what
+	/// a test can call — the read itself is cross-process IPC to Finder and cannot be
+	/// exercised without it. ``DesktopIconIndex`` reads through ``IconContainerCache``
+	/// instead.
 	public nonisolated static func readDesktopIcons() -> IconReading {
-		guard AXIsProcessTrusted() else { return .unavailable(.accessibilityNotTrusted) }
-		guard let pid = finderPID() else { return .unavailable(.finderNotRunning) }
-
-		let application = AXUIElementCreateApplication(pid)
-		// Bounds the IPC: a Finder that stops responding must not freeze the pet,
-		// since this runs on the main thread.
-		AXUIElementSetMessagingTimeout(application, 1.0)
-		guard let container = iconContainer(under: application) else {
-			return .unavailable(.noIconContainer)
-		}
-		return .icons(children(of: container).compactMap(icon(of:)))
+		IconContainerCache().read()
 	}
 
 	private nonisolated static func finderPID() -> pid_t? {
@@ -377,7 +377,7 @@ public final class DesktopIconIndex {
 		for _ in 0..<maxDepth {
 			var next: [AXUIElement] = []
 			for element in frontier {
-				let kids = children(of: element)
+				let kids = children(of: element) ?? []
 				if kids.contains(where: { role(of: $0) == kAXImageRole as String }) { return element }
 				next.append(contentsOf: kids)
 			}
@@ -385,6 +385,97 @@ public final class DesktopIconIndex {
 			if frontier.isEmpty { break }
 		}
 		return nil
+	}
+
+	/// The icons this container's children draw, or nil when the element is no longer
+	/// usable.
+	///
+	/// The distinction is what ``IconContainerCache`` turns on: an element that
+	/// answers with no children is an empty desktop, which is a reading, while an
+	/// element that does not answer at all is one Finder has discarded and has to be
+	/// found again. Measured on this machine with the desktop's icons hidden: the
+	/// kept element answered "no children" in 0.45 ms where finding one again cost
+	/// **400** round trips and 48 ms, so dropping it on an empty answer would be the
+	/// expensive mistake.
+	private nonisolated static func icons(of container: AXUIElement) -> [DesktopIcon]? {
+		guard let kids = children(of: container) else { return nil }
+		return kids.compactMap(icon(of:))
+	}
+
+	/// The desktop's icon container, kept between reads.
+	///
+	/// The element whose children are the icons is the same one for as long as Finder
+	/// is: finding it means walking Finder's tree from its application element, and
+	/// that walk costs 32 round trips with nothing else open in Finder, 58 in the
+	/// common case, 132 with three windows open — against 23 for the icons themselves.
+	/// So it is found once and the reference kept, and a read after that is the icons
+	/// plus the one call that proves the element is still there.
+	///
+	/// Measured on this machine (probe in `_ignored/ax-container`; 175 s of reads
+	/// across Space switches, a Stacks toggle, a Finder restart and the desktop's
+	/// icons being hidden): the kept element always answered with the same icons as a
+	/// fresh walk, followed the Stacks toggle, and survived the icons being hidden.
+	/// A Finder restart made it answer `kAXErrorCannotComplete`, which the cached read
+	/// discovers for free — that is the children call it makes anyway — and then it
+	/// falls back to a walk.
+	///
+	/// Deliberately without a lock: every caller is the main thread —
+	/// ``DesktopIconIndex`` is `@MainActor`, and its timer runs on the main run loop.
+	private final class IconContainerCache {
+		private var element: AXUIElement?
+		private var pid: pid_t?
+
+		func read() -> IconReading {
+			guard AXIsProcessTrusted() else { return .unavailable(.accessibilityNotTrusted) }
+			guard let finder = DesktopIconIndex.finderPID() else {
+				forget()
+				return .unavailable(.finderNotRunning)
+			}
+
+			// The element is only worth keeping for the pid it came from: another Finder
+			// is another tree, and the pid is what says so.
+			if pid == finder, let kept = element, let icons = DesktopIconIndex.icons(of: kept) {
+				return .icons(icons)
+			}
+			forget()
+
+			let application = AXUIElementCreateApplication(finder)
+			AXUIElementSetMessagingTimeout(application, 1.0)
+			guard let container = DesktopIconIndex.iconContainer(under: application),
+				let icons = DesktopIconIndex.icons(of: container)
+			else { return .unavailable(.noIconContainer) }
+
+			// The element outlives the application element it was found through, so it
+			// needs a timeout of its own: a Finder that stops responding must not block
+			// this read, which runs on the main thread.
+			AXUIElementSetMessagingTimeout(container, 1.0)
+			element = container
+			pid = finder
+			return .icons(icons)
+		}
+
+		private func forget() {
+			element = nil
+			pid = nil
+		}
+	}
+
+	/// The element's children, or nil when the call failed.
+	///
+	/// Nil rather than an empty list, because the two mean opposite things to a
+	/// caller holding the element: "this Finder has no access to its tree" against
+	/// "there is nothing there".
+	private nonisolated static func children(of element: AXUIElement) -> [AXUIElement]? {
+		var value: CFTypeRef?
+		guard
+			AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &value)
+				== .success
+		else { return nil }
+		return value as? [AXUIElement] ?? []
+	}
+
+	private nonisolated static func role(of element: AXUIElement) -> String? {
+		attribute(element, kAXRoleAttribute as String) as? String
 	}
 
 	/// The attributes an icon is described by, in the order the values come back, and
@@ -440,14 +531,6 @@ public final class DesktopIconIndex {
 			),
 			size: Double(size.width)
 		)
-	}
-
-	private nonisolated static func children(of element: AXUIElement) -> [AXUIElement] {
-		attribute(element, kAXChildrenAttribute as String) as? [AXUIElement] ?? []
-	}
-
-	private nonisolated static func role(of element: AXUIElement) -> String? {
-		attribute(element, kAXRoleAttribute as String) as? String
 	}
 
 	private nonisolated static func point(_ value: Any?) -> CGPoint? {
