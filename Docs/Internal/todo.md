@@ -83,27 +83,16 @@
 以下均**未实施**，依据是 2026-11-04 五场景 trace 的重算（主线程 inclusive 口径）。是否做、做到什么程
 度由用户决定。
 
-1. **气泡回调移进 `FrameInterpolation` 闭包（网格路径）。** `GridPetWindowController.applyPlacement`
-   的三处回调（L326、L359、L378）都在闭包**之外**，而 `OverlaySpeechBubbleController.reposition` 内
-   部又开一次 `FrameInterpolation`（即 `CATransaction.begin` / `commit`），于是同一帧里有两次提交。
-   trace（主线程 inclusive，这些轮次里气泡可见）：`reposition` 在 boxthrow-r1 **118 ms**、drop-r1
-   **80 ms**、topthrow-r1 **44 ms**、drag-r1 **12 ms**，同期 `CA::Transaction::commit()` 是 191 /
-   148 / 164 / 295 ms；折成单核，三轮的上界约 0.8 / 0.5 / 0.3 pt（整段 `reposition` 都省掉才有这么
-   多，实际能省的只是它那次提交）。`OverlayPetWindowController` 的同一回调在 `move` 闭
-   包**内**（L328，代码注释就写着气泡必须同一事务，见 [rendering.md](rendering.md)）。未验证：移进闭
-   包后 `reposition` 自己那次 `animate` / `withoutAnimation` 会嵌套在外层事务里，嵌套语义（时
-   长、`disableActions`）要先用目测确认 —— 气泡既不能飞进来，也不能掉队。验证：计 commit 次数 + 跨进
-   程 A/B。
-2. **桌面图标 AX 读取。** `DesktopIconIndex.start(interval: 2)` 每 2 s 整表读取一次；idle-r1 中
+1. **桌面图标 AX 读取。** `DesktopIconIndex.start(interval: 2)` 每 2 s 整表读取一次；idle-r1 中
    `readIcons` 占主线程 41 ms / 219 ms（18.7%），其中 `AXUIElementCopyAttributeValue` 33
    ms（15.1%），`iconContainer(under:maxDepth:)` 20 ms。trace 只有 Running，阻塞在 IPC 里的成本会被
    低估，实际值以 `getrusage` 为准。候选：(a) `AXUIElementCopyMultipleAttributeValues` 批量取属
    性；(b) 缓存容器元素，免去每次遍历；(c) quiet 模式下暂停（会改变 idle 基线，需用户确认）。验
    证：`getrusage` 包住 `readIcons`。
-3. **下落中的 `refreshForFalling`。** 六个下落轮次里它是 41–56 ms / 15 s（5.8–8.7% 主线程，约
+2. **下落中的 `refreshForFalling`。** 六个下落轮次里它是 41–56 ms / 15 s（5.8–8.7% 主线程，约
    0.3–0.37 pt）。能不能再收紧门控没有依据：先加计数器（每秒调用次数、有几次真的重建了图），测完再
    谈。
-4. **`CA::Transaction::commit()` 的调用者没有分类。** 拖动两轮里它是最大单项：295 / 223 ms，占主线程
+3. **`CA::Transaction::commit()` 的调用者没有分类。** 拖动两轮里它是最大单项：295 / 223 ms，占主线程
    32.5% / 27.1%。其中多少来自我们自己的 `FrameInterpolation.animate`、多少来自框架自己发起的提交，
    还没分过；分完才知道有没有可省的提交。
 

@@ -18,11 +18,24 @@ import QuartzCore
 /// `CABasicAnimation` template left in a layer's `actions` dictionary does **not**
 /// interpolate at all — `presentation()` sits exactly one commit behind the model,
 /// at any duration. Only the transaction's duration works.
+///
+/// **One frame, one commit.** A frame moves her and, from inside that same closure,
+/// her bubble — a layer of the very window the frame is moving. A wrapper opened
+/// inside the first would commit that frame a second time, so a nested call does
+/// nothing but run its body: the outermost call decides, and everything inside it
+/// lands in its transaction. That is what a nested transaction would have given the
+/// inner call anyway (a transaction's unset properties are inherited from the one
+/// that encloses it), minus the commit.
+@MainActor
 public enum FrameInterpolation {
 	/// One simulation tick, so the interpolation exactly spans the gap between two
 	/// ticks. Longer would add lag without adding smoothness, shorter would finish
 	/// early and stall until the next target arrives.
 	public static let duration: CFTimeInterval = 1.0 / 60
+
+	/// How many of these wrappers are running. Only the outermost one opens a
+	/// transaction — see the note above.
+	private static var nesting = 0
 
 	/// Runs `body` with the follow animation in effect.
 	///
@@ -30,20 +43,32 @@ public enum FrameInterpolation {
 	/// which is how the pet keeps its picture and its lean landing in the frame they
 	/// were set in.
 	public static func animate(_ body: () -> Void) {
+		if nesting > 0 {
+			body()
+			return
+		}
+		nesting += 1
 		CATransaction.begin()
 		CATransaction.setAnimationDuration(duration)
 		CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .linear))
 		body()
 		CATransaction.commit()
+		nesting -= 1
 	}
 
 	/// Runs `body` with implicit animations suppressed, for a layer being put
 	/// somewhere for the first time: a bubble appearing should arrive where it
 	/// belongs, not slide in from wherever it was last seen.
 	public static func withoutAnimation(_ body: () -> Void) {
+		if nesting > 0 {
+			body()
+			return
+		}
+		nesting += 1
 		CATransaction.begin()
 		CATransaction.setDisableActions(true)
 		body()
 		CATransaction.commit()
+		nesting -= 1
 	}
 }

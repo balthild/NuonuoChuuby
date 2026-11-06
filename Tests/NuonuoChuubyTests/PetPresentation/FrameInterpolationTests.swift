@@ -43,6 +43,34 @@ struct FrameInterpolationTests {
 		CATransaction.commit()
 	}
 
+	/// One frame moves her and, from inside that same closure, her bubble. A wrapper
+	/// that opened a transaction of its own there would commit the frame twice, which
+	/// is what this asserts is not happening: a setting written from inside the nested
+	/// call is still there after it, so no transaction boundary was crossed.
+	@Test("A nested wrapper stays in the enclosing transaction")
+	func nestedWrapperStaysInTheEnclosingTransaction() {
+		FrameInterpolation.animate {
+			FrameInterpolation.animate { CATransaction.setAnimationDuration(9) }
+			#expect(CATransaction.animationDuration() == 9)
+			#expect(CATransaction.disableActions() == false)
+		}
+	}
+
+	/// The nested call is the one whose settings are dropped, deliberately: it is the
+	/// inner one that has to land with the window the outer one moved.
+	@Test("A nested wrapper does not replace the enclosing transaction's settings")
+	func nestedWrapperKeepsTheOuterSettings() {
+		CATransaction.begin()
+		CATransaction.setAnimationDuration(2.5)
+		FrameInterpolation.withoutAnimation {
+			FrameInterpolation.animate {
+				#expect(CATransaction.disableActions() == true)
+				#expect(CATransaction.animationDuration() == 2.5)
+			}
+		}
+		CATransaction.commit()
+	}
+
 	/// The pet's own position must stay out of this dictionary, or it would go back to
 	/// being a 60 Hz staircase; every key that is in it must stay in it, or that
 	/// property starts animating (a cross-fading sprite, or a mirror flip that

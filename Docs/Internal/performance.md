@@ -17,6 +17,11 @@
   Swift 导入，用 `RUSAGE_SELF`；几百 µs 的窗口里其它线程的份额是常数偏移，两个模式同样付出。）
 - **对比两个运行要有内部控制**：找出一个「不是你改的东西」的每帧函数，确认它被同等次数地执行（见
   `rendering.md` 气泡那段）。
+- **控制证据的日志窗口必须与测量窗口同时开**：`measure.py` 原来在**启动时**就取好日志 offset，于是
+  「读指令 + 把她摆进盒子」那几分钟的日志全被算进这一轮的控制项 —— 实测 49 条心跳 vs 窗口内真正的 3
+  条，看起来像换了一只宠物在跑。**CPU 数字不受影响**（`cpu_seconds` 是 settle 之后才取的），被污染的
+  只有判据本身，所以这个错误不会让数字变差，只会让「两轮动作量相当」这个前提悄悄失效。读指令越慢越严
+  重。
 - **A/B 必须跨进程交替**：同一进程连跑 3 次只是精确估计「那一次启动」。实测同一条件的两个进程分别给
   出 +6.38/+6.44/+6.45 与 +4.45/+3.97 —— 进程间方差足以把 0.85 pt 的假效应伪装成 13%。**交替启动**，
   并拿一个本该相同的启动做 sanity check。
@@ -385,6 +390,15 @@ overlay 的 1961 次之间（**推论**，按窗口面积比折算）。上面�
 `open -n` —— 与 `make rerun` 同一条 LaunchServices 路径，只是不重复重建签名（每次重建是一次
 1Password 往返）。安静模式开、`sleepiness` 钉在 100。工具：`_ignored/scenario-bench/measure.py`，分
 析 `top_symbols.py`。
+
+**⚠ 那次基准的「构建」是空转，与它启动的 bundle 不是同一个文件（2026-11-05 发现，已修）。**
+`measure.py` 启动 `NuonuoChuuby-Dev.app`，而它调的 `make sign` 在 `APP_SUFFIX` 为空时组装并签名的是
+**`NuonuoChuuby.app`**。所以上表跑的是「恰好在此之前那次 `make rerun` 留下的 `-Dev`」，**不是它自己
+刚建的那个**：配置仍与 `make rerun` 相同（release + dev 资源 + `-Xswiftc -g`），但「这一轮跑的是哪个
+树」只能靠二进制的时间戳去猜，harness 的构建步骤保证不了。现在改成 `make sign CONFIG=release
+FLAGS='-Xswiftc -g' APP_SUFFIX=-Dev DEV_ASSETS=1`，并且每次启动打印**实际启动进程的可执行文件路
+径**、批次开始时打印它的 sha256 —— 手工换 bundle 做 A/B 时，「跑的是哪个二进制」只能靠这两样：日志里
+的 `Bundle` 字段是硬编码的 `AppEnvironment.bundleIdentifier`，与实际路径无关。
 
 | 场景 | 轮 | `ps` %核 | CPU s / 墙钟 s | trace 含采样器 % | trace 主线程 % |
 | - | - | - | - | - | - |

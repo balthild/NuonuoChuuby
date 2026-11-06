@@ -148,6 +148,11 @@ public final class OverlaySpeechBubbleController: SpeechBubblePresenting {
 		// Following her, so it takes the same short glide she does — see
 		// `FrameInterpolation` — unless the window it is drawn inside moved this frame,
 		// in which case its own compensating shift has to land with it.
+		//
+		// A placement pass calls this from inside its own `FrameInterpolation` — the bubble
+		// is a layer of her window, and she is placed in the same frame — so the wrapper
+		// below runs the move in that transaction instead of committing the frame again.
+		// The two branches decide only a reposition from anywhere else.
 		let move = { self.apply(text: self.text, placement: placement, target: target) }
 		if target.landsInstantly {
 			FrameInterpolation.withoutAnimation(move)

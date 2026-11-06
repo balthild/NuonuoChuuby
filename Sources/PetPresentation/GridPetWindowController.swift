@@ -285,6 +285,12 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 	}
 
 	/// Puts the window, and her inside it, where the controller says she is.
+	///
+	/// The callback at the end of every branch runs **inside** the `FrameInterpolation`
+	/// call rather than after it: it moves her bubble, which is a layer of this same
+	/// window, so it belongs to the frame that moved her — and, since
+	/// `FrameInterpolation` commits once per frame, to the same commit rather than a
+	/// second one right behind it.
 	private func applyPlacement() {
 		// First, because the rest of this decides which window she is drawn in.
 		syncOverlaySurface()
@@ -322,8 +328,8 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 					scale: hostingScale,
 					bodyEllipse: controller.bodyEllipseInView
 				)
+				onPlacementChanged?(petFrame)
 			}
-			onPlacementChanged?(petFrame)
 			return
 		}
 
@@ -355,8 +361,8 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 			FrameInterpolation.withoutAnimation {
 				panel.setFrame(target, display: false)
 				updatePetLayer(layerPosition: layerPosition)
+				onPlacementChanged?(petFrame)
 			}
-			onPlacementChanged?(petFrame)
 			return
 		}
 
@@ -370,12 +376,15 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 			FrameInterpolation.withoutAnimation {
 				panel.setFrameOrigin(target.origin)
 				updatePetLayer(layerPosition: layerPosition)
+				onPlacementChanged?(petFrame)
 			}
 		} else {
 			// Between crossings only her layer moves, and that is free to glide.
-			FrameInterpolation.animate { updatePetLayer(layerPosition: layerPosition) }
+			FrameInterpolation.animate {
+				updatePetLayer(layerPosition: layerPosition)
+				onPlacementChanged?(petFrame)
+			}
 		}
-		onPlacementChanged?(petFrame)
 	}
 
 	/// Whether she is drawn in the overlay instead of her own window.
