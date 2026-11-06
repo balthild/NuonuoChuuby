@@ -16,7 +16,7 @@
 			"gesture": "保持不动：不要碰她、不要点击、不要让指针移动。",
 			"wait": "idle",
 			"sleepiness": 0,
-			"note": "和 idle 是同一件事，但她醒着（sleepiness 钉在 0）。要量「醒着静止能不能也降 tick」就得用这个 —— 两个静止状态的每 tick 成本不同"
+			"note": "想量「醒着静止」用它，但要知道它只把 sleepiness 压低，**钉不住她醒着**：实测她照样每轮打盹 1–2 次（idle→sleeping→waking→idle），于是窗口内的 idle/sleeping 构成会随 tick 频率变 —— 拿它做 A/B 必须按状态构成配对，否则状态本身就是混淆项"
 		},
 		{
 			"key": "drag",
