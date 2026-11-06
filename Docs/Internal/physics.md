@@ -31,8 +31,9 @@
 上游每 **0.06 s** 重建一次 surface map（`MainWindow.xaml.cs:1437`），我们是 0.5 s。侧撞阈值是按上游
 那个频率标定的，所以 `SurfaceProvider.sampleBodiesIfStale` 单独以 **10 Hz** 运行，与 2 Hz 的地形图分
 开。实测一次完整 `CGWindowListCopyWindowInfo` 在应用内约 **0.83 ms**（按 `getrusage` 包住调用；早期
-探针给的 0.48 ms 偏低）⇒ 12 次/秒（2 Hz 图 + 10 Hz 身体）≈ **1.0 pt**，是盒外 idle 的最大单项。见
-`performance.md`。
+探针给的 0.48 ms 偏低）⇒ 当时是 12 次/秒（2 Hz 图 + 10 Hz 身体）≈ **1.0 pt**，是盒外 idle 的最大单
+项；2026-11-05 起图重建复用身体采样那份列表，降为 **10 次/秒**（见
+[performance.md](performance.md)「窗口枚举的复用」）。见 `performance.md`。
 
 ### 侧撞**不**排除「她正骑着的那个窗口」——这是故意的
 

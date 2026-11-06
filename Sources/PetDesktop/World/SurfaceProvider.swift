@@ -84,9 +84,31 @@ public final class SurfaceProvider {
 	/// so 10 Hz costs about half a percent of one core.
 	private static let bodySampleInterval: Double = 0.1
 
+	/// How long a list enumerated for the body sample may go on serving the graph.
+	///
+	/// The two run on different clocks — the sample at 10 Hz, the graph at 2 Hz — and
+	/// the graph's tick comes first on the ticks where both are due, so the list it is
+	/// offered is at most one sample interval old; the second interval is the slack for
+	/// the tick boundaries. Past that the list is one no sample has refreshed, which is
+	/// what a suspended simulation looks like, and the graph enumerates for itself
+	/// rather than going on building from it.
+	private static let enumerationLifetime: Double = 2 * bodySampleInterval
+
 	private var secondsSinceWindowRefresh: Double = .greatestFiniteMagnitude
 	private var secondsSinceBodySample: Double = .greatestFiniteMagnitude
 	private let platform: Platform
+
+	/// The windows the last enumeration returned, and how long ago it was.
+	///
+	/// The graph reuses it rather than enumerating again on the ticks where the body
+	/// sample has just taken the same list. One enumeration is 0.44 ms for 25 windows,
+	/// and the graph's own copy of it was costing about 0.09% of a core.
+	///
+	/// It is the graph that reuses and the sample that always enumerates: the side
+	/// collision is a difference between consecutive samples, and two consecutive
+	/// samples answered from one enumeration would read as nothing having moved.
+	private var lastEnumeration: [PlatformWindow] = []
+	private var secondsSinceEnumeration: Double = .greatestFiniteMagnitude
 
 	public init(platform: Platform = MacOSPlatform()) {
 		self.platform = platform
@@ -130,18 +152,45 @@ public final class SurfaceProvider {
 	}
 
 	public func refresh(displaySpace: DisplaySpace) {
+		rebuildGraph(displaySpace: displaySpace, windows: enumerateWindows())
+	}
+
+	/// Called from the simulation tick; re-enumerates windows only occasionally.
+	public func refreshIfStale(displaySpace: DisplaySpace, delta: Double) {
+		secondsSinceEnumeration += delta
+		secondsSinceWindowRefresh += delta
+		guard secondsSinceWindowRefresh >= Self.refreshInterval else { return }
+		secondsSinceWindowRefresh = 0
+		// The body sample took this list less than a sample interval ago, and it is the
+		// same instant's worth of information this rebuild would read for itself.
+		let windows =
+			secondsSinceEnumeration < Self.enumerationLifetime
+			? lastEnumeration
+			: enumerateWindows()
+		rebuildGraph(displaySpace: displaySpace, windows: windows)
+	}
+
+	/// The window list, taken now and kept for the graph to reuse.
+	private func enumerateWindows() -> [PlatformWindow] {
+		lastEnumeration = platform.windows()
+		secondsSinceEnumeration = 0
+		return lastEnumeration
+	}
+
+	/// The surface graph and the fullscreen reading, from an already-enumerated list.
+	private func rebuildGraph(displaySpace: DisplaySpace, windows: [PlatformWindow]) {
 		let ownPID = ProcessInfo.processInfo.processIdentifier
 		let monitors = displaySpace.displays
 		// Windows on no display are on another desktop, not on this one. Counting
 		// them would put edges she can never reach into the graph, and — worse — let
 		// her drop onto one, which is precisely what a Space switch used to do.
-		let windows = platform.windows().filter { monitors.shows($0.bounds) }
+		let onScreen = windows.filter { monitors.shows($0.bounds) }
 		isFullscreenAppActive = FullscreenDetector.isFullscreenAppActive(
-			windows: windows,
+			windows: onScreen,
 			monitors: monitors
 		)
 		surfaces = SurfaceBuilder.build(
-			windows: windows,
+			windows: onScreen,
 			monitors: monitors,
 			isTerrain: { window, monitor in
 				WindowTerrainEligibilityPolicy.isEligiblePlatform(
@@ -156,14 +205,6 @@ public final class SurfaceProvider {
 				WindowTerrainEligibilityPolicy.isEligibleAppWindow(window, ownPID: ownPID)
 			}
 		)
-	}
-
-	/// Called from the simulation tick; re-enumerates windows only occasionally.
-	public func refreshIfStale(displaySpace: DisplaySpace, delta: Double) {
-		secondsSinceWindowRefresh += delta
-		guard secondsSinceWindowRefresh >= Self.refreshInterval else { return }
-		secondsSinceWindowRefresh = 0
-		refresh(displaySpace: displaySpace)
 	}
 
 	/// Called from the simulation tick, on its own faster clock than the graph.
@@ -187,7 +228,9 @@ public final class SurfaceProvider {
 		let monitors = displaySpace.displays
 		var bodies: [UInt32: WindowBody] = [:]
 		var offScreen = false
-		for window in platform.windows() {
+		// The one enumeration of this instant, kept for the graph to reuse rather than
+		// asking the window server for the same list a second time.
+		for window in enumerateWindows() {
 			guard WindowTerrainEligibilityPolicy.isEligibleAppWindow(window, ownPID: ownPID)
 			else { continue }
 			guard monitors.shows(window.bounds) else {
