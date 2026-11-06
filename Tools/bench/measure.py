@@ -6,13 +6,20 @@ scenarios file (`scenarios.json` beside this script by default); which bundle to
 long a window lasts, and which instruments to use are flags. So a new scenario is a JSON
 edit, a new experiment is a command line, and neither is an edit to this file.
 
-Every round is one launch and up to two phases:
+Every round is one launch and up to two phases, run back to back:
 
-    Enter -> 5 s settle -> `ps` 15 s -> Enter -> 5 s settle -> Time Profiler 15 s
+    Enter -> 5 s settle -> `ps` 15 s -> Time Profiler 15 s
 
-The Enter is a gate, not part of the window: it is there so that reading the instruction
-never eats into the measurement. The `ps` phase is the reading; the profiler phase is the
-attribution.
+**One Enter per round.** It is a gate, not part of the window: it is there so that reading
+the instruction — and moving her into position, which is what the throwing scenarios ask
+for — never eats into the measurement. The settle after it is what makes the window open
+on a hand that is already where it meant to be.
+
+**The hand never stops between the phases.** They are two instruments on one activity:
+the `ps` phase is the reading and the profiler phase is the attribution *of that same
+reading*, so a pause between them would leave the profile describing a hand that had
+already started doing something else. Instructions are printed once for the same reason.
+`--phase-gap` puts a pause there if it is ever wanted; the default is none.
 
 The two instruments are **never overlapped**: the profiler's sampler runs inside the
 process being measured, so a CPU reading taken while it is attached is not the app's own
@@ -75,6 +82,7 @@ Usage:
     measure.py                                    every scenario, two rounds each
     measure.py --scenarios idle,drag              a subset
     measure.py --phases ps                        the reading only, no profiler
+    measure.py --phase-gap 3                      pause between the phases (default: none)
     measure.py --scenarios-file mine.json         a scenario set of one's own
     measure.py --bundles before=…,after=… --no-build   an A/B, alternating per round
     measure.py --report                           what has been collected so far
@@ -155,7 +163,15 @@ FIELDS = re.compile(r'(\w+)="([^"]*)"')
 
 def configure(options):
     """Points the harness at the paths and commands this batch runs with."""
-    global OUT, TRACES, RESULTS, MARKER, SETTINGS_BACKUP, LIFE_BACKUP, APP_ARGS, ANALYZER
+    global \
+        OUT, \
+        TRACES, \
+        RESULTS, \
+        MARKER, \
+        SETTINGS_BACKUP, \
+        LIFE_BACKUP, \
+        APP_ARGS, \
+        ANALYZER
     OUT = Path(options.out_dir).expanduser().resolve()
     TRACES = OUT / "traces"
     RESULTS = OUT / "runs.jsonl"
@@ -225,7 +241,9 @@ def load_scenarios(path: Path):
     for index, entry in enumerate(entries):
         missing = [name for name in REQUIRED_SCENARIO_KEYS if not entry.get(name)]
         if missing:
-            raise SystemExit(f"{path}: scenario {index} is missing {', '.join(missing)}")
+            raise SystemExit(
+                f"{path}: scenario {index} is missing {', '.join(missing)}"
+            )
         unknown = sorted(set(entry) - set(Scenario.__dataclass_fields__))
         if unknown:
             raise SystemExit(
@@ -529,22 +547,36 @@ def wait_for_enter(prompt: str):
         print()
 
 
-def announce(scenario: Scenario, phase: str, settle: float, again: bool = False):
-    """Prints what is about to be measured, waits for Enter, then counts down into it."""
-    print()
-    print(f"  ━━ {phase} ━━")
-    print(f"  ➜ 准备：{scenario.prep}")
-    print(f"  ➜ 等下要做：{scenario.gesture}")
-    if again:
-        print("     （和刚才是同一个动作，再做一遍）")
-    # Unlimited: the "准备" step includes positioning her (into a window, onto a window
-    # edge) for the throwing scenarios, which is not something a fixed countdown can fit.
-    wait_for_enter("  ⌨  读完上面两行、并把她的位置摆好后，按 Enter ▸ ")
-    for remaining in range(int(settle), 0, -1):
-        print(f"\r      settle {remaining:2d}s ...   ", end="", flush=True)
+def countdown(seconds: float, label: str):
+    """Counts down where the hand can see it, then wipes the line."""
+    for remaining in range(int(seconds), 0, -1):
+        print(f"\r      {label} {remaining:2d}s ...   ", end="", flush=True)
         time.sleep(1)
-    print("\r" + " " * 30 + "\r", end="", flush=True)
-    print("  ▶▶ 现在开始！")
+    if seconds:
+        print("\r" + " " * 34 + "\r", end="", flush=True)
+
+
+PHASE_TITLES = {"ps": "ps 采样", "trace": "Time Profiler"}
+
+
+def begin_phase(index: int, count: int, key: str, seconds: float, pause: float):
+    """Prints a phase's boundary, and counts the hand into the first one.
+
+    Only the first phase waits for a person — it is the one whose instructions were just
+    read — so `pause` is the settle there and the gap between phases everywhere else. The
+    rest follow the one before them **without a stop**, and without an Enter: they are
+    instruments on the same activity, and a pause would mean the second was measured on a
+    hand already doing something else.
+    """
+    print()
+    print(
+        f"  ━━ 第 {index}/{count} 段：{PHASE_TITLES.get(key, key)} {seconds:.0f} 秒 ━━"
+    )
+    if index > 1:
+        print("  ➜ 紧接着上一段，动作不要停。")
+    countdown(pause, "settle" if index == 1 else "间隔")
+    if index == 1:
+        print("  ▶▶ 现在开始！")
 
 
 def summarize(lines):
@@ -682,13 +714,11 @@ def phase_window(
     )
 
 
-def ps_phase(pid, scenario, seconds, settle, offset, pending):
+def ps_phase(pid, scenario, seconds, offset, pending):
     ws_pid = window_server_pid()
-    announce(scenario, f"第 1 段：ps 采样 {seconds:.0f} 秒", settle)
     measurement, offset, pending = phase_window(
         pid, ws_pid, seconds, offset, pending, "ps"
     )
-    print("  ■ 这一段结束，手停下。")
     # Judged against the scenario, so the round says for itself whether the hand did what
     # it was asked to; the alternative is remembering these counts from the console.
     measurement["verdict"] = verdict(scenario, measurement)
@@ -702,8 +732,7 @@ def ps_phase(pid, scenario, seconds, settle, offset, pending):
     return measurement, offset, pending
 
 
-def trace_phase(pid, scenario, seconds, settle, offset, pending, label):
-    announce(scenario, f"第 2 段：Time Profiler {seconds:.0f} 秒", settle, again=True)
+def trace_phase(pid, scenario, seconds, offset, pending, label):
     trace = TRACES / f"{label}.trace"
     xml = TRACES / f"{label}.xml"
     for path in (trace, xml):
@@ -752,7 +781,7 @@ def trace_phase(pid, scenario, seconds, settle, offset, pending, label):
     wall = time.time() - wall_start
     cpu_end = cpu_seconds(pid)
     ws_end = cpu_seconds(ws_pid) if ws_pid else None
-    print(f"\r      录制结束（{wall:.1f}s）—— 停手。      ")
+    print(f"\r      录制结束（{wall:.1f}s）          ")
 
     if not trace.exists():
         print(f"  ⚠ 录制失败，见 {log_file}")
@@ -780,7 +809,11 @@ def trace_phase(pid, scenario, seconds, settle, offset, pending, label):
     if not analyser_available():
         print(f"  ⚠ 没有分析器（{' '.join(ANALYZER)}）")
         print("     trace 与 XML 会留下，但不解析（--analyzer 可以指定别的）")
-        return {"trace": str(trace), "xml": str(xml), "analysed": False}, offset, pending
+        return (
+            {"trace": str(trace), "xml": str(xml), "analysed": False},
+            offset,
+            pending,
+        )
     analysis = subprocess.run(
         [*ANALYZER, str(xml)],
         capture_output=True,
@@ -857,9 +890,13 @@ def control_line(control):
         else:
             detail = []
             if result.get("missing"):
-                detail.append("缺 " + ", ".join(short_event(n) for n in result["missing"]))
+                detail.append(
+                    "缺 " + ", ".join(short_event(n) for n in result["missing"])
+                )
             if result.get("forbidden"):
-                detail.append("多 " + ", ".join(short_event(n) for n in result["forbidden"]))
+                detail.append(
+                    "多 " + ", ".join(short_event(n) for n in result["forbidden"])
+                )
             bits.append("判据 ✗ " + "；".join(detail))
         if result.get("expected"):
             events = control.get("events") or {}
@@ -895,6 +932,7 @@ def one_round(
     phases,
     seconds: float,
     settle: float,
+    gap: float,
     bundle: Path,
     arm=None,
     head=None,
@@ -913,9 +951,7 @@ def one_round(
     if scenario.expect or scenario.forbid:
         print(
             "  自动判据："
-            + (
-                ("要出现 " + ", ".join(scenario.expect)) if scenario.expect else ""
-            )
+            + (("要出现 " + ", ".join(scenario.expect)) if scenario.expect else "")
             + ("；" if scenario.expect and scenario.forbid else "")
             + (("不准出现 " + ", ".join(scenario.forbid)) if scenario.forbid else "")
         )
@@ -932,6 +968,13 @@ def one_round(
     if scenario.wait:
         offset, pending = wait_until_state(offset, pending, scenario.wait)
 
+    # Read and acted on **before** the windows, and once for the round rather than once per
+    # phase: positioning her is part of the preparation, and it is why the Enter exists.
+    # Unlimited, because that step is not something a fixed countdown can fit.
+    print(f"  ➜ 准备：{scenario.prep}")
+    print(f"  ➜ 等下要做：{scenario.gesture}")
+    wait_for_enter("  ⌨  读完上面两行、并把她的位置摆好后，按 Enter ▸ ")
+
     # The arm is in the trace's file name: two arms of one scenario otherwise collide when
     # they land in the same second, and one arm's profile would be read as the other's.
     label = "-".join(
@@ -941,18 +984,18 @@ def one_round(
     )
     ps = None
     trace = None
-    for phase in phases:
+    for index, phase in enumerate(phases, start=1):
+        begin_phase(index, len(phases), phase, seconds, settle if index == 1 else gap)
         if phase == "ps":
-            ps, offset, pending = ps_phase(
-                pid, scenario, seconds, settle, offset, pending
-            )
+            ps, offset, pending = ps_phase(pid, scenario, seconds, offset, pending)
         else:
             # Never overlapped with the reading: the profiler's sampler runs inside the
             # measured process, so a CPU number taken while it is attached is not the
             # app's. Which phase comes first is the caller's business.
             trace, offset, pending = trace_phase(
-                pid, scenario, seconds, settle, offset, pending, label
+                pid, scenario, seconds, offset, pending, label
             )
+    print("  ■ 这一轮结束，手停下。")
     kill_pet()
 
     record = {
@@ -1035,7 +1078,9 @@ def report():
             values = [r["ps"]["cpu_percent_of_one_core"] for r in rows if r.get("ps")]
             if not values:
                 continue
-            passed = [(r.get("ps") or {}).get("verdict", {}).get("passed") for r in rows]
+            passed = [
+                (r.get("ps") or {}).get("verdict", {}).get("passed") for r in rows
+            ]
             marks = "".join(
                 "✓" if value else ("✗" if value is False else "-") for value in passed
             )
@@ -1051,9 +1096,7 @@ def report():
     print(f"{'场景':<14} {'ps %核':>9} {'各轮':>28} {'ws %':>7} {'鼠标/s':>7}")
     for scenario_key in dict.fromkeys(record["scenario"] for record in records):
         rows = [r for r in records if r["scenario"] == scenario_key]
-        values = [
-            r["ps"]["cpu_percent_of_one_core"] for r in rows if r.get("ps")
-        ]
+        values = [r["ps"]["cpu_percent_of_one_core"] for r in rows if r.get("ps")]
         if not values:
             continue
         ws = [(r.get("ps") or {}).get("window_server_percent", 0) for r in rows]
@@ -1073,7 +1116,9 @@ def report():
         if name in seen:
             continue
         seen.add(name)
-        print(f"  {name:<12} {launch.get('sha256') or '?':<16} {launch.get('exe') or '?'}")
+        print(
+            f"  {name:<12} {launch.get('sha256') or '?':<16} {launch.get('exe') or '?'}"
+        )
 
 
 def resolve_bundles(options):
@@ -1146,6 +1191,12 @@ def main():
     )
     parser.add_argument("--seconds", type=float, default=PHASE_SECONDS)
     parser.add_argument("--settle", type=float, default=SETTLE_SECONDS)
+    parser.add_argument(
+        "--phase-gap",
+        type=float,
+        default=0.0,
+        help="pause between the phases; 0 keeps the hand moving through the boundary",
+    )
     parser.add_argument(
         "--bundle",
         default=str(DEFAULT_BUNDLE),
@@ -1225,17 +1276,21 @@ def main():
     bundles = resolve_bundles(options)
 
     total_rounds = len(chosen) * options.rounds
-    per_round = options.settle + options.seconds * len(phases)
-    per_round += options.settle * (len(phases) - 1)
+    per_round = options.settle + options.phase_gap * (len(phases) - 1)
+    per_round += options.seconds * len(phases)
+    # The timeline as it will feel to the hand: one gate, then the phases with only
+    # `--phase-gap` between them.
+    pieces = []
+    for index, phase in enumerate(phases):
+        if index and options.phase_gap:
+            pieces.append(f"{options.phase_gap:.0f}s 间隔")
+        pieces.append(f"{options.seconds:.0f}s {phase}")
     print("  ── 交互场景 CPU 基准 ──")
     print(f"  场景：{options.scenarios_file}（{len(chosen)}/{len(scenarios)} 个）")
     print(f"  {total_rounds} 轮 = {len(chosen)} 个场景 × {options.rounds} 轮")
     print(
         "  每轮 = "
-        + " + ".join(
-            f"Enter + {options.settle:.0f}s settle + {options.seconds:.0f}s {phase}"
-            for phase in phases
-        )
+        + " + ".join(["Enter", f"{options.settle:.0f}s settle", *pieces])
         + f"（约 {per_round * total_rounds / 60:.0f} 分钟，不含读指令的时间）"
     )
     print(f"  启动参数：{' '.join(APP_ARGS) or '（无）'}")
@@ -1281,6 +1336,7 @@ def main():
                     phases,
                     options.seconds,
                     options.settle,
+                    options.phase_gap,
                     bundle,
                     arm=arm,
                     head=head,

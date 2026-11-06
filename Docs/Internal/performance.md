@@ -383,17 +383,22 @@ overlay 的 1961 次之间（**推论**，按窗口面积比折算）。上面�
 一次把五个交互场景各测两轮，回答「她动起来到底花多少」。**两个仪器从不重叠**：采样器跑在被测进程里，
 带它时的 CPU 读数不是应用自己的成本（见本节末的「含采样器」列与下文）。
 
-**口径**：每轮一次启动两段 —— 5 s settle → `ps` 15 s → 5 s settle → Time Profiler 15 s，两段之间用一
-次**按键闸门**隔开（读指令、摆她的手位都不计入窗口）。头号数字是 `ps -o time=`（累计 user+sys，也就
-是 `getrusage` 给的那个量）在窗口内的差 ÷ 墙钟。启动路径 `make sign` 一批一次，然后每轮 `pkill` +
-`open -n` —— 与 `make rerun` 同一条 LaunchServices 路径，只是不重复重建签名（每次重建是一次
-1Password 往返）。安静模式开、`sleepiness` 钉在 100。
+**口径（2026-11-04 那次）**：每轮一次启动两段 —— 5 s settle → `ps` 15 s → 5 s settle → Time Profiler
+15 s，两段之间用一次**按键闸门**隔开（读指令、摆她的手位都不计入窗口）。头号数字是 `ps -o time=`（累
+计 user+sys，也就是 `getrusage` 给的那个量）在窗口内的差 ÷ 墙钟。启动路径 `make sign` 一批一次，然后
+每轮 `pkill` + `open -n` —— 与 `make rerun` 同一条 LaunchServices 路径，只是不重复重建签名（每次重建
+是一次 1Password 往返）。安静模式开、`sleepiness` 钉在 100。
+
+**工具现在不在段间停下（2026-11-05 改）**：一轮只有**一次** Enter（读指令 + 把她摆好位），之后 ps 与
+trace **紧接**着跑，手不停 —— 两段是同一段动作的两个仪器，中间停下来就会让剖到的手已经在做别的事。想
+插一个停顿用 `--phase-gap`；**但旧的「段间再来一个 Enter」不能再复现**（那个闸门已去掉），只有停顿能
+加回来。**ps 段自己的窗口形状没变**（settle 后的 15 s），所以上面那张表的数字仍可比。
 
 **工具：`Tools/bench/measure.py`**（人工驱动，读它的 `--help`）。它是**机制**，情景是数据：要跑的动
 作在 `Tools/bench/scenarios.json`，每条含给操作者的 `prep`/`gesture`、机器可查的
 `expect`/`forbid`（事件名，逐轮核对并标 ✓/✗）、以及留给人判的 `note`；`--scenarios-file` 换一套。实
 验形式也是命令行： `--bundle`/`--bundles`（后者按轮交替，即 A/B）、`--phases
-ps,trace`、`--seconds`/`--settle`、
+ps,trace`、`--seconds`/`--settle`/`--phase-gap`、
 `--build-cmd`/`--no-build`、`--analyzer`、`--out-dir`；`--report` 打印已收集的（按 arm × 场景分组，
 带判据与二进制 sha256）。
 
