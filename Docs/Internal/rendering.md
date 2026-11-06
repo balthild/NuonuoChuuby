@@ -400,6 +400,29 @@ CPU（6.87% → 7.58%）**；全线程 +0.31%，即 **+118 µs/tick**。自耗�
 **范围已定：只接管循环剪辑。** 非循环剪辑都是转场（tick 保持 60 Hz），于是上面第 4 条那个坑、以及
 `didFinishClip` 驱动的状态机（`land`/`curious` → idle、`chomp` → 完成进食）都不会被碰到。
 
+### 实现（2026-11-06）：一个周期 + 一个「下一步」
+
+- **`SpriteLoop`**（`PetFoundation/Vocabulary/SpriteLoop.swift`）是一个周期：帧数组（**ping-pong 已
+  展开**，所以渲染服务器只需重复它）、`frameSeconds`。`SpriteAnimator.currentLoop` 对非循环剪辑返回
+  nil，`didBeginLoop` 与 `didChangeTo` **互斥** —— 接手的是谁，由动画师说，渲染器照做。
+- **走路规则只有一份**：`SpriteAnimator.step(from:direction:in:)`，tick 用它推进；周期按定义生成（转
+  向不重复两端）。`SpriteAnimatorTests` 把「CA 会播的序列」与「tick 实际走出来的序列」按**旋转**比较
+  —— 单元测试里的 CA 部分断言不了，但两边的**帧序列**可以，而那就是全部契约。
+- **`contents` 必须 `calculationMode = .discrete`**，否则 CA 插值 = 两帧交叉淡入（`petActions` 禁止
+  隐式动画就是为了这条）。
+- **交接要带上循环**：拖动表面是按需创建的，只拷 `contents` 会让她**整段拖动静止不动** —— 而拖动正好
+  是循环剪辑。`PetLayerConventions.handOver(from:to:)` 现在重装动画。**它从周期的开头重播，没有保留
+  相位**：每次交接都恰好伴随剪辑切换（开始/结束拖动），而切换本来就从第一帧开始，所以我认为无事可做
+  —— 但**这条没有目视验证过**，若拖动开始那一下看到姿势跳帧，就是这里。
+- **捏脸取色改读 `presentation()`**：循环播放时模型值一直是周期的第一帧，**屏幕上那一帧只有渲染服务
+  器知道**。`presentedFrame(of:among:)` 用身份比对取出它。若取不到就回落到模型值。
+- **`animator.announceCurrent()`** 是「重说一遍现在播的是什么」的唯一入口，`PetController.start()`
+  用它 —— 原先那里直接读一帧，而循环是没有「当前帧」可读的。
+- **盒内静止刻意不降速**（理由在 [performance.md](performance.md)）。
+
+**收益（实测，详情与数据在 [performance.md](performance.md) 的「醒着静止也降到 10 Hz」）**：醒着静止
+**1.17 → 0.59 pt，约减半**；两臂区间不重叠、8 轮状态全同。用户目视确认动画与改前一样顺。
+
 ## 挂起时隐藏她
 
 进入真全屏应用（绿按钮 / ⌃⌘F）时她曾**冻结在一帧、可见地盖在应用上**，拖动只改一帧又冻结。原

@@ -156,6 +156,36 @@ struct SleepTickRateTests {
 		#expect(abs(advanced - 1) < 0.05, "the clip advanced \(advanced) s in a second of ticks")
 	}
 
+	@Test("An awake still rest is ticked slowly, because its clip is a loop")
+	func theAwakeIdleLoopIsTickedSlowly() throws {
+		let rig = try makeRig()
+		defer { try? FileManager.default.removeItem(at: rig.directory) }
+
+		// `returnToIdle` re-seeds the idle timer to 1.2 s at its shortest, so for the 61
+		// frames below no decision comes round and she is still resting awake. Asserting on
+		// a state she reached by a weighted draw would be a coin flip, and a low sleepiness
+		// is not enough on its own to keep her awake (see `performance.md`, "测 idle 前先把
+		// 她的状态钉死").
+		rig.controller.life.sleepiness = 0
+		rig.controller.returnToIdle()
+		step(rig, frames: 61)
+
+		#expect(rig.controller.state == .idle)
+		#expect(rig.controller.animator.currentClip == "idle")
+		// The clip is what makes this safe: a loop the render server can hold, so the tick
+		// no longer owns the frames and may be as coarse as it likes.
+		#expect(
+			rig.controller.animator.currentLoop != nil,
+			"idle is a loop, so it is handed over rather than stepped"
+		)
+		#expect(
+			rig.controller.wantedTickInterval == PetController.sleepingTickInterval,
+			"an awake still rest should cost what a sleep costs"
+		)
+		rig.controller.updateTickRate()
+		#expect(rig.controller.tickIntervalSeconds == PetController.sleepingTickInterval)
+	}
+
 	@Test("A hand on her brings the ordinary rate back at once")
 	func grabbingHerTicksFastAgain() throws {
 		let rig = try makeRig()

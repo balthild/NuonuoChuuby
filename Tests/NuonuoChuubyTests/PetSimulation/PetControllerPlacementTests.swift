@@ -18,6 +18,7 @@ struct PetControllerPlacementTests {
 		var placements = 0
 		var suspensions: [Bool] = []
 		func petController(_ controller: PetController, didProduceFrame image: CGImage) {}
+		func petController(_ controller: PetController, didBeginLoop loop: SpriteLoop) {}
 		func petControllerDidChangePlacement(_ controller: PetController) { placements += 1 }
 		func petControllerDidRequestMenu(_ controller: PetController) {}
 		func petController(_ controller: PetController, didChangeSuspension suspended: Bool) {

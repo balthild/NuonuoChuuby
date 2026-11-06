@@ -5,6 +5,12 @@ import PetFoundation
 @MainActor
 public protocol SpriteAnimatorDelegate: AnyObject {
 	func spriteAnimator(_ animator: SpriteAnimator, didChangeTo frame: CGImage)
+	/// A looping clip was started, whole, for the render server to play.
+	///
+	/// Only one of this and ``spriteAnimator(_:didChangeTo:)`` is in force at a time: a
+	/// handed-over loop is not stepped by the tick, so no frames are reported until a clip
+	/// that stops takes over.
+	func spriteAnimator(_ animator: SpriteAnimator, didBeginLoop loop: SpriteLoop)
 	func spriteAnimator(_ animator: SpriteAnimator, didFinishClip clip: String)
 }
 
@@ -22,6 +28,8 @@ public final class SpriteAnimator {
 	private var direction = 1
 	private var requestedClipName = "idle"
 	private var playbackSeconds: Double = 0
+	/// Whether the clip playing now was handed to the render server whole.
+	private var loopHandedOver = false
 
 	public weak var delegate: SpriteAnimatorDelegate?
 
@@ -64,6 +72,34 @@ public final class SpriteAnimator {
 		return frames[min(max(index, current.firstFrame), min(current.lastFrame, frames.count - 1))]
 	}
 
+	/// One full cycle of the clip playing now, if the render server can play it.
+	///
+	/// Nil for a clip that stops — that one has to report its own end, so the tick keeps
+	/// stepping it — and for a clip whose frames could not be read.
+	public var currentLoop: SpriteLoop? {
+		guard current.loop else { return nil }
+		let frames = catalog.frames(character: profile, folder: current.assetFolder)
+		let indices = cycleIndices()
+		guard !indices.isEmpty else { return nil }
+		let cycle = indices.compactMap { index -> CGImage? in
+			guard frames.indices.contains(index) else { return nil }
+			return frames[index]
+		}
+		guard cycle.count == indices.count else { return nil }
+		return SpriteLoop(clip: requestedClipName, frames: cycle, frameSeconds: current.frameSeconds)
+	}
+
+	/// Re-announces what is playing now, for a caller that attached after it started.
+	public func announceCurrent() {
+		if let loop = currentLoop {
+			loopHandedOver = true
+			delegate?.spriteAnimator(self, didBeginLoop: loop)
+		} else if let frame = currentFrame {
+			loopHandedOver = false
+			delegate?.spriteAnimator(self, didChangeTo: frame)
+		}
+	}
+
 	public func play(_ clipName: String, restart: Bool = true) {
 		if !restart, requestedClipName.caseInsensitiveCompare(clipName) == .orderedSame {
 			return
@@ -88,9 +124,7 @@ public final class SpriteAnimator {
 		elapsed = 0
 		completed = false
 		direction = next.startReversed ? -1 : 1
-		if let frame = currentFrame {
-			delegate?.spriteAnimator(self, didChangeTo: frame)
-		}
+		announceCurrent()
 	}
 
 	public func tick(_ deltaSeconds: Double) {
@@ -100,35 +134,59 @@ public final class SpriteAnimator {
 		elapsed += deltaSeconds
 		while elapsed >= current.frameSeconds {
 			elapsed -= current.frameSeconds
-			var nextFrame = frameIndex + direction
-
-			if direction > 0, nextFrame > current.lastFrame {
-				if current.loop {
-					if current.pingPong {
-						direction = -1
-						nextFrame = max(current.firstFrame, current.lastFrame - 1)
-					} else {
-						nextFrame = current.firstFrame
-					}
-				} else {
-					finish()
-					return
-				}
-			} else if direction < 0, nextFrame < current.firstFrame {
-				if current.loop {
-					direction = 1
-					nextFrame = min(current.lastFrame, current.firstFrame + 1)
-				} else {
-					finish()
-					return
-				}
+			guard let stepped = Self.step(from: frameIndex, direction: direction, in: current) else {
+				finish()
+				return
 			}
-
-			frameIndex = nextFrame
-			if let frame = currentFrame {
+			frameIndex = stepped.index
+			direction = stepped.direction
+			if !loopHandedOver, let frame = currentFrame {
 				delegate?.spriteAnimator(self, didChangeTo: frame)
 			}
 		}
+	}
+
+	/// The frame after one step, or nil when the clip is not looping and has run out.
+	///
+	/// The one place the walking rule lives, so the cycle handed to the render server and
+	/// the frames the tick would have reported cannot disagree about what the clip does.
+	/// Internal rather than private so `SpriteAnimatorTests` can walk it and hold it against
+	/// the cycle — the two are only equivalent by construction.
+	static func step(
+		from index: Int,
+		direction: Int,
+		in clip: SpriteClip
+	) -> (index: Int, direction: Int)? {
+		let next = index + direction
+		if direction > 0, next > clip.lastFrame {
+			guard clip.loop else { return nil }
+			if clip.pingPong {
+				return (max(clip.firstFrame, clip.lastFrame - 1), -1)
+			}
+			return (clip.firstFrame, 1)
+		}
+		if direction < 0, next < clip.firstFrame {
+			guard clip.loop else { return nil }
+			return (min(clip.lastFrame, clip.firstFrame + 1), 1)
+		}
+		return (next, direction)
+	}
+
+	/// Every frame index in one cycle, in play order, starting at the clip's first frame.
+	///
+	/// A ping-pong clip goes up the frames and back down them without repeating either end,
+	/// which is one cycle of `2n - 2` frames for `n` frames; a plain loop is just `n`. The
+	/// order is derived here rather than walked from ``step(from:direction:in:)`` because a
+	/// ping-pong clip's *entry* into its cycle is not the same state as its steady state,
+	/// so walking for a repeat would never return to where it started.
+	///
+	/// `SpriteAnimatorTests` holds this against the frames the tick actually emits over a
+	/// cycle, so the two cannot drift apart unnoticed.
+	private func cycleIndices() -> [Int] {
+		let forward = Array(current.firstFrame...current.lastFrame)
+		let ordered = current.startReversed ? forward.reversed().map { $0 } : forward
+		guard current.pingPong, ordered.count > 2 else { return ordered }
+		return ordered + ordered.dropFirst().dropLast().reversed()
 	}
 
 	private func finish() {

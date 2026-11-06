@@ -1,4 +1,5 @@
 import AppKit
+import PetFoundation
 import QuartzCore
 
 /// The conventions every layer she is drawn in follows: how she is placed in one, what
@@ -26,6 +27,85 @@ enum PetLayerConventions {
 		let rotate = CATransform3DMakeRotation(CGFloat(lean) * .pi / 180, 0, 0, 1)
 		guard facing < 0 else { return rotate }
 		return CATransform3DConcat(CATransform3DMakeScale(-1, 1, 1), rotate)
+	}
+
+	// MARK: - Playing a looping clip
+
+	/// The key a handed-over loop is stored under, so it can be replaced and removed by
+	/// name rather than by clearing whatever else the layer happens to be animating.
+	static let loopAnimationKey = "clipLoop"
+
+	/// Puts a looping clip on the layer, for the render server to play.
+	///
+	/// The frames are discrete values, not a curve: without `calculationMode = .discrete` CA
+	/// interpolates, and `contents` interpolating means cross-fading one frame into the
+	/// next — the same reason `petActions` forbids an implicit animation on it.
+	///
+	/// The model value is set to the cycle's first frame as well, so that a layer which
+	/// loses the animation (one just built, say) shows her rather than nothing.
+	static func play(_ loop: SpriteLoop, on layer: CALayer) {
+		guard !loop.frames.isEmpty else { return }
+		let animation = CAKeyframeAnimation(keyPath: "contents")
+		animation.calculationMode = .discrete
+		// One more time than frame: `keyTimes` has to run 0 → 1, and that last entry is the
+		// value at the end of the cycle, which is the first frame again.
+		animation.values = loop.frames + [loop.frames[0]]
+		animation.keyTimes = (0...loop.frames.count).map {
+			NSNumber(value: Double($0) / Double(loop.frames.count))
+		}
+		animation.duration = loop.cycleSeconds
+		animation.repeatCount = .infinity
+		layer.contents = loop.frames[0]
+		layer.add(animation, forKey: loopAnimationKey)
+	}
+
+	static func stopLoop(on layer: CALayer) {
+		layer.removeAnimation(forKey: loopAnimationKey)
+	}
+
+	/// Whether the render server is the one advancing this layer's frames.
+	static func isPlayingLoop(on layer: CALayer) -> Bool {
+		layer.animation(forKey: loopAnimationKey) != nil
+	}
+
+	/// Which of `frames` the render server has up on this layer.
+	///
+	/// Read from `presentation()`, not from the model value, because the animation is what
+	/// decides the frame actually on screen. The pinch samples her skin colour from this.
+	static func presentedFrame(of layer: CALayer, among frames: [CGImage]) -> CGImage? {
+		guard let presented = layer.presentation()?.contents as AnyObject? else { return nil }
+		return frames.first { ($0 as AnyObject) === presented }
+	}
+
+	/// Copies what one pet layer is showing onto another, for the handover to the
+	/// full-display surface.
+	///
+	/// The surface is built on demand, so it has never been sent anything: without this it
+	/// comes up empty, and — since a drag is one of the states that raises it, and dragging
+	/// is a looping clip — it would come up **standing perfectly still** for the whole drag.
+	///
+	/// A loop that was running is started again from the top rather than at the phase it had
+	/// reached. Every handover so far coincides with a clip change (a drag starting or
+	/// ending), and a clip change restarts the clip anyway, so there is nothing to preserve;
+	/// if that stops being true, the phase is where to look.
+	static func handOver(from source: CALayer, to target: CALayer) {
+		target.contents = source.contents
+		target.transform = source.transform
+		guard let animation = source.animation(forKey: loopAnimationKey) as? CAKeyframeAnimation,
+			let values = animation.values as? [CGImage], values.count > 1
+		else {
+			stopLoop(on: target)
+			return
+		}
+		let cycle = Array(values.dropLast())
+		play(
+			SpriteLoop(
+				clip: loopAnimationKey,
+				frames: cycle,
+				frameSeconds: animation.duration / Double(max(cycle.count, 1))
+			),
+			on: target
+		)
 	}
 
 	// MARK: - What may never animate

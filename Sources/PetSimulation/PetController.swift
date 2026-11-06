@@ -8,6 +8,12 @@ import PetMedia
 @MainActor
 public protocol PetControllerDelegate: AnyObject {
 	func petController(_ controller: PetController, didProduceFrame image: CGImage)
+	/// A looping clip was started, whole, for the renderer to play itself.
+	///
+	/// Only one of this and ``petController(_:didProduceFrame:)`` is in force at a time, and
+	/// which one it is decides who advances the frames — so a renderer that drew
+	/// `didProduceFrame` regardless would show a frozen frame for the whole clip.
+	func petController(_ controller: PetController, didBeginLoop loop: SpriteLoop)
 	func petControllerDidChangePlacement(_ controller: PetController)
 	func petControllerDidRequestMenu(_ controller: PetController)
 	/// The simulation stopped or started again, so anything drawn alongside her
@@ -429,9 +435,9 @@ public final class PetController: SpriteAnimatorDelegate {
 		guard timer == nil else { return }
 		lastTick = CFAbsoluteTimeGetCurrent()
 		scheduleTickTimer()
-		if let frame = animator.currentFrame {
-			delegate?.petController(self, didProduceFrame: frame)
-		}
+		// Through the animator, not by reading a frame: which of the two kinds of play is in
+		// force is the animator's to say, and this has to say the same thing it said before.
+		animator.announceCurrent()
 	}
 
 	private func scheduleTickTimer() {
@@ -461,15 +467,31 @@ public final class PetController: SpriteAnimatorDelegate {
 
 	/// How fast she should be ticked for what she is doing now.
 	///
-	/// Slow only for the `sleep` loop, and only once she has been still for a while. The
-	/// two clips on either side of it are left out for their own reasons: `sleep_enter`'s
-	/// frames are 0.145 s and `sleep_exit`'s 0.105 s, neither of which a 0.1 s tick lands
-	/// evenly, so they would stutter where the loop does not (and `sleep_exit` is played
-	/// in the waking state anyway).
+	/// Slow for a rest — asleep or awake — once she has been still for a while, provided the
+	/// clip playing is one the render server can hold.
+	///
+	/// An **awake** rest is only safe to slow down because of that last condition. Its clip is
+	/// a loop, and a loop is played by the render server rather than stepped here, so the
+	/// tick stops owning the frames: left to the tick, a 0.1 s tick quantises a 0.135 s frame
+	/// to 100 ms or 200 ms and she visibly lurches (`Docs/Internal/rendering.md`, "慢 tick
+	/// 下帧的驻留"). A clip that stops is never slowed down, because reporting its own end is
+	/// the tick's job.
+	///
+	/// **A rest inside a box is left out**, which is the one deliberate omission here: the
+	/// box is re-read from the window server on a countdown in seconds
+	/// (`enclosureRestingResampleInterval`, 30 Hz while she rests), so a 10 Hz tick would
+	/// drop those reads to 10 Hz — a second, separately-tuned cost path changed by the same
+	/// commit. A box that starts moving is noticed within one tick either way, and the
+	/// stillness clock then puts her straight back to 60 Hz.
 	var wantedTickInterval: Double {
-		guard state == .sleeping, animator.currentClip == "sleep",
-			secondsSinceSheMoved >= Self.stillnessBeforeSlowTickSeconds
-		else { return Self.awakeTickInterval }
+		guard state == .sleeping || state == .idle else { return Self.awakeTickInterval }
+		guard enclosure == nil else { return Self.awakeTickInterval }
+		guard secondsSinceSheMoved >= Self.stillnessBeforeSlowTickSeconds else {
+			return Self.awakeTickInterval
+		}
+		guard let loop = animator.currentLoop, !loop.frames.isEmpty else {
+			return Self.awakeTickInterval
+		}
 		return Self.sleepingTickInterval
 	}
 
@@ -1222,6 +1244,10 @@ public final class PetController: SpriteAnimatorDelegate {
 		// The pinch, when there is one, is an overlay the presenter draws on top of
 		// this frame — so the frame is always the cel itself.
 		delegate?.petController(self, didProduceFrame: frame)
+	}
+
+	public func spriteAnimator(_ animator: SpriteAnimator, didBeginLoop loop: SpriteLoop) {
+		delegate?.petController(self, didBeginLoop: loop)
 	}
 
 	public func spriteAnimator(_ animator: SpriteAnimator, didFinishClip clip: String) {

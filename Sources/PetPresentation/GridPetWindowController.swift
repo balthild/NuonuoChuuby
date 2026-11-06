@@ -39,6 +39,8 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 	/// The last sprite frame, kept so the cheek overlay can be drawn against it
 	/// without the controller handing it over again.
 	private var baseFrame: CGImage?
+	/// The cycle the render server is playing, when it is the one advancing the frames.
+	private var playingLoop: SpriteLoop?
 
 	/// The dots that hold the window's **shape** at its full size.
 	///
@@ -463,9 +465,9 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 		guard let surface = overlaySurface else { return }
 		surface.show(covering: displaySpace)
 		// She appears in the new window at the position she had in the old one, so the
-		// handover is invisible.
-		surface.pet.contents = pet.contents
-		surface.pet.transform = pet.transform
+		// handover is invisible. The loop comes with her: while she is being dragged the
+		// clip is a loop, and the render server is the one playing it.
+		PetLayerConventions.handOver(from: pet, to: surface.pet)
 		pet.isHidden = true
 		bubbleLayer.isHidden = true
 	}
@@ -588,14 +590,43 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 	// MARK: - PetControllerDelegate
 
 	public func petController(_ controller: PetController, didProduceFrame image: CGImage) {
+		// A stepped frame means the render server is not the one advancing the frames now.
+		playingLoop = nil
 		baseFrame = image
 		let transform = Self.transform(for: controller)
+		PetLayerConventions.stopLoop(on: pet)
 		pet.contents = image
 		pet.transform = transform
 		// Both, so whichever window is showing has this frame without anything having to
 		// copy it across at the handover.
-		overlaySurface?.pet.contents = image
-		overlaySurface?.pet.transform = transform
+		if let surface = overlaySurface {
+			PetLayerConventions.stopLoop(on: surface.pet)
+			surface.pet.contents = image
+			surface.pet.transform = transform
+		}
+	}
+
+	public func petController(_ controller: PetController, didBeginLoop loop: SpriteLoop) {
+		playingLoop = loop
+		baseFrame = loop.frames.first
+		let transform = Self.transform(for: controller)
+		PetLayerConventions.play(loop, on: pet)
+		pet.transform = transform
+		if let surface = overlaySurface {
+			PetLayerConventions.play(loop, on: surface.pet)
+			surface.pet.transform = transform
+		}
+	}
+
+	/// The cel on screen right now.
+	///
+	/// While the render server is playing a loop, it is the authority on which frame that is
+	/// — the model value is the cycle's first frame throughout — so the pinch has to read
+	/// the layer's presentation rather than anything this object stored.
+	private var celOnScreen: CGImage? {
+		guard let loop = playingLoop else { return baseFrame }
+		let layer = usesOverlaySurface ? (overlaySurface?.pet ?? pet) : pet
+		return PetLayerConventions.presentedFrame(of: layer, among: loop.frames) ?? baseFrame
 	}
 
 	public func petController(
@@ -610,7 +641,7 @@ public final class GridPetWindowController: NSObject, PetControllerDelegate, Pet
 			return
 		}
 		pinch.setBounds(CGRect(origin: .zero, size: pet.bounds.size), contentsScale: hostingScale)
-		pinch.update(state: pinchState, base: baseFrame)
+		pinch.update(state: pinchState, base: celOnScreen)
 	}
 
 	public func petControllerDidChangePlacement(_ controller: PetController) {

@@ -94,6 +94,8 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 	/// The last sprite frame, kept so the cheek overlay can be drawn against it
 	/// without the controller having to hand it over again.
 	private var baseFrame: CGImage?
+	/// The cycle the render server is playing, when it is the one advancing the frames.
+	private var playingLoop: SpriteLoop?
 	/// The live ghost icons, so a display change that rebuilds the overlays can put
 	/// theirs back on screen.
 	private var ghostIcons: [OverlayGhostIcon] = []
@@ -338,13 +340,43 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 
 	public func petController(_ controller: PetController, didProduceFrame image: CGImage) {
 		guard let hostingIndex, hostingIndex < overlays.count else { return }
+		// A stepped frame means the render server is not the one advancing the frames now.
+		playingLoop = nil
 		baseFrame = image
 		let overlay = overlays[hostingIndex]
+		PetLayerConventions.stopLoop(on: overlay.pet)
 		overlay.pet.contents = image
 		overlay.pet.transform = PetLayerConventions.transform(
 			lean: controller.bodyLeanDegrees,
 			facing: controller.facing
 		)
+	}
+
+	public func petController(_ controller: PetController, didBeginLoop loop: SpriteLoop) {
+		guard let hostingIndex, hostingIndex < overlays.count else { return }
+		playingLoop = loop
+		baseFrame = loop.frames.first
+		let overlay = overlays[hostingIndex]
+		PetLayerConventions.play(loop, on: overlay.pet)
+		overlay.pet.transform = PetLayerConventions.transform(
+			lean: controller.bodyLeanDegrees,
+			facing: controller.facing
+		)
+	}
+
+	/// The cel on screen right now.
+	///
+	/// While the render server is playing a loop it is the authority on which frame that is
+	/// — the model value stays at the cycle's first frame — so the pinch has to read the
+	/// layer's presentation rather than anything this object stored.
+	private var celOnScreen: CGImage? {
+		guard let loop = playingLoop, let hostingIndex, hostingIndex < overlays.count else {
+			return baseFrame
+		}
+		return PetLayerConventions.presentedFrame(
+			of: overlays[hostingIndex].pet,
+			among: loop.frames
+		) ?? baseFrame
 	}
 
 	public func petController(
@@ -367,7 +399,7 @@ public final class OverlayPetWindowController: NSObject, PetControllerDelegate, 
 			CGRect(origin: .zero, size: overlay.pet.bounds.size),
 			contentsScale: overlay.monitor.scale
 		)
-		overlay.pinch.update(state: pinch, base: baseFrame)
+		overlay.pinch.update(state: pinch, base: celOnScreen)
 	}
 
 	public func petControllerDidChangePlacement(_ controller: PetController) {

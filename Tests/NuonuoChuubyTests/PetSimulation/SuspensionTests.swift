@@ -18,8 +18,12 @@ struct SuspensionTests {
 	private final class DelegateSpy: PetControllerDelegate {
 		var suspensions: [Bool] = []
 		var frames = 0
+		var loops = 0
 		func petController(_ controller: PetController, didProduceFrame image: CGImage) {
 			frames += 1
+		}
+		func petController(_ controller: PetController, didBeginLoop loop: SpriteLoop) {
+			loops += 1
 		}
 		func petControllerDidChangePlacement(_ controller: PetController) {}
 		func petControllerDidRequestMenu(_ controller: PetController) {}
