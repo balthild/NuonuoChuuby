@@ -81,5 +81,8 @@
 - `make rerun` —— 构建、打包、签名、杀掉旧实例、启动。**手动测试一律用它**，接受 `APP_ARGS=`。
 - `make test` —— 跑测试。**测试数量以它的实际输出为准**，不要把数字写进文档再引用。
 - `make lint` —— dprint 检查，只报告、不改动。
+- `python3 Tools/bench/measure.py` —— **人工驱动**的交互场景 CPU 基准（要一个人动手，见
+  [performance.md](Docs/Internal/performance.md)）。`--report` 看已收集的；情景与实验形式都是参数，
+  不必改脚本。
 - **每次提交之前跑完整 `make format`**（= `dprint fmt`）。**仓库里不留未格式化的文件**，比「提交只含
   本次改动的文件」更重要：格式化带出的无关改动一并提交即可，不必为此拆分或还原。

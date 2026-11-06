@@ -7,6 +7,9 @@ DerivedData/
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
 
+# Bytecode from the scripts in Tools/ (they are run, and imported by one another).
+__pycache__/
+
 # Generated from the upstream submodule by `make manifest`; the pinned commit and
 # the file list travel in the binary, so the source is never committed.
 /Sources/PetMedia/Asset/AssetManifest.swift

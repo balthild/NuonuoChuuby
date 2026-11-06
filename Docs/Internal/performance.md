@@ -44,9 +44,8 @@
 
 导出 XML 有 id/`ref` 去重：首次出现内联定义（带 `id`），后续行只给 `ref`。**直接 grep 原始 XML 或逐
 行解析会只看到一行。** 必须先解析 `frame`/`backtrace`/`thread`/`thread-state` 的**两种**形式，再按样
-本聚合。`_ignored/scenario-bench/top_symbols.py`（gitignored，不在仓库里；`--all-threads` 按线
-程，`--symbol` 列出含某符号的调用链）就是这套工具。早先的 `.build/traces/analyze.py`、`chains.py` 已
-不存在。
+本聚合。`Tools/bench/top_symbols.py`（`--all-threads` 按线程，`--symbol` 列出含某符号的调用
+链，`--json` 给 harness）就是这套工具。早先的 `.build/traces/analyze.py`、`chains.py` 已不存在。
 
 **只认 `ref` 的解析器会静默出错，而且看不出来。** 样本行里的 `backtrace` 大多**内联**（每行一份、带
 `id`），把它们当成未解析会让整条样本落进「未归因」：分母仍是全部样本，于是**所有符号的占比被系统性压
@@ -388,8 +387,15 @@ overlay 的 1961 次之间（**推论**，按窗口面积比折算）。上面�
 次**按键闸门**隔开（读指令、摆她的手位都不计入窗口）。头号数字是 `ps -o time=`（累计 user+sys，也就
 是 `getrusage` 给的那个量）在窗口内的差 ÷ 墙钟。启动路径 `make sign` 一批一次，然后每轮 `pkill` +
 `open -n` —— 与 `make rerun` 同一条 LaunchServices 路径，只是不重复重建签名（每次重建是一次
-1Password 往返）。安静模式开、`sleepiness` 钉在 100。工具：`_ignored/scenario-bench/measure.py`，分
-析 `top_symbols.py`。
+1Password 往返）。安静模式开、`sleepiness` 钉在 100。
+
+**工具：`Tools/bench/measure.py`**（人工驱动，读它的 `--help`）。它是**机制**，情景是数据：要跑的动
+作在 `Tools/bench/scenarios.json`，每条含给操作者的 `prep`/`gesture`、机器可查的
+`expect`/`forbid`（事件名，逐轮核对并标 ✓/✗）、以及留给人判的 `note`；`--scenarios-file` 换一套。实
+验形式也是命令行： `--bundle`/`--bundles`（后者按轮交替，即 A/B）、`--phases
+ps,trace`、`--seconds`/`--settle`、
+`--build-cmd`/`--no-build`、`--analyzer`、`--out-dir`；`--report` 打印已收集的（按 arm × 场景分组，
+带判据与二进制 sha256）。
 
 **⚠ 那次基准的「构建」是空转，与它启动的 bundle 不是同一个文件（2026-11-05 发现，已修）。**
 `measure.py` 启动 `NuonuoChuuby-Dev.app`，而它调的 `make sign` 在 `APP_SUFFIX` 为空时组装并签名的是
