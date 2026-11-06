@@ -321,6 +321,27 @@ public final class PetController: SpriteAnimatorDelegate {
 	let displayScale: Double = 1
 	private var timer: Timer?
 	private var lastTick: CFAbsoluteTime = 0
+
+	/// The rate the tick timer is running at.
+	private(set) var tickIntervalSeconds = PetController.awakeTickInterval
+	/// How long nothing has moved her, which is what allows the slow tick.
+	private var secondsSinceSheMoved: Double = 0
+
+	/// The tick rate while she is awake.
+	static let awakeTickInterval: Double = 1.0 / 60
+	/// The tick rate while she is asleep in the `sleep` loop.
+	///
+	/// That clip is 8 frames at 0.185 s — 5.4 fps — so 10 Hz draws every one of its
+	/// frames for two ticks and looks the same, while a tenth of the frames are
+	/// composited. The rate is the only thing that can be cut: what a frame costs is the
+	/// run loop, the framework and the drawing push, not her own step.
+	static let sleepingTickInterval: Double = 1.0 / 10
+	/// How long she must have gone without moving before the slow tick is allowed.
+	///
+	/// Because a slow tick is only honest while nothing is carrying her: asleep on a
+	/// window top, she is ridden by it like at any other time, and at 10 Hz she would
+	/// ride it in 100 ms steps while the window itself moved smoothly.
+	private static let stillnessBeforeSlowTickSeconds: Double = 1
 	private var heartbeatRemaining: Double = 10
 	private var lastNotifiedFoot: PixelPoint?
 	private var lastNotifiedSize: Double?
@@ -407,15 +428,20 @@ public final class PetController: SpriteAnimatorDelegate {
 	public func start() {
 		guard timer == nil else { return }
 		lastTick = CFAbsoluteTimeGetCurrent()
+		scheduleTickTimer()
+		if let frame = animator.currentFrame {
+			delegate?.petController(self, didProduceFrame: frame)
+		}
+	}
+
+	private func scheduleTickTimer() {
+		timer?.invalidate()
 		// `.common` keeps the pet animating while a menu or a drag loop runs.
-		let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+		let timer = Timer(timeInterval: tickIntervalSeconds, repeats: true) { [weak self] _ in
 			MainActor.assumeIsolated { self?.tick() }
 		}
 		RunLoop.main.add(timer, forMode: .common)
 		self.timer = timer
-		if let frame = animator.currentFrame {
-			delegate?.petController(self, didProduceFrame: frame)
-		}
 	}
 
 	public func stop() {
@@ -430,12 +456,53 @@ public final class PetController: SpriteAnimatorDelegate {
 		lastTick = now
 		// A paused app must not fast-forward the simulation.
 		step(min(max(elapsed, 0), 0.1))
+		updateTickRate()
+	}
+
+	/// How fast she should be ticked for what she is doing now.
+	///
+	/// Slow only for the `sleep` loop, and only once she has been still for a while. The
+	/// two clips on either side of it are left out for their own reasons: `sleep_enter`'s
+	/// frames are 0.145 s and `sleep_exit`'s 0.105 s, neither of which a 0.1 s tick lands
+	/// evenly, so they would stutter where the loop does not (and `sleep_exit` is played
+	/// in the waking state anyway).
+	var wantedTickInterval: Double {
+		guard state == .sleeping, animator.currentClip == "sleep",
+			secondsSinceSheMoved >= Self.stillnessBeforeSlowTickSeconds
+		else { return Self.awakeTickInterval }
+		return Self.sleepingTickInterval
+	}
+
+	/// Restarts the tick timer when the rate that suits her has changed.
+	///
+	/// Called after every step, and from ``enter(_:clip:purpose:velocity:facing:transientSeconds:)``
+	/// so that a drag, a wake or a throw takes effect at once rather than a slow tick
+	/// later.
+	func updateTickRate() {
+		let wanted = wantedTickInterval
+		guard wanted != tickIntervalSeconds else { return }
+		tickIntervalSeconds = wanted
+		// Nothing to reschedule when the timer was never started: `start()` reads the
+		// rate in force.
+		guard timer != nil else { return }
+		scheduleTickTimer()
 	}
 
 	func step(_ delta: Double) {
-		let timing = FrameTiming.fromElapsed(delta)
+		let timing = FrameTiming.fromElapsed(
+			delta,
+			// The cap is for a hitch, not for a deliberately slow tick: the two are told
+			// apart by the tick rate in force, and a 0.1 s cap at 10 Hz is what keeps the
+			// sleep loop playing at its own speed rather than at half of it.
+			maximumAnimationStep: max(FrameTiming.defaultMaximumAnimationStep, tickIntervalSeconds)
+		)
 		let simulation = timing.simulationSeconds
 		guard simulation > 0 else { return }
+
+		// Measured around the whole step rather than in ``tick()``, because a test drives
+		// this directly and the slow tick turns on it either way.
+		let footBefore = foot
+		defer { secondsSinceSheMoved = foot == footBefore ? secondsSinceSheMoved + simulation : 0 }
 
 		life.advance(elapsedSeconds: simulation, sleeping: state == .sleeping)
 		stateElapsed += simulation
@@ -839,6 +906,10 @@ public final class PetController: SpriteAnimatorDelegate {
 		if let newFacing { facing = newFacing }
 		if let transientSeconds { transientDuration = transientSeconds }
 		if let clip { animator.play(clip) }
+		// The rate follows the state wherever it changes: a hand on her while she sleeps,
+		// a wake for a meal, a window edge throwing her, all have to be drawn at the
+		// ordinary rate from the next frame, not a tenth of a second later.
+		updateTickRate()
 	}
 
 	/// One frame of whichever behaviour the current state owns. Inside a window

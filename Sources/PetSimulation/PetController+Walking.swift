@@ -385,10 +385,16 @@ extension PetController {
 
 		// The one explicit release rule: a surface that moves further than
 		// `releaseDisplacement` in a single tick is yanked out from under her.
+		//
+		// The threshold is that displacement **read over the tick that measured it**,
+		// because what it really is is a speed — 900 pt/s. A tick six times as long
+		// covers six times the ground, and comparing that raw would read an ordinary
+		// drag as a flick; asleep, where the tick is deliberately slow, she would be
+		// thrown off a window that is merely being moved.
 		let displacement = lastPerchOffset.map { surface.offset - $0 } ?? 0
 		lastPerchOffset = surface.offset
 
-		if abs(displacement) >= PlatformRidePhysics.releaseDisplacement {
+		if abs(displacement) >= PlatformRidePhysics.yankDisplacement(overSeconds: delta) {
 			let velocityY = displacement / max(delta, 1.0 / 240)
 			let upward = displacement < 0
 			logRide(
