@@ -215,16 +215,27 @@ extension PetController {
 	func reportMealVisual() {
 		guard state == .chomping, let item = activeMeal else { return }
 		let geometry = profile.geometry
+		let mouth = PixelPoint(x: geometry.mouthCanvasX, y: geometry.mouthCanvasY)
+		let suction = PixelPoint(
+			x: geometry.suctionMouthCanvasX,
+			y: geometry.suctionMouthCanvasY
+		)
 		var visual = MealConsumptionAnimation.visual(
 			elapsed: stateElapsed,
-			from: PixelPoint(x: geometry.mouthCanvasX, y: geometry.mouthCanvasY),
-			to: PixelPoint(
-				x: geometry.suctionMouthCanvasX,
-				y: geometry.suctionMouthCanvasY
-			)
+			from: mouth,
+			to: suction
 		)
 		// The path is authored in canvas units; the presenter draws in screen points.
 		visual.center = screenPoint(canvasX: visual.center.x, canvasY: visual.center.y)
+		// The icon is measured in points and the path in canvas units, so the half-size goes
+		// the other way through the same scale to meet it.
+		visual.box = screenRect(
+			canvas: MealConsumptionAnimation.box(
+				from: mouth,
+				to: suction,
+				halfExtent: (item.iconSize ?? petSize * 0.34) / 2 / canvasScale
+			)
+		)
 		mealDelegate?.petController(self, didUpdateMeal: item, visual: visual)
 	}
 

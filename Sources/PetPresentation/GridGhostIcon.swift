@@ -10,8 +10,13 @@ import QuartzCore
 /// display. This one has to have a window, because the icon stands where the file was,
 /// which can be anywhere on the display and is usually nowhere near her.
 ///
-/// The window is a plain window the size of the icon, placed once: the icon stands
-/// where the file was and never moves, so nothing here has to follow anything.
+/// The window is an empty box shaped around the whole thing the icon will do — it appears
+/// where the file was, and then, once she starts chewing, shivers and is drawn into her
+/// mouth. **The box does not follow the icon.** A layer's position is free and a window's
+/// is not (`performance.md`, "拖动 vs `setFrame`"), so the box is reshaped only when the
+/// animation's own extent changes and the icon moves inside it. What keeps it over her
+/// while that happens is its level, not an order re-asserted on every frame: see
+/// ``PetChromePanel/ghostPanelLevel``.
 @MainActor
 final class GridGhostIcon: GhostIconPresenting {
 	/// Everything the icon never animates. `opacity` is deliberately absent, so the
@@ -31,12 +36,19 @@ final class GridGhostIcon: GhostIconPresenting {
 
 	private var center: PixelPoint = .zero
 	private var size: Double = 0
+	/// The extent the window is shaped for, in global top-left coordinates. The icon is
+	/// drawn at an offset inside it rather than the window being moved onto the icon.
+	private var box: PixelRect = .zero
 
 	public private(set) var isDismissed = false
 
 	public init(displaySpace: DisplaySpace) {
 		self.displaySpace = displaySpace
-		panel = PetChromePanel(contentRect: .zero, ignoresMouseEvents: true)
+		panel = PetChromePanel(
+			contentRect: .zero,
+			ignoresMouseEvents: true,
+			level: PetChromePanel.ghostPanelLevel
+		)
 		panel.title = "pet ghost"
 		root = PetLayerHostView(frame: .zero)
 		root.wantsLayer = true
@@ -64,16 +76,39 @@ final class GridGhostIcon: GhostIconPresenting {
 		layer.opacity = 1
 		layer.transform = CATransform3DIdentity
 		layer.isHidden = false
-		place()
+		// The icon's own square around the anchor. It grows to the animation's own extent on
+		// the first frame of the chew — she can walk to the ghost for seconds before that, and
+		// shrinking the box to the icon is what keeps it from covering what it passes over.
+		// The window is empty either way, so the one reshape that follows is not something the
+		// eye can catch.
+		box = PixelRect(
+			x: center.x - size / 2,
+			y: center.y - size / 2,
+			width: size,
+			height: size
+		)
+		// Ordering a window in lets AppKit reassert the frame it believes in, so the real
+		// position is put back afterwards — the same order her own window uses.
+		panel.orderFrontRegardless()
+		reshape(to: box)
+		placeLayer()
 	}
 
-	/// Moves and reshapes the icon for one frame of the meal animation.
+	/// Draws one frame of the meal animation.
+	///
+	/// The window is only reshaped when the animation's extent changes, which is once: the
+	/// box is the same on every frame of the chew, which is what
+	/// ``MealConsumptionAnimation/box(from:to:halfExtent:)`` guarantees. Everything after
+	/// that is a layer move.
 	public func update(_ visual: MealConsumptionVisual) {
 		guard !isDismissed else { return }
+		if let box = visual.box, box != self.box {
+			reshape(to: box)
+		}
 		center = visual.center
 		layer.opacity = Float(visual.opacity)
 		layer.transform = GhostIconStyle.animationTransform(visual)
-		place()
+		placeLayer()
 	}
 
 	public func fadeOut() {
@@ -95,28 +130,29 @@ final class GridGhostIcon: GhostIconPresenting {
 		panel.orderOut(nil)
 	}
 
-	/// Puts the window on the icon's square.
+	/// Puts the window on a new extent.
 	///
-	/// The ghost appears where the file was and does not move, so this reshapes it on the
-	/// first frame and does nothing after: the shiver is a transform on the layer, not a
-	/// move of the window.
-	private func place() {
-		let side = NSSize(width: size, height: size)
-		let rect = PixelRect(
-			x: center.x - size / 2,
-			y: center.y - size / 2,
-			width: size,
-			height: size
-		)
-		let target = DisplaySpace.toAppKit(rect, primaryHeight: displaySpace.primaryHeight)
+	/// Called once per shape, never per frame: it is the `setFrame` this renderer used to do
+	/// on every frame of the chew, which `performance.md` measures as the most expensive
+	/// thing a window can be asked to do.
+	private func reshape(to box: PixelRect) {
+		self.box = box
+		let target = DisplaySpace.toAppKit(box, primaryHeight: displaySpace.primaryHeight)
 		if panel.frame != target {
 			panel.setFrame(target, display: false)
 		}
+	}
 
+	/// Draws the icon at its current centre, inside the box the window is shaped for.
+	private func placeLayer() {
+		let side = NSSize(width: size, height: size)
 		layer.contentsScale = scale(at: center)
 		layer.bounds = CGRect(origin: .zero, size: side)
-		layer.position = CGPoint(x: side.width / 2, y: side.height / 2)
-		panel.orderFrontRegardless()
+		// The layer's anchor is its centre, so it wants the icon's centre in the window's own
+		// space: the box's origin taken off the global centre. Doing it this way rather than
+		// moving the window onto the icon is the whole point — the root is flipped like the
+		// overlay's, so this offset is measured from the window's top-left like the rest.
+		layer.position = CGPoint(x: center.x - box.x, y: center.y - box.y)
 	}
 
 	private func scale(at point: PixelPoint) -> CGFloat {

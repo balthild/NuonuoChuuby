@@ -239,6 +239,14 @@ overlay（见 `rendering.md`）。幽灵图标在两者里实现不同：overlay
   是上游行为，不是 bug。
 - 缩放走 `transform`（`bounds` 保持自然尺寸），`CATransform3DConcat(rotate, scale)` = 上游 WPF 的
   「先 Scale 再 Rotate」。**旋转的视觉方向未用眼睛验证**（±4° 抖动 + 12° 倾角，朝向不敏感）。
+- **网格渲染的窗口一次成形为整条路径的外接矩
+  形**：`MealConsumptionAnimation.box(from:to:halfExtent:)` 给的是**同一块矩形**（它说的是图标将要走
+  到哪里，不是此刻在哪里），窗口只 `setFrame` 一次，此后每帧只移动图层。闭式计算（顶点 + 晃动 + 最大
+  缩放 1.12 + 最大转角 16°）而不是逐帧扫描，因为它在咀嚼的每一帧都要
+  用；`MealConsumptionAnimationTests` 会逐帧采样那条路径反推图标轮廓、断言它落在盒内。
+  - 它出现时（走路阶段）窗口只有图标那么大：她可能走上几秒，那段时间不该盖住沿途的东西。咀嚼第一帧那
+    个 `visual.box` 才把它放大 —— 窗口是空的（`ignoresMouseEvents`），无动画地变大看不出来。
+  - **overlay 不需要这个**：它的幽灵是永不移动的全屏窗口里的图层，位移本来就是免费的。
 
 ## 其他约束
 

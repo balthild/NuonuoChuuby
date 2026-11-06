@@ -56,6 +56,8 @@
 
 ## 6. 未测 / 未验证
 
+- **幽灵窗口「一次成形」改动的总 CPU 效应未测。** 机制已证（逐帧 `setFrame` / `orderFrontRegardless`
+  消失，见 [performance.md](performance.md)），但没有受控 A/B，所以「吃文件降了多少 pt」没有数字。
 - **网格渲染在自主走动时的成本未测。** [performance.md](performance.md) 的五场景基准（2026-11-04）量
   的是拖动 / 下坠 / 两种抛起 —— 前三者里有两个走全屏表面，走网格的那个是自由下落，不是走动速度档位。
   「每格一次 `setFrameOrigin`」这个网格特有成本唯一真正发生的场景就是走动，所以网格对旧面板的收益仍

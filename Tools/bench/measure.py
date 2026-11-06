@@ -536,7 +536,9 @@ def build(command=None):
         )
 
 
-def launch(bundle: Path, sleepiness: Optional[float] = None, quiet: Optional[bool] = None):
+def launch(
+    bundle: Path, sleepiness: Optional[float] = None, quiet: Optional[bool] = None
+):
     """Relaunches `bundle` through LaunchServices, as `make rerun` does."""
     kill_pet()
     force_sleepiness(sleepiness if sleepiness is not None else FORCED_SLEEPINESS)

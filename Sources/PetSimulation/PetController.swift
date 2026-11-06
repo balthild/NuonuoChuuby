@@ -770,6 +770,19 @@ public final class PetController: SpriteAnimatorDelegate {
 		)
 	}
 
+	/// A canvas rectangle on screen. The mapping is a uniform scale and a shift, so two
+	/// opposite corners carry the whole rectangle over.
+	func screenRect(canvas: PixelRect) -> PixelRect {
+		let topLeft = screenPoint(canvasX: canvas.x, canvasY: canvas.y)
+		let bottomRight = screenPoint(canvasX: canvas.right, canvasY: canvas.bottom)
+		return PixelRect(
+			x: topLeft.x,
+			y: topLeft.y,
+			width: bottomRight.x - topLeft.x,
+			height: bottomRight.y - topLeft.y
+		)
+	}
+
 	/// The rectangle she can be hit in, in global top-left coordinates.
 	///
 	/// The feet are deliberately outside it, so standing on a window's top edge can

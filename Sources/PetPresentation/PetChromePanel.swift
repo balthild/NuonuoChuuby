@@ -17,11 +17,26 @@ class PetChromePanel: NSPanel {
 	/// into a suspension loop with herself.
 	static let petPanelLevel = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 1)
 
+	/// The ghost icons' level: one step above the pet's.
+	///
+	/// A ghost stands where the file was, which can be anywhere on the display and is
+	/// usually nowhere near her, so in the grid renderer it is a window of its own — and it
+	/// is drawn over her, because she is eating it. Saying that with a level rather than by
+	/// re-asserting the order is what keeps it free: her window is re-ordered whenever it is
+	/// placed, so staying above her by ordering alone would mean ordering on her cadence.
+	static let ghostPanelLevel = NSWindow.Level(rawValue: petPanelLevel.rawValue + 1)
+
 	/// - Parameter ignoresMouseEvents: whether clicks should pass through to whatever is
 	///   behind. True only for a window that is nothing but a picture — the ghost icons.
 	///   Everything she can be drawn in is hit-tested instead, so a click on her works
 	///   wherever she happens to be.
-	init(contentRect: NSRect, ignoresMouseEvents: Bool = false) {
+	/// - Parameter level: where the panel stacks. The default is ``petPanelLevel``; only the
+	///   ghost icons ask for anything else.
+	init(
+		contentRect: NSRect,
+		ignoresMouseEvents: Bool = false,
+		level: NSWindow.Level = PetChromePanel.petPanelLevel
+	) {
 		super.init(
 			contentRect: contentRect,
 			styleMask: [.borderless, .nonactivatingPanel],
@@ -31,7 +46,7 @@ class PetChromePanel: NSPanel {
 		if ignoresMouseEvents { self.ignoresMouseEvents = true }
 		isFloatingPanel = true
 		becomesKeyOnlyIfNeeded = true
-		level = PetChromePanel.petPanelLevel
+		self.level = level
 		collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
 		isOpaque = false
 		backgroundColor = .clear

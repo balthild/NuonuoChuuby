@@ -31,4 +31,19 @@ struct PetChromePanelTests {
 		#expect(PetChromePanel.petPanelLevel.rawValue > 0)
 		#expect(PetChromePanel.petPanelLevel.rawValue < NSWindow.Level.popUpMenu.rawValue)
 	}
+
+	/// A ghost icon is a window of its own and is drawn over her, because she is the one
+	/// eating it. The gap is what holds that: at her own level it would fall behind her
+	/// window as soon as that window was placed again, which during a meal is every frame.
+	@Test("A ghost icon stacks above the pet, and stays under open menus")
+	func ghostLevel() {
+		let ghost = PetChromePanel(
+			contentRect: .zero,
+			ignoresMouseEvents: true,
+			level: PetChromePanel.ghostPanelLevel
+		)
+		#expect(ghost.level == PetChromePanel.ghostPanelLevel)
+		#expect(PetChromePanel.ghostPanelLevel.rawValue > PetChromePanel.petPanelLevel.rawValue)
+		#expect(PetChromePanel.ghostPanelLevel.rawValue < NSWindow.Level.popUpMenu.rawValue)
+	}
 }

@@ -707,6 +707,63 @@ isMovingInsideEnclosure`（`PetController+Interaction.swift`）决定她何时�
   慢拖**，而 34–39% 那轮是**合成移动流**，若事件线程成本随**投递次数**走则二者本就不同量；本条的主线
   程是 907 ms / 15 s，份额分母也更大。**未解决，见 [todo.md](todo.md) §7。**
 
+## 吃文件：成本与幽灵窗口（2026-11-06）
+
+**场景**：忽略模式关（安静模式会在门口丢掉删除餐，`allowsDeletionMeal` 就是 `!quietMode`），桌面上铺
+15 个文件、每 2 s 删一个、指针不动。删除由 harness 自己跑（`scenarios.json` 的 `setup` /
+`stimulus`，见 `measure.py` 的文档串），所以两轮的**活动量逐项相同** —— 那是手驱做不到的。
+
+| | 各轮 | 均值 | ws |
+| - | - | - | - |
+| 静止（睡着，同批） | 0.59 / 0.66 | **0.62** | 20.2 |
+| 连续吃文件（改前） | 8.24 / 6.92 / 9.07 / 8.92 / 8.95 | **7.6** | 30–41 |
+
+**均值只能当「约 7.6」写**：两轮活动量逐项相同（`DeletionDetected` 7–8、`MealRunStarted` 3、
+`MealCompleted` 3）却差 **1.32 pt**，而 `idle` 那两轮只差 0.07 —— 所以同一条件下这个场景的跨进程噪声
+地板是 **±1.3**。她连续吃文件约 **7.6%（±1.3）单核**，基线 0.62 ⇒ 净增 ~7 pt。
+
+**归因**（一条 trace，主线程口径；进程 CPU ≈ 主线程 ÷ 0.73）：
+
+| 项 | 占主线程 | 折合 |
+| - | - | - |
+| 幽灵图标的每帧窗口工作（`reportMealVisual` → `GridGhostIcon.update` → `place`） | 32% | **~2.3 pt** |
+| 她自己的走动、精灵、合成与 60 Hz 运行循环 | — | ~3 pt |
+| 窗口表重枚举（10 Hz，睡着时不跑） | 6.8% | ~0.5 pt |
+| 删除记账（入队、锚点、建幽灵窗） | 3.7% | ~0.3 pt |
+| AX 读图标（每次删除一次活读） | 1.9% | ~0.15 pt |
+
+**`ws` 在这条场景下不可用**：删 15 个桌面文件，Finder 每次都要重排重绘桌面，那笔账落在 WindowServer
+上（实测 30–41%）。她的成本是 app 的 `ps -o time=` 增量。
+
+### 幽灵窗口：从「每帧移动」改成「一次成形」（2026-11-06）
+
+**发现**：那个 32% 里 `GridGhostIcon.place()` 每次调用都在做两件事 —— `_setFrameCommon`（窗口移动，
+含**无条件**的 `orderFrontRegardless`）与图层属性。它的类注释当时写着「图标站在原地、从不移动、所以
+什么都不用跟随」，而 `MealConsumptionAnimation` 明明每一步都在动它（抖动 ±3 画布单位、吞入 146）——
+**注释与实现相反，而它盖住了这个渲染方式里最贵的一项**。
+
+**改法**：窗口一次成形为**整条动画的外接矩形**（`MealConsumptionAnimation.box`），之后每帧只移动图
+层；z 序交给层级（`ghostPanelLevel`），不再每帧重申。走路阶段窗口仍只有图标那么大（那时不该盖住沿
+途），咀嚼第一帧 `visual.box` 才把它放大。
+
+**机制证据**（改后一条 trace，且比对照多一顿饭）：
+
+| 符号（主线程 inclusive） | 改前（3 餐） | 改后（4 餐） |
+| - | - | - |
+| `reportMealVisual` | 238 ms / 21.8% | **10 ms / 1.5%** |
+| `GridGhostIcon.update` | 229 ms / 21.0% | **6 ms / 0.9%** |
+| `GridGhostIcon.place` | 88 ms / 8.1% | **符号已不存在** |
+| `GridGhostIcon.reshape`（每餐一次） | — | 5 ms / 0.8% |
+| `_doOrderWindow` | 124 ms / 11.4% | 6 ms / 0.9% |
+| `window-move` 区域 | 15.3% | **3.2%** |
+
+两条链尤其干净：改后含 `_doOrderWindow` 的链只剩 `GridGhostIcon.show ← didEnqueueMeals`（**每餐一
+次**）、含 `_setFrameCommon` 的链是 `-[NSWindow _windowMoved:]`（**她自己的窗口**，链里没有
+`GridGhostIcon`）。
+
+**未测**：这个改动的**总 CPU 效应没有做受控 A/B** —— 上面是机制证据（逐帧窗口操作消失），不是 pt
+值。要数字得跨进程交替跑 3 轮/臂；推算约 1–2 pt。
+
 ## 打开菜单时卡一下（已修）
 
 用户报：菜单打开时整程序卡顿（下落中开菜单会看到她卡一下）。
